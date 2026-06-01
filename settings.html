@@ -114,6 +114,54 @@
                 <textarea id="ai_wbr_system_prompt" class="text_pole textarea_compact ai-wbr-prompt" rows="5"></textarea>
             </div>
 
+            <div class="ai-wbr-section">
+                <div class="ai-wbr-section-title">
+                    <b>后置轻量记忆图谱</b>
+                </div>
+                <label class="checkbox_label" for="ai_wbr_memory_enabled">
+                    <input id="ai_wbr_memory_enabled" type="checkbox" />
+                    <span class="fa-solid fa-circle-info ai-wbr-help" title="在主回复完成后调用一次轻量总结，把长期有价值的信息写入可视化记忆图谱。"></span>
+                    <span>启用后置记忆整理</span>
+                </label>
+                <label class="checkbox_label" for="ai_wbr_memory_auto_run">
+                    <input id="ai_wbr_memory_auto_run" type="checkbox" />
+                    <span class="fa-solid fa-circle-info ai-wbr-help" title="开启后每次正式回复结束自动整理一次；也可以关闭后用“立即整理本轮”手动触发。"></span>
+                    <span>回复结束后自动整理</span>
+                </label>
+                <label class="checkbox_label" for="ai_wbr_memory_inject_to_router">
+                    <input id="ai_wbr_memory_inject_to_router" type="checkbox" />
+                    <span class="fa-solid fa-circle-info ai-wbr-help" title="把当前记忆状态摘要加入前置世界书路由输入，帮助下一轮更稳定命中相关条目。"></span>
+                    <span>记忆状态参与世界书路由</span>
+                </label>
+
+                <div class="ai-wbr-grid">
+                    <label for="ai_wbr_memory_scan_messages"><span class="fa-solid fa-circle-info ai-wbr-help" title="后置记忆整理读取最近多少条聊天消息。只用于总结，不影响主模型历史楼层限制。"></span>记忆整理读取消息数</label>
+                    <input id="ai_wbr_memory_scan_messages" class="text_pole" type="number" min="2" max="40" step="1" />
+
+                    <label for="ai_wbr_memory_max_nodes"><span class="fa-solid fa-circle-info ai-wbr-help" title="记忆图谱最多保留多少个节点，超出后优先保留重要度较高、最近更新的节点。"></span>最大记忆节点数</label>
+                    <input id="ai_wbr_memory_max_nodes" class="text_pole" type="number" min="5" max="200" step="1" />
+
+                    <label for="ai_wbr_memory_max_links"><span class="fa-solid fa-circle-info ai-wbr-help" title="记忆图谱最多保留多少条关系边。"></span>最大记忆关系数</label>
+                    <input id="ai_wbr_memory_max_links" class="text_pole" type="number" min="0" max="400" step="1" />
+                </div>
+
+                <div class="ai-wbr-actions">
+                    <button id="ai_wbr_memory_run_now" class="menu_button" type="button">立即整理本轮</button>
+                    <button id="ai_wbr_memory_save_json" class="menu_button" type="button">保存 JSON</button>
+                    <button id="ai_wbr_memory_clear" class="menu_button" type="button">清空记忆</button>
+                    <span id="ai_wbr_memory_status" class="ai-wbr-status">未启用</span>
+                </div>
+
+                <div id="ai_wbr_memory_graph" class="ai-wbr-memory-graph"></div>
+                <div id="ai_wbr_memory_state_editor" class="ai-wbr-memory-state-editor"></div>
+                <div id="ai_wbr_memory_nodes" class="ai-wbr-memory-list"></div>
+                <div id="ai_wbr_memory_links" class="ai-wbr-memory-list"></div>
+                <div class="ai-wbr-router-raw-block">
+                    <div><b>记忆图谱 JSON</b></div>
+                    <textarea id="ai_wbr_memory_json" class="text_pole ai-wbr-memory-json" rows="9"></textarea>
+                </div>
+            </div>
+
             <div class="ai-wbr-debug">
                 <div><b>最近一次选择</b></div>
                 <div id="ai_wbr_last_summary" class="menu_button disabled">尚无路由记录</div>

@@ -23,6 +23,11 @@ const MAX_MVU_CHARS = 1600;
 const MAX_RECALL_TERMS = 32;
 const MAX_ROUTER_CONTEXT_PREVIEW = 360;
 const MAX_BURST_ITEMS = 5;
+const MAX_MEMORY_CONTEXT_PREVIEW = 520;
+const MEMORY_LINK_TYPES = new Set([
+    'INVOLVES', 'PART_OF', 'HAPPENS_AT', 'FOLLOWS', 'UPDATES', 'OPPOSES',
+    'ALLIED_WITH', 'CAUSES', 'RELATED', 'MENTIONS',
+]);
 const FETCH_FALLBACK_ENDPOINTS = [
     '/api/backends/chat-completions/generate',
     '/api/backends/text-completions/generate',
@@ -66,6 +71,15 @@ const defaultSettings = {
     maxChars: 4000,
     scanMessages: 8,
     mainHistoryAiTurns: 0,
+    memoryEnabled: false,
+    memoryAutoRun: true,
+    memoryInjectToRouter: true,
+    memoryScanMessages: 6,
+    memoryMaxNodes: 60,
+    memoryMaxLinks: 120,
+    memoryGraph: null,
+    memoryLastTurnSignature: '',
+    memoryStatus: '未启用',
     keywordRecall: true,
     useMvu: false,
     allowConstant: false,
@@ -103,6 +117,8 @@ let isCompatRouterRunning = false;
 let isRouterSelectionRequest = false;
 let fetchFallbackInstalled = false;
 let lastRouteCompletedAt = 0;
+let isMemoryWorkerRunning = false;
+let memoryUpdateTimer = null;
 
 function beginRouterBusy() {
     if (routerBusyPromise) {
@@ -314,6 +330,9 @@ function ensureSettings() {
     }
 
     Object.assign(settings, defaultSettings, extension_settings[MODULE_NAME]);
+    if (!settings.memoryGraph || typeof settings.memoryGraph !== 'object') {
+        settings.memoryGraph = getDefaultMemoryGraph();
+    }
     Object.assign(extension_settings[MODULE_NAME], settings);
 }
 
@@ -1039,6 +1058,488 @@ function getMvuSummary(context) {
     return '';
 }
 
+function getDefaultMemoryGraph() {
+    return {
+        version: 1,
+        state: {
+            current_location: '',
+            current_objective: '',
+            active_topics: [],
+            open_questions: [],
+        },
+        nodes: [],
+        links: [],
+        lastSummary: '',
+        updatedAt: '',
+    };
+}
+
+function getMemoryGraph() {
+    if (!settings.memoryGraph || typeof settings.memoryGraph !== 'object') {
+        settings.memoryGraph = getDefaultMemoryGraph();
+    }
+
+    const graph = settings.memoryGraph;
+    graph.version = Number(graph.version || 1);
+    graph.state = {
+        ...getDefaultMemoryGraph().state,
+        ...(graph.state && typeof graph.state === 'object' ? graph.state : {}),
+    };
+    graph.state.active_topics = uniqueStrings(Array.isArray(graph.state.active_topics) ? graph.state.active_topics : []);
+    graph.state.open_questions = uniqueStrings(Array.isArray(graph.state.open_questions) ? graph.state.open_questions : []);
+    graph.nodes = Array.isArray(graph.nodes) ? graph.nodes : [];
+    graph.links = Array.isArray(graph.links) ? graph.links : [];
+    graph.lastSummary = String(graph.lastSummary || '');
+    graph.updatedAt = String(graph.updatedAt || '');
+    return graph;
+}
+
+function saveMemoryGraph(graph = getMemoryGraph()) {
+    settings.memoryGraph = graph;
+    Object.assign(extension_settings[MODULE_NAME], settings);
+    saveSettingsDebounced();
+    renderMemoryPanel();
+}
+
+function setMemoryStatus(text) {
+    settings.memoryStatus = String(text || '');
+    $('#ai_wbr_memory_status').text(settings.memoryStatus);
+    Object.assign(extension_settings[MODULE_NAME], settings);
+    saveSettingsDebounced();
+}
+
+function createMemoryId(title, fallback = 'memory') {
+    const base = String(title || fallback)
+        .trim()
+        .toLowerCase()
+        .replace(/[^\p{L}\p{N}]+/gu, '_')
+        .replace(/^_+|_+$/gu, '')
+        .slice(0, 42);
+    return base || `${fallback}_${Date.now().toString(36)}`;
+}
+
+function normalizeMemoryNode(rawNode, fallbackIndex = 0) {
+    const title = truncateText(rawNode?.title || rawNode?.label || rawNode?.id || `记忆 ${fallbackIndex + 1}`, 80);
+    return {
+        id: createMemoryId(rawNode?.id || title, `node_${fallbackIndex + 1}`),
+        title,
+        type: truncateText(rawNode?.type || 'event', 32),
+        content: truncateText(rawNode?.content || rawNode?.description || '', 1200),
+        tags: uniqueStrings(Array.isArray(rawNode?.tags)
+            ? rawNode.tags
+            : String(rawNode?.tags || '').split(/[,\n，、]+/u)),
+        importance: clampNumber(rawNode?.importance, 0.6, 0, 1),
+        credibility: clampNumber(rawNode?.credibility, 0.8, 0, 1),
+        updatedAt: new Date().toISOString(),
+    };
+}
+
+function normalizeMemoryLink(rawLink, nodeIds, fallbackIndex = 0) {
+    const source = createMemoryId(rawLink?.source || rawLink?.sourceId || rawLink?.from || '');
+    const target = createMemoryId(rawLink?.target || rawLink?.targetId || rawLink?.to || '');
+    if (!source || !target || source === target || !nodeIds.has(source) || !nodeIds.has(target)) {
+        return null;
+    }
+
+    const type = String(rawLink?.type || rawLink?.label || 'RELATED').trim().toUpperCase();
+    return {
+        id: truncateText(rawLink?.id || `${source}_${type}_${target}_${fallbackIndex}`, 120),
+        source,
+        target,
+        type: MEMORY_LINK_TYPES.has(type) ? type : 'RELATED',
+        weight: clampNumber(rawLink?.weight, 0.7, 0, 1),
+        description: truncateText(rawLink?.description || rawLink?.reason || '', 480),
+        updatedAt: new Date().toISOString(),
+    };
+}
+
+function getRecentMessagesByCount(chat, count) {
+    const limit = clampNumber(count, 6, 2, 40);
+    return chat
+        .filter(message => message && !message.is_system && message.mes)
+        .slice(-limit)
+        .map(message => ({
+            name: message.name || '',
+            text: message.is_user ? extractActualUserInput(message.mes) : String(message.mes || ''),
+            isUser: !!message.is_user,
+        }));
+}
+
+function getMemoryTurnSignature(recentMessages) {
+    return recentMessages
+        .slice(-4)
+        .map(message => `${message.isUser ? 'U' : 'A'}:${message.name}:${truncateText(message.text, 240)}`)
+        .join('\n---\n');
+}
+
+function buildMemoryRouterSummary() {
+    if (!settings.memoryInjectToRouter) {
+        return '';
+    }
+
+    const graph = getMemoryGraph();
+    const state = graph.state || {};
+    const topNodes = [...graph.nodes]
+        .sort((a, b) => (Number(b.importance || 0) - Number(a.importance || 0)))
+        .slice(0, 8)
+        .map(node => `- ${node.title} (${node.type || 'memory'}): ${truncateText(node.content, 160)}`)
+        .join('\n');
+    const topLinks = graph.links
+        .slice(-8)
+        .map(link => {
+            const source = graph.nodes.find(node => node.id === link.source)?.title || link.source;
+            const target = graph.nodes.find(node => node.id === link.target)?.title || link.target;
+            return `- ${source} ${link.type || 'RELATED'} ${target}${link.description ? `：${truncateText(link.description, 90)}` : ''}`;
+        })
+        .join('\n');
+
+    const parts = [
+        '[轻量记忆状态]',
+        state.current_location ? `当前地点：${state.current_location}` : '',
+        state.current_objective ? `当前目标：${state.current_objective}` : '',
+        state.active_topics?.length ? `活跃主题：${state.active_topics.join('、')}` : '',
+        state.open_questions?.length ? `未解问题：${state.open_questions.join('、')}` : '',
+        graph.lastSummary ? `最近摘要：${truncateText(graph.lastSummary, 420)}` : '',
+        topNodes ? `关键记忆节点：\n${topNodes}` : '',
+        topLinks ? `关键关系：\n${topLinks}` : '',
+        '[/轻量记忆状态]',
+    ].filter(Boolean);
+
+    return parts.length > 2 ? truncateText(parts.join('\n'), MAX_MVU_CHARS) : '';
+}
+
+function getCombinedStateSummary(context) {
+    return [getMvuSummary(context), buildMemoryRouterSummary()].filter(Boolean).join('\n\n');
+}
+
+function getMemoryExtractionSchema() {
+    return {
+        name: 'ai_worldbook_memory_graph_update',
+        value: {
+            type: 'object',
+            additionalProperties: true,
+            properties: {
+                state: { type: 'object' },
+                nodes: { type: 'array', items: { type: 'object' } },
+                updates: { type: 'array', items: { type: 'object' } },
+                links: { type: 'array', items: { type: 'object' } },
+                remove_node_ids: { type: 'array', items: { type: 'string' } },
+                remove_link_ids: { type: 'array', items: { type: 'string' } },
+                summary: { type: 'string' },
+            },
+        },
+        strict: false,
+    };
+}
+
+function buildMemoryExtractionPrompt(recentMessages, graph) {
+    const recentContext = recentMessages
+        .map(message => `${message.name || (message.isUser ? 'User' : 'Assistant')}: ${truncateText(message.text, MAX_MEMORY_CONTEXT_PREVIEW)}`)
+        .join('\n\n');
+    const currentGraph = truncateText(JSON.stringify({
+        state: graph.state,
+        nodes: graph.nodes.slice(-24),
+        links: graph.links.slice(-36),
+    }, null, 2), 4200);
+
+    return `你是 SillyTavern 的后置轻量记忆图谱整理器。
+
+目标：从“最近对话”里提取对长期角色扮演/剧情推进有价值的稳定信息，并以结构化 JSON 更新记忆图谱。
+
+只保存：
+- 已确认的角色、地点、势力、物品、规则、任务、关键事件。
+- 当前地点、当前目标、活跃主题、未解问题。
+- 有明确证据的关系边。
+
+不要保存：
+- 普通常识、一次性寒暄、纯风格描写、未发生的计划、没有证据的猜测。
+- 与已有节点语义相同的新节点；这种情况用 updates。
+
+现有记忆图谱：
+${currentGraph || '{}'}
+
+最近对话：
+${recentContext || '(空)'}
+
+输出严格 JSON，不要 Markdown。格式：
+{
+  "state": {
+    "current_location": "如有变化则填写，否则可省略",
+    "current_objective": "如有变化则填写，否则可省略",
+    "active_topics": ["最多8个"],
+    "open_questions": ["最多8个"]
+  },
+  "nodes": [
+    {"id":"稳定英文或拼音id","title":"简短标题","type":"event|character|location|faction|item|concept|rule|quest","content":"已确认事实","tags":["标签"],"importance":0.6,"credibility":0.8}
+  ],
+  "updates": [
+    {"id":"已有节点id或标题","title":"可选新标题","content":"更新后的合并内容","importance":0.7,"credibility":0.9}
+  ],
+  "links": [
+    {"source":"源节点id或标题","target":"目标节点id或标题","type":"INVOLVES|PART_OF|HAPPENS_AT|FOLLOWS|UPDATES|OPPOSES|ALLIED_WITH|CAUSES|RELATED","weight":0.7,"description":"关系证据"}
+  ],
+  "remove_node_ids": [],
+  "remove_link_ids": [],
+  "summary": "本轮对长期状态有价值的极简摘要；无价值则为空字符串"
+}
+
+如果本轮没有长期价值，返回 {"summary":""}。`;
+}
+
+function parseMemoryUpdate(rawResponse, prompt = '') {
+    if (rawResponse && typeof rawResponse === 'object' && !Array.isArray(rawResponse)) {
+        if (rawResponse.state || rawResponse.nodes || rawResponse.updates || rawResponse.links || rawResponse.summary !== undefined) {
+            return rawResponse;
+        }
+    }
+
+    const texts = collectRouterResponseTexts(rawResponse);
+    for (const text of texts) {
+        const parsed = tryParseSelectionText(text);
+        if (parsed && !Array.isArray(parsed)) {
+            return parsed;
+        }
+        const rawText = String(text || '').trim();
+        const withoutFence = rawText.replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim();
+        const firstBrace = withoutFence.indexOf('{');
+        const lastBrace = withoutFence.lastIndexOf('}');
+        const candidates = [
+            withoutFence,
+            firstBrace >= 0 && lastBrace > firstBrace ? withoutFence.slice(firstBrace, lastBrace + 1) : '',
+        ].filter(Boolean);
+        for (const candidate of candidates) {
+            try {
+                return JSON.parse(candidate);
+            } catch {
+                // keep trying
+            }
+        }
+    }
+
+    const error = new Error(`Memory graph JSON parse failed. Preview: ${truncateText(texts.join(' '), 220) || '(empty)'}`);
+    error.routerPrompt = prompt;
+    error.routerRaw = summarizeRouterResponse(rawResponse);
+    throw error;
+}
+
+function resolveMemoryNodeId(value, graph) {
+    const raw = String(value || '').trim();
+    if (!raw) {
+        return '';
+    }
+    const direct = createMemoryId(raw);
+    if (graph.nodes.some(node => node.id === direct)) {
+        return direct;
+    }
+    const byTitle = graph.nodes.find(node => normalizeText(node.title) === normalizeText(raw));
+    return byTitle?.id || direct;
+}
+
+function applyMemoryGraphUpdate(update) {
+    const graph = getMemoryGraph();
+    const now = new Date().toISOString();
+
+    const state = update?.state && typeof update.state === 'object' ? update.state : {};
+    if (typeof state.current_location === 'string') {
+        graph.state.current_location = truncateText(state.current_location, 120);
+    }
+    if (typeof state.current_objective === 'string') {
+        graph.state.current_objective = truncateText(state.current_objective, 180);
+    }
+    if (Array.isArray(state.active_topics)) {
+        graph.state.active_topics = uniqueStrings([...state.active_topics]).slice(0, 12);
+    }
+    if (Array.isArray(state.open_questions)) {
+        graph.state.open_questions = uniqueStrings([...state.open_questions]).slice(0, 12);
+    }
+
+    const removeNodeIds = new Set((Array.isArray(update?.remove_node_ids) ? update.remove_node_ids : []).map(createMemoryId));
+    if (removeNodeIds.size) {
+        graph.nodes = graph.nodes.filter(node => !removeNodeIds.has(node.id));
+        graph.links = graph.links.filter(link => !removeNodeIds.has(link.source) && !removeNodeIds.has(link.target));
+    }
+
+    const byId = new Map(graph.nodes.map(node => [node.id, node]));
+    const incomingNodes = Array.isArray(update?.nodes) ? update.nodes : [];
+    for (const rawNode of incomingNodes.slice(0, 8)) {
+        const node = normalizeMemoryNode(rawNode, byId.size);
+        const existing = byId.get(node.id) || graph.nodes.find(item => normalizeText(item.title) === normalizeText(node.title));
+        if (existing) {
+            Object.assign(existing, {
+                ...existing,
+                title: node.title || existing.title,
+                type: node.type || existing.type,
+                content: node.content || existing.content,
+                tags: uniqueStrings([...(existing.tags || []), ...(node.tags || [])]),
+                importance: Math.max(Number(existing.importance || 0), Number(node.importance || 0)),
+                credibility: Math.max(Number(existing.credibility || 0), Number(node.credibility || 0)),
+                updatedAt: now,
+            });
+            byId.set(existing.id, existing);
+        } else {
+            graph.nodes.push(node);
+            byId.set(node.id, node);
+        }
+    }
+
+    const updates = Array.isArray(update?.updates) ? update.updates : [];
+    for (const rawUpdate of updates.slice(0, 8)) {
+        const resolvedId = resolveMemoryNodeId(rawUpdate?.id || rawUpdate?.title || rawUpdate?.titleToUpdate, graph);
+        const existing = byId.get(resolvedId) || graph.nodes.find(item => normalizeText(item.title) === normalizeText(rawUpdate?.title || rawUpdate?.titleToUpdate || ''));
+        if (!existing) {
+            continue;
+        }
+        if (rawUpdate.title) {
+            existing.title = truncateText(rawUpdate.title, 80);
+        }
+        if (rawUpdate.content || rawUpdate.newContent) {
+            existing.content = truncateText(rawUpdate.content || rawUpdate.newContent, 1400);
+        }
+        if (rawUpdate.importance !== undefined) {
+            existing.importance = clampNumber(rawUpdate.importance, existing.importance || 0.6, 0, 1);
+        }
+        if (rawUpdate.credibility !== undefined) {
+            existing.credibility = clampNumber(rawUpdate.credibility, existing.credibility || 0.8, 0, 1);
+        }
+        existing.updatedAt = now;
+    }
+
+    graph.nodes = graph.nodes
+        .sort((a, b) => (Number(b.importance || 0) - Number(a.importance || 0)) || String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
+        .slice(0, clampNumber(settings.memoryMaxNodes, 60, 5, 200));
+
+    const nodeIds = new Set(graph.nodes.map(node => node.id));
+    const removeLinkIds = new Set((Array.isArray(update?.remove_link_ids) ? update.remove_link_ids : []).map(value => String(value)));
+    graph.links = graph.links.filter(link => !removeLinkIds.has(String(link.id)) && nodeIds.has(link.source) && nodeIds.has(link.target));
+
+    const incomingLinks = Array.isArray(update?.links) ? update.links : [];
+    const existingLinkKeys = new Set(graph.links.map(link => `${link.source}|${link.type}|${link.target}`));
+    for (const rawLink of incomingLinks.slice(0, 12)) {
+        const normalized = normalizeMemoryLink({
+            ...rawLink,
+            source: resolveMemoryNodeId(rawLink?.source || rawLink?.sourceId || rawLink?.from, graph),
+            target: resolveMemoryNodeId(rawLink?.target || rawLink?.targetId || rawLink?.to, graph),
+        }, nodeIds, graph.links.length);
+        if (!normalized) {
+            continue;
+        }
+        const key = `${normalized.source}|${normalized.type}|${normalized.target}`;
+        const existing = graph.links.find(link => `${link.source}|${link.type}|${link.target}` === key);
+        if (existing) {
+            existing.weight = Math.max(Number(existing.weight || 0), Number(normalized.weight || 0));
+            existing.description = normalized.description || existing.description;
+            existing.updatedAt = now;
+            continue;
+        }
+        if (!existingLinkKeys.has(key)) {
+            graph.links.push(normalized);
+            existingLinkKeys.add(key);
+        }
+    }
+
+    graph.links = graph.links
+        .filter(link => nodeIds.has(link.source) && nodeIds.has(link.target))
+        .slice(-clampNumber(settings.memoryMaxLinks, 120, 0, 400));
+    if (typeof update?.summary === 'string' && update.summary.trim()) {
+        graph.lastSummary = truncateText(update.summary, 900);
+    }
+    graph.updatedAt = now;
+    saveMemoryGraph(graph);
+    return graph;
+}
+
+function startMemoryAnimation() {
+    const icon = getWorldInfoIcon();
+    if (!icon.length) {
+        return;
+    }
+
+    const layer = ensureFxLayer();
+    const rect = icon[0].getBoundingClientRect();
+    let pulse = layer.children('.ai-wbr-memory-orbit');
+    if (!pulse.length) {
+        pulse = $('<div class="ai-wbr-memory-orbit"><span></span><span></span><span></span></div>');
+        layer.append(pulse);
+    }
+    pulse.css({
+        left: `${rect.left + (rect.width / 2)}px`,
+        top: `${rect.top + (rect.height / 2)}px`,
+    });
+}
+
+function stopMemoryAnimation(success = true) {
+    const pulse = $('#ai_wbr_fx_layer .ai-wbr-memory-orbit');
+    if (!pulse.length) {
+        return;
+    }
+    pulse.toggleClass('ai-wbr-memory-orbit-done', !!success);
+    setTimeout(() => pulse.remove(), success ? 720 : 120);
+}
+
+async function runMemoryGraphUpdate(reason = 'auto') {
+    if (!settings.memoryEnabled || isMemoryWorkerRunning || isRouterSelectionRequest) {
+        return false;
+    }
+
+    const context = getContext();
+    const chat = Array.isArray(context?.chat) ? context.chat : [];
+    const recentMessages = getRecentMessagesByCount(chat, settings.memoryScanMessages);
+    if (recentMessages.length < 2) {
+        return false;
+    }
+
+    const signature = getMemoryTurnSignature(recentMessages);
+    if (reason === 'auto' && signature && signature === settings.memoryLastTurnSignature) {
+        return false;
+    }
+
+    isMemoryWorkerRunning = true;
+    startMemoryAnimation();
+    setMemoryStatus('记忆整理中...');
+
+    try {
+        const graph = getMemoryGraph();
+        const prompt = buildMemoryExtractionPrompt(recentMessages, graph);
+        const raw = await context.generateRaw({
+            prompt,
+            systemPrompt: '你是严格 JSON 输出的长期记忆图谱整理器。不要输出 Markdown，不要解释。',
+            responseLength: 1024,
+            trimNames: false,
+            jsonSchema: getMemoryExtractionSchema(),
+        });
+        const update = parseMemoryUpdate(raw, prompt);
+        applyMemoryGraphUpdate(update);
+        settings.memoryLastTurnSignature = signature;
+        Object.assign(extension_settings[MODULE_NAME], settings);
+        saveSettingsDebounced();
+        const nodeCount = getMemoryGraph().nodes.length;
+        const linkCount = getMemoryGraph().links.length;
+        setMemoryStatus(`已更新：${nodeCount} 节点 / ${linkCount} 关系`);
+        playStatusBurst('✦', 'memory');
+        stopMemoryAnimation(true);
+        return true;
+    } catch (error) {
+        console.warn(`${LOG_PREFIX} Memory graph update failed`, error);
+        setMemoryStatus(`记忆失败：${truncateText(error?.message || error, 80)}`);
+        playStatusBurst('×', 'fail');
+        stopMemoryAnimation(false);
+        return false;
+    } finally {
+        isMemoryWorkerRunning = false;
+        renderMemoryPanel();
+    }
+}
+
+function scheduleMemoryGraphUpdate() {
+    if (!settings.memoryEnabled || !settings.memoryAutoRun) {
+        return;
+    }
+    clearTimeout(memoryUpdateTimer);
+    memoryUpdateTimer = setTimeout(() => {
+        runMemoryGraphUpdate('auto');
+    }, 900);
+}
+
 function normalizeWorldEntry(rawEntry, source, worldName, index) {
     const id = getEntryId(rawEntry, index);
     return {
@@ -1755,6 +2256,243 @@ function renderDebugPanel() {
     $('#ai_wbr_router_raw').text(lastRun.routerRaw || '尚无前置 AI 返回记录');
 }
 
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function renderMemoryGraphSvg(graph) {
+    const container = $('#ai_wbr_memory_graph');
+    if (!container.length) {
+        return;
+    }
+
+    const nodes = graph.nodes.slice(0, 18);
+    if (!nodes.length) {
+        container.html('<div class="ai-wbr-token-empty">暂无记忆节点。生成回复后会自动整理，或点击“立即整理本轮”。</div>');
+        return;
+    }
+
+    const width = 620;
+    const height = 300;
+    const centerX = width / 2;
+    const centerY = height / 2;
+    const radius = Math.min(120, 42 + nodes.length * 7);
+    const positions = new Map();
+    nodes.forEach((node, index) => {
+        const angle = (Math.PI * 2 * index / nodes.length) - Math.PI / 2;
+        positions.set(node.id, {
+            x: centerX + Math.cos(angle) * radius,
+            y: centerY + Math.sin(angle) * radius,
+        });
+    });
+
+    const visibleIds = new Set(nodes.map(node => node.id));
+    const edges = graph.links.filter(link => visibleIds.has(link.source) && visibleIds.has(link.target)).slice(-32);
+    const lines = edges.map(link => {
+        const source = positions.get(link.source);
+        const target = positions.get(link.target);
+        if (!source || !target) {
+            return '';
+        }
+        const opacity = Math.max(0.22, Math.min(0.85, Number(link.weight || 0.5)));
+        return `<line x1="${source.x}" y1="${source.y}" x2="${target.x}" y2="${target.y}" class="ai-wbr-memory-edge" style="opacity:${opacity}"><title>${escapeHtml(link.type || 'RELATED')}</title></line>`;
+    }).join('');
+
+    const circles = nodes.map(node => {
+        const position = positions.get(node.id);
+        const colorClass = `ai-wbr-memory-node-${escapeHtml(String(node.type || 'event').toLowerCase())}`;
+        return `<g class="ai-wbr-memory-node ${colorClass}" transform="translate(${position.x},${position.y})">
+            <circle r="${18 + (Number(node.importance || 0.5) * 8)}"></circle>
+            <text y="4">${escapeHtml(truncateText(node.title, 8))}</text>
+            <title>${escapeHtml(`${node.title}\n${node.content || ''}`)}</title>
+        </g>`;
+    }).join('');
+
+    container.html(`<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="记忆图谱">${lines}${circles}</svg>`);
+}
+
+function renderMemoryPanel() {
+    if (!$('#ai_wbr_memory_graph').length) {
+        return;
+    }
+
+    const graph = getMemoryGraph();
+    $('#ai_wbr_memory_status').text(settings.memoryStatus || (settings.memoryEnabled ? '待整理' : '未启用'));
+    $('#ai_wbr_memory_json').val(JSON.stringify(graph, null, 2));
+    renderMemoryGraphSvg(graph);
+
+    const state = graph.state || {};
+    $('#ai_wbr_memory_state_editor').empty().append(
+        $('<div class="ai-wbr-memory-subtitle"><b>当前状态</b></div>'),
+        $('<div class="ai-wbr-grid ai-wbr-memory-state-grid"></div>')
+            .append($('<label></label>').text('当前地点'))
+            .append($('<input class="text_pole" type="text" data-memory-state-field="current_location" />').val(state.current_location || ''))
+            .append($('<label></label>').text('当前目标'))
+            .append($('<input class="text_pole" type="text" data-memory-state-field="current_objective" />').val(state.current_objective || ''))
+            .append($('<label></label>').text('活跃主题'))
+            .append($('<input class="text_pole" type="text" data-memory-state-field="active_topics" />').val((state.active_topics || []).join('，')))
+            .append($('<label></label>').text('未解问题'))
+            .append($('<input class="text_pole" type="text" data-memory-state-field="open_questions" />').val((state.open_questions || []).join('，'))),
+    );
+
+    const nodesContainer = $('#ai_wbr_memory_nodes').empty();
+    nodesContainer.append($('<div class="ai-wbr-memory-subtitle"><b>记忆节点</b></div>'));
+    if (!graph.nodes.length) {
+        nodesContainer.append('<div class="ai-wbr-token-empty">暂无节点</div>');
+    }
+    for (const node of graph.nodes) {
+        nodesContainer.append(
+            $('<div class="ai-wbr-memory-card"></div>')
+                .attr('data-memory-node-id', node.id)
+                .append($('<div class="ai-wbr-memory-card-head"></div>')
+                    .append($('<input class="text_pole" type="text" data-memory-node-field="title" />').val(node.title || ''))
+                    .append($('<input class="text_pole ai-wbr-memory-type" type="text" data-memory-node-field="type" />').val(node.type || 'event'))
+                    .append($('<button class="menu_button ai-wbr-memory-delete-node" type="button">删除</button>')))
+                .append($('<textarea class="text_pole ai-wbr-memory-content" rows="2" data-memory-node-field="content"></textarea>').val(node.content || ''))
+                .append($('<input class="text_pole" type="text" data-memory-node-field="tags" placeholder="标签，用逗号分隔" />').val((node.tags || []).join('，'))),
+        );
+    }
+
+    const linksContainer = $('#ai_wbr_memory_links').empty();
+    linksContainer.append($('<div class="ai-wbr-memory-subtitle"><b>关系边</b></div>'));
+    if (!graph.links.length) {
+        linksContainer.append('<div class="ai-wbr-token-empty">暂无关系</div>');
+    }
+    for (const link of graph.links) {
+        const source = graph.nodes.find(node => node.id === link.source)?.title || link.source;
+        const target = graph.nodes.find(node => node.id === link.target)?.title || link.target;
+        linksContainer.append(
+            $('<div class="ai-wbr-memory-link-card"></div>')
+                .attr('data-memory-link-id', link.id)
+                .append($('<div class="ai-wbr-memory-link-title"></div>').text(`${source} → ${target}`))
+                .append($('<div class="ai-wbr-memory-link-grid"></div>')
+                    .append($('<input class="text_pole" type="text" data-memory-link-field="type" />').val(link.type || 'RELATED'))
+                    .append($('<input class="text_pole" type="number" min="0" max="1" step="0.05" data-memory-link-field="weight" />').val(link.weight ?? 0.7))
+                    .append($('<button class="menu_button ai-wbr-memory-delete-link" type="button">删除</button>')))
+                .append($('<input class="text_pole" type="text" data-memory-link-field="description" placeholder="关系描述" />').val(link.description || '')),
+        );
+    }
+}
+
+function bindMemoryPanelActions() {
+    bindCheckbox('#ai_wbr_memory_enabled', 'memoryEnabled');
+    bindCheckbox('#ai_wbr_memory_auto_run', 'memoryAutoRun');
+    bindCheckbox('#ai_wbr_memory_inject_to_router', 'memoryInjectToRouter');
+    bindNumber('#ai_wbr_memory_scan_messages', 'memoryScanMessages', 2, 40);
+    bindNumber('#ai_wbr_memory_max_nodes', 'memoryMaxNodes', 5, 200);
+    bindNumber('#ai_wbr_memory_max_links', 'memoryMaxLinks', 0, 400);
+
+    $('#ai_wbr_memory_run_now').on('click', async (event) => {
+        event.preventDefault();
+        await runMemoryGraphUpdate('manual');
+    });
+
+    $('#ai_wbr_memory_save_json').on('click', (event) => {
+        event.preventDefault();
+        try {
+            const parsed = JSON.parse(String($('#ai_wbr_memory_json').val() || '{}'));
+            settings.memoryGraph = {
+                ...getDefaultMemoryGraph(),
+                ...parsed,
+            };
+            saveMemoryGraph(getMemoryGraph());
+            toastr.success('记忆 JSON 已保存', '世界书读取');
+        } catch (error) {
+            toastr.error(`JSON 解析失败：${error.message || error}`, '世界书读取');
+        }
+    });
+
+    $('#ai_wbr_memory_clear').on('click', (event) => {
+        event.preventDefault();
+        if (!confirm('确定清空当前轻量记忆图谱？')) {
+            return;
+        }
+        settings.memoryGraph = getDefaultMemoryGraph();
+        settings.memoryLastTurnSignature = '';
+        saveMemoryGraph(settings.memoryGraph);
+        setMemoryStatus('已清空');
+    });
+
+    $('#ai_worldbook_router_settings')
+        .on('input change', '[data-memory-state-field]', function () {
+            const graph = getMemoryGraph();
+            const field = String($(this).data('memoryStateField'));
+            const value = String($(this).val() || '').trim();
+            if (field === 'active_topics' || field === 'open_questions') {
+                graph.state[field] = uniqueStrings(value.split(/[,\n，、]+/u)).slice(0, 12);
+            } else {
+                graph.state[field] = value;
+            }
+            graph.updatedAt = new Date().toISOString();
+            settings.memoryGraph = graph;
+            Object.assign(extension_settings[MODULE_NAME], settings);
+            saveSettingsDebounced();
+            $('#ai_wbr_memory_json').val(JSON.stringify(graph, null, 2));
+            renderMemoryGraphSvg(graph);
+        })
+        .on('input change', '[data-memory-node-field]', function () {
+            const graph = getMemoryGraph();
+            const card = $(this).closest('[data-memory-node-id]');
+            const node = graph.nodes.find(item => item.id === String(card.data('memoryNodeId')));
+            if (!node) {
+                return;
+            }
+            const field = String($(this).data('memoryNodeField'));
+            const value = String($(this).val() || '');
+            if (field === 'tags') {
+                node.tags = uniqueStrings(value.split(/[,\n，、]+/u));
+            } else if (field === 'title' || field === 'type' || field === 'content') {
+                node[field] = value;
+            }
+            node.updatedAt = new Date().toISOString();
+            graph.updatedAt = node.updatedAt;
+            settings.memoryGraph = graph;
+            Object.assign(extension_settings[MODULE_NAME], settings);
+            saveSettingsDebounced();
+            $('#ai_wbr_memory_json').val(JSON.stringify(graph, null, 2));
+            renderMemoryGraphSvg(graph);
+        })
+        .on('input change', '[data-memory-link-field]', function () {
+            const graph = getMemoryGraph();
+            const card = $(this).closest('[data-memory-link-id]');
+            const link = graph.links.find(item => String(item.id) === String(card.data('memoryLinkId')));
+            if (!link) {
+                return;
+            }
+            const field = String($(this).data('memoryLinkField'));
+            if (field === 'weight') {
+                link.weight = clampNumber($(this).val(), link.weight || 0.7, 0, 1);
+            } else {
+                link[field] = String($(this).val() || '');
+            }
+            link.updatedAt = new Date().toISOString();
+            graph.updatedAt = link.updatedAt;
+            settings.memoryGraph = graph;
+            Object.assign(extension_settings[MODULE_NAME], settings);
+            saveSettingsDebounced();
+            $('#ai_wbr_memory_json').val(JSON.stringify(graph, null, 2));
+            renderMemoryGraphSvg(graph);
+        })
+        .on('click', '.ai-wbr-memory-delete-node', function () {
+            const graph = getMemoryGraph();
+            const id = String($(this).closest('[data-memory-node-id]').data('memoryNodeId'));
+            graph.nodes = graph.nodes.filter(node => node.id !== id);
+            graph.links = graph.links.filter(link => link.source !== id && link.target !== id);
+            saveMemoryGraph(graph);
+        })
+        .on('click', '.ai-wbr-memory-delete-link', function () {
+            const graph = getMemoryGraph();
+            const id = String($(this).closest('[data-memory-link-id]').data('memoryLinkId'));
+            graph.links = graph.links.filter(link => String(link.id) !== id);
+            saveMemoryGraph(graph);
+        });
+}
+
 function debugLog(...args) {
     if (settings.debug) {
         console.debug(LOG_PREFIX, ...args);
@@ -1814,7 +2552,7 @@ async function routeWorldbookForMessages(context, recentMessages, routeSource = 
     const lastUserMessage = getLastUserMessage(recentMessages);
     debugLog('Generation intercepted', { ...logMeta, routeSource, lastUserMessage });
 
-    const mvuSummary = getMvuSummary(context);
+    const mvuSummary = getCombinedStateSummary(context);
     const entries = await getWorldbookEntries(context);
     const candidates = recallCandidates(entries, recentMessages, mvuSummary);
 
@@ -2136,6 +2874,7 @@ async function addSettingsUi() {
     bindTextarea('#ai_wbr_system_prompt', 'systemPrompt');
     bindText('#ai_wbr_router_api_url', 'routerApiUrl', normalizeUrl);
     bindText('#ai_wbr_router_api_key', 'routerApiKey', (value) => String(value).trim());
+    bindMemoryPanelActions();
 
     renderRouterModelOptions();
     $('#ai_wbr_router_model').val(settings.routerModel).on('change', function () {
@@ -2148,6 +2887,7 @@ async function addSettingsUi() {
     $('#ai_wbr_router_status').text(settings.routerStatus || '未连接');
 
     renderDebugPanel();
+    renderMemoryPanel();
 }
 
 globalThis.ai_worldbook_router_intercept = interceptGeneration;
@@ -2168,6 +2908,7 @@ jQuery(async () => {
         eventSource.on(event_types.GENERATION_ENDED, () => {
             isGenerationActive = false;
             scheduleCompatFlush();
+            scheduleMemoryGraphUpdate();
         });
         eventSource.on(event_types.GENERATION_STOPPED, () => {
             isGenerationActive = false;
@@ -2177,6 +2918,7 @@ jQuery(async () => {
         eventSource.on(event_types.CHAT_CHANGED, () => {
             clearEntryBurst();
             stopWorldInfoAnimation();
+            clearTimeout(memoryUpdateTimer);
             pendingCompatSend = false;
             suppressCompatReplay = false;
             lastRun = {
@@ -2191,6 +2933,7 @@ jQuery(async () => {
             };
             setExtensionPrompt(PROMPT_KEY, '', settings.position, settings.depth, false, settings.role);
             renderDebugPanel();
+            renderMemoryPanel();
         });
 
         debugLog('Loaded');
