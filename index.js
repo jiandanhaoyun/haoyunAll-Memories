@@ -1173,6 +1173,27 @@ function getRecentMessagesByCount(chat, count) {
         }));
 }
 
+function sanitizeMemoryMessageText(value) {
+    return String(value ?? '')
+        .replace(/\[本轮相关世界书\][\s\S]*?\[\/本轮相关世界书\]/gu, ' ')
+        .replace(/<draft_notes>[\s\S]*?<\/draft_notes>/giu, ' ')
+        .replace(/<ai_last_output>[\s\S]*?<\/ai_last_output>/giu, ' ')
+        .replace(/<\/?peip>/giu, ' ')
+        .replace(/\r/g, '')
+        .replace(/\n{3,}/g, '\n\n')
+        .replace(/[ \t]{2,}/g, ' ')
+        .trim();
+}
+
+function getMemoryRelevantMessages(chat, count) {
+    return getRecentMessagesByCount(chat, count)
+        .map(message => ({
+            ...message,
+            text: sanitizeMemoryMessageText(message.text),
+        }))
+        .filter(message => message.text);
+}
+
 function getMemoryTurnSignature(recentMessages) {
     return recentMessages
         .slice(-4)
@@ -1270,7 +1291,7 @@ function buildMemoryExtractionPrompt(recentMessages, graph) {
 现有记忆图谱：
 ${currentGraph || '{}'}
 
-最近对话：
+最近对话（已过滤世界书注入与内部草稿噪声）：
 ${recentContext || '(空)'}
 
 严禁返回 JSON 对象、严禁返回 {content:{}}、严禁返回 Markdown。
@@ -1304,6 +1325,44 @@ memory_summary_json=""
 8. 不要输出任何解释、前后缀、代码块、额外字段。
 
 请开始输出变量块。`;
+}
+
+function buildMemoryExtractionRetryPrompt(recentMessages, graph) {
+    const compactContext = recentMessages
+        .slice(-4)
+        .map(message => `${message.name || (message.isUser ? 'User' : 'Assistant')}: ${truncateText(message.text, 280)}`)
+        .join('\n\n');
+
+    const compactState = JSON.stringify({
+        state: graph.state || {},
+        node_titles: (graph.nodes || []).slice(-8).map(node => ({ id: node.id, title: node.title, type: node.type })),
+    }, null, 2);
+
+    return `你是后置轻量记忆整理器。不要思考过程，不要解释，不要空回复。
+
+你的唯一任务：根据最近对话，为长期 RP / 剧情状态输出固定变量块。
+
+当前图谱摘要：
+${compactState}
+
+最近对话：
+${compactContext || '(空)'}
+
+如果存在剧情推进、角色互动、地点变化、任务变化、设定变化，memory_nodes_json 必须至少有 1 个节点。
+
+只允许输出以下变量块，完整照抄字段名，等号右边必须是单行 JSON 值：
+[[AIWBR_MEMORY_VARS_BEGIN]]
+memory_state_current_location_json=""
+memory_state_current_objective_json=""
+memory_active_topics_json=[]
+memory_open_questions_json=[]
+memory_nodes_json=[]
+memory_updates_json=[]
+memory_links_json=[]
+memory_remove_node_ids_json=[]
+memory_remove_link_ids_json=[]
+memory_summary_json=""
+[[AIWBR_MEMORY_VARS_END]]`;
 }
 
 function parseMemoryUpdate(rawResponse, prompt = '') {
@@ -1611,7 +1670,7 @@ async function runMemoryGraphUpdate(reason = 'auto') {
 
     const context = getContext();
     const chat = Array.isArray(context?.chat) ? context.chat : [];
-    const recentMessages = getRecentMessagesByCount(chat, settings.memoryScanMessages);
+    const recentMessages = getMemoryRelevantMessages(chat, settings.memoryScanMessages);
     if (recentMessages.length < 2) {
         return false;
     }
@@ -1647,12 +1706,38 @@ async function runMemoryGraphUpdate(reason = 'auto') {
                 raw = await context.generateRaw({
                     prompt,
                     systemPrompt: memorySystemPrompt,
-                    responseLength: 1024,
+                    responseLength: 768,
                     trimNames: false,
                 });
             }
         } finally {
             isRouterSelectionRequest = false;
+        }
+
+        if (hasEmptyVisibleContentDueToLength(raw)) {
+            const retryPrompt = buildMemoryExtractionRetryPrompt(recentMessages, graph);
+            settings.memoryLastPrompt = `${prompt}\n\n----- RETRY PROMPT -----\n\n${retryPrompt}`;
+            Object.assign(extension_settings[MODULE_NAME], settings);
+            saveSettingsDebounced();
+            try {
+                isRouterSelectionRequest = true;
+                if (settings.routerUseSeparateModel && settings.routerApiUrl && settings.routerApiKey && settings.routerModel) {
+                    raw = await sendSeparateModelWithFallback(context, retryPrompt, {
+                        systemPrompt: '你是变量块输出器。禁止空回复，禁止解释，禁止思考过程，直接输出变量块。',
+                        maxTokens: 420,
+                        jsonSchema: undefined,
+                    });
+                } else {
+                    raw = await context.generateRaw({
+                        prompt: retryPrompt,
+                        systemPrompt: '你是变量块输出器。禁止空回复，禁止解释，禁止思考过程，直接输出变量块。',
+                        responseLength: 420,
+                        trimNames: false,
+                    });
+                }
+            } finally {
+                isRouterSelectionRequest = false;
+            }
         }
         settings.memoryLastRaw = summarizeRouterResponse(raw);
         settings.memoryLastError = '';
@@ -2251,6 +2336,14 @@ function isEffectivelyEmptyStructuredResponse(rawResponse) {
     }
 
     return false;
+}
+
+function hasEmptyVisibleContentDueToLength(rawResponse) {
+    const choice = rawResponse?.choices?.[0];
+    return !!choice
+        && choice?.finish_reason === 'length'
+        && typeof choice?.message?.content === 'string'
+        && !choice.message.content.trim();
 }
 
 function getSeparateModelRequestData(context, prompt, {
