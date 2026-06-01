@@ -125,6 +125,7 @@ let isMemoryWorkerRunning = false;
 let memoryUpdateTimer = null;
 let memoryGraphView = { x: 0, y: 0, width: 620, height: 300 };
 let memoryGraphDrag = null;
+let memoryGraphPan = null;
 let memoryGraphLinkSourceId = '';
 
 function beginRouterBusy() {
@@ -2553,10 +2554,39 @@ function bindMemoryGraphSvgInteractions() {
             moved: false,
         };
         event.preventDefault();
+        event.stopPropagation();
+    });
+
+    container.on('mousedown.memoryGraphSvg', 'svg', function (event) {
+        if ($(event.target).closest('.ai-wbr-memory-node').length) {
+            return;
+        }
+
+        memoryGraphPan = {
+            startClientX: event.clientX,
+            startClientY: event.clientY,
+            viewX: memoryGraphView.x,
+            viewY: memoryGraphView.y,
+            moved: false,
+        };
+        $('#ai_wbr_memory_node_popover').hide();
+        $(svg).addClass('ai-wbr-memory-panning');
+        event.preventDefault();
     });
 
     $(document).on('mousemove.memoryGraphSvg', (event) => {
         if (!memoryGraphDrag) {
+            if (memoryGraphPan) {
+                const rect = svg.getBoundingClientRect();
+                const dx = (event.clientX - memoryGraphPan.startClientX) * (memoryGraphView.width / Math.max(1, rect.width));
+                const dy = (event.clientY - memoryGraphPan.startClientY) * (memoryGraphView.height / Math.max(1, rect.height));
+                if (Math.abs(dx) + Math.abs(dy) > 1.5) {
+                    memoryGraphPan.moved = true;
+                }
+                memoryGraphView.x = memoryGraphPan.viewX - dx;
+                memoryGraphView.y = memoryGraphPan.viewY - dy;
+                updateMemoryGraphViewBox(svg);
+            }
             return;
         }
         const point = getMemoryGraphSvgPoint(svg, event.clientX, event.clientY);
@@ -2593,6 +2623,12 @@ function bindMemoryGraphSvgInteractions() {
     });
 
     $(document).on('mouseup.memoryGraphSvg', (event) => {
+        if (memoryGraphPan) {
+            memoryGraphPan = null;
+            $(svg).removeClass('ai-wbr-memory-panning');
+            return;
+        }
+
         if (!memoryGraphDrag) {
             return;
         }

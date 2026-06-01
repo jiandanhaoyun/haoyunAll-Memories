@@ -264,6 +264,10 @@
     touch-action: none;
 }
 
+.ai-wbr-memory-graph svg.ai-wbr-memory-panning {
+    cursor: grabbing;
+}
+
 .ai-wbr-memory-edge {
     stroke: rgba(196, 180, 255, 0.62);
     stroke-width: 1.6;
