@@ -23,7 +23,7 @@ const MAX_MVU_CHARS = 1600;
 const MAX_RECALL_TERMS = 32;
 const MAX_ROUTER_CONTEXT_PREVIEW = 360;
 const MAX_BURST_ITEMS = 5;
-const MAX_MEMORY_CONTEXT_PREVIEW = 520;
+const MAX_MEMORY_CONTEXT_PREVIEW = 260;
 const MEMORY_LINK_TYPES = new Set([
     'INVOLVES', 'PART_OF', 'HAPPENS_AT', 'FOLLOWS', 'UPDATES', 'OPPOSES',
     'ALLIED_WITH', 'CAUSES', 'RELATED', 'MENTIONS',
@@ -1267,26 +1267,34 @@ function buildMemoryExtractionPrompt(recentMessages, graph) {
         .join('\n\n');
     const currentGraph = truncateText(JSON.stringify({
         state: graph.state,
-        nodes: graph.nodes.slice(-24),
-        links: graph.links.slice(-36),
+        nodes: graph.nodes.slice(-8).map(node => ({
+            id: node.id,
+            title: node.title,
+            type: node.type,
+        })),
+        links: graph.links.slice(-12).map(link => ({
+            source: link.source,
+            target: link.target,
+            type: link.type,
+        })),
     }, null, 2), 4200);
 
-    return `你是 SillyTavern 的后置轻量记忆图谱整理器。
+    return `你是 SillyTavern 的后置轻量记忆变量块输出器。
 
-目标：从“最近对话”里提取对长期角色扮演/剧情推进有价值的信息，并以结构化 JSON 更新记忆图谱。
+你的唯一任务：从最近对话里提取“对后续 RP / 剧情推进仍有用”的记忆，直接输出固定变量块。
 
-必须保存：
-- 如果本轮出现了剧情推进、角色互动、地点变化、任务变化、世界观设定、重要承诺、冲突、发现、战斗、交易、关系变化，至少创建 1 个 event/quest/character/location 节点。
-- 角色扮演和故事场景里，即使只是“一段互动”，只要会影响后续扮演，也应保存为压缩事件节点。
+必须遵守：
+- 不要输出 JSON 对象。
+- 不要输出 Markdown。
+- 不要输出解释、分析、reasoning、前后缀。
+- 不要返回 {content:{}}。
+- 只允许输出变量块本体。
 
-优先保存：
-- 已确认的角色、地点、势力、物品、规则、任务、关键事件。
-- 当前地点、当前目标、活跃主题、未解问题。
-- 有明确证据的关系边。
-
-不要保存：
-- 普通常识、纯格式说明、无内容寒暄、纯风格描写、未发生的计划、没有证据的猜测。
-- 与已有节点语义相同的新节点；这种情况用 updates。
+写入原则：
+- 如果最近对话存在剧情推进、角色互动、地点变化、任务变化、世界观设定、重要承诺、冲突、发现、战斗、交易、关系变化，memory_nodes_json 必须至少有 1 个节点。
+- 角色扮演场景里，只要互动会影响后续扮演，也要压缩成 event / character / location / quest 节点。
+- 优先补充当前地点、当前目标、活跃主题、未解问题。
+- 已有同义节点优先写入 memory_updates_json，不要重复造节点。
 
 现有记忆图谱：
 ${currentGraph || '{}'}
@@ -1294,8 +1302,7 @@ ${currentGraph || '{}'}
 最近对话（已过滤世界书注入与内部草稿噪声）：
 ${recentContext || '(空)'}
 
-严禁返回 JSON 对象、严禁返回 {content:{}}、严禁返回 Markdown。
-你必须只返回下面这个“变量块”，字段名一字不差，所有右侧内容都必须是**单行 JSON 值**：
+你必须只返回下面这个变量块，字段名一字不差，所有右侧内容都必须是单行 JSON 值：
 
 [[AIWBR_MEMORY_VARS_BEGIN]]
 memory_state_current_location_json=""
@@ -1312,17 +1319,15 @@ memory_summary_json=""
 
 规则：
 1. 以上 10 行必须全部输出，顺序不要变。
-2. 每行等号右边必须是合法 JSON 值：
-   - 字符串用 "..."
-   - 数组用 [...]
+2. 每行等号右边必须是合法 JSON 值；字符串用 "...", 数组用 [...]。
 3. 如果没有内容，字符串填 ""，数组填 []。
-4. nodes_json 中每个节点格式：
+4. memory_nodes_json 中每个节点格式：
    {"id":"稳定英文或拼音id","title":"简短标题","type":"event|character|location|faction|item|concept|rule|quest","content":"已确认事实","tags":["标签"],"importance":0.6,"credibility":0.8}
-5. links_json 中每个关系格式：
+5. memory_links_json 中每个关系格式：
    {"source":"源节点id或标题","target":"目标节点id或标题","type":"INVOLVES|PART_OF|HAPPENS_AT|FOLLOWS|UPDATES|OPPOSES|ALLIED_WITH|CAUSES|RELATED","weight":0.7,"description":"关系证据"}
 6. 如果最近对话存在剧情推进/角色互动/设定变化，memory_nodes_json 不能为空。
-7. memory_summary_json 必须概括本轮为什么值得写入记忆；只有确实没有长期价值时才允许是 ""。
-8. 不要输出任何解释、前后缀、代码块、额外字段。
+7. memory_summary_json 必须概括“为什么值得写入”；只有确实没有长期价值时才允许是 ""。
+8. 不要输出任何额外字段。
 
 请开始输出变量块。`;
 }
@@ -1692,14 +1697,14 @@ async function runMemoryGraphUpdate(reason = 'auto') {
         settings.memoryLastError = '';
         Object.assign(extension_settings[MODULE_NAME], settings);
         saveSettingsDebounced();
-        const memorySystemPrompt = '你是严格 JSON 输出的长期记忆图谱整理器。不要输出 Markdown，不要解释。';
+        const memorySystemPrompt = '你是后置轻量记忆变量块输出器。禁止解释，禁止 reasoning，禁止 Markdown，禁止 JSON 对象；只输出指定变量块。';
         let raw;
         try {
             isRouterSelectionRequest = true;
             if (settings.routerUseSeparateModel && settings.routerApiUrl && settings.routerApiKey && settings.routerModel) {
                 raw = await sendSeparateModelWithFallback(context, prompt, {
                     systemPrompt: memorySystemPrompt,
-                    maxTokens: 1024,
+                    maxTokens: 560,
                     jsonSchema: undefined,
                 });
             } else {
@@ -2351,7 +2356,7 @@ function getSeparateModelRequestData(context, prompt, {
     maxTokens = Math.max(settings.aiResponseLength, 384),
     jsonSchema = getSelectionSchema(),
 } = {}) {
-    return context.ChatCompletionService.createRequestData({
+    const requestData = context.ChatCompletionService.createRequestData({
         stream: false,
         messages: getRouterMessages(prompt, systemPrompt),
         model: settings.routerModel,
@@ -2362,6 +2367,8 @@ function getSeparateModelRequestData(context, prompt, {
         proxy_password: String(settings.routerApiKey || ''),
         json_schema: jsonSchema,
     });
+    requestData.reasoning_effort = 'none';
+    return requestData;
 }
 
 async function sendSeparateModelWithFallback(context, prompt, {
