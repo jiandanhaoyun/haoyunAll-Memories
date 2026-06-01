@@ -2379,27 +2379,11 @@ function hasEmptyVisibleContentDueToLength(rawResponse) {
         && !choice.message.content.trim();
 }
 
-function applyNoThinkingHints(requestData) {
-    requestData.reasoning_effort = 'none';
-    requestData.include_reasoning = false;
-    requestData.extra_body = requestData.extra_body && typeof requestData.extra_body === 'object'
-        ? requestData.extra_body
-        : {};
-    requestData.extra_body.google = requestData.extra_body.google && typeof requestData.extra_body.google === 'object'
-        ? requestData.extra_body.google
-        : {};
-    requestData.extra_body.google.thinking_config = {
-        thinking_budget: 0,
-    };
-    return requestData;
-}
-
-function createSeparateModelRequestData(context, prompt, {
+function buildPlainSeparateChatPayload(prompt, {
     systemPrompt = settings.systemPrompt,
     maxTokens = Math.max(settings.aiResponseLength, 384),
-    jsonSchema = getSelectionSchema(),
 } = {}) {
-    const requestData = context.ChatCompletionService.createRequestData({
+    return {
         stream: false,
         messages: getRouterMessages(prompt, systemPrompt),
         model: settings.routerModel,
@@ -2408,15 +2392,10 @@ function createSeparateModelRequestData(context, prompt, {
         temperature: 0,
         reverse_proxy: normalizeUrl(settings.routerApiUrl),
         proxy_password: String(settings.routerApiKey || ''),
-        json_schema: jsonSchema,
-    });
-    if (jsonSchema === undefined) {
-        delete requestData.json_schema;
-    }
-    return applyNoThinkingHints(requestData);
+    };
 }
 
-async function sendSeparateModelRequest(context, requestData) {
+async function sendPlainSeparateChatRequest(context, payload) {
     const response = await fetch('/api/backends/chat-completions/generate', {
         method: 'POST',
         headers: {
@@ -2424,7 +2403,7 @@ async function sendSeparateModelRequest(context, requestData) {
             ...(typeof context.getRequestHeaders === 'function' ? context.getRequestHeaders() : {}),
         },
         cache: 'no-cache',
-        body: JSON.stringify(requestData),
+        body: JSON.stringify(payload),
     });
 
     const text = await response.text();
@@ -2442,12 +2421,11 @@ async function sendSeparateRouterRequest(context, prompt, {
     systemPrompt = settings.systemPrompt,
     maxTokens = Math.max(settings.aiResponseLength, 384),
 } = {}) {
-    const firstRequest = createSeparateModelRequestData(context, prompt, {
+    const firstRequest = buildPlainSeparateChatPayload(prompt, {
         systemPrompt,
         maxTokens,
-        jsonSchema: getSelectionSchema(),
     });
-    let raw = await sendSeparateModelRequest(context, firstRequest);
+    let raw = await sendPlainSeparateChatRequest(context, firstRequest);
     if (!isEffectivelyEmptyStructuredResponse(raw) && !hasEmptyVisibleContentDueToLength(raw)) {
         return { raw, usedRetry: false, usedCompactPrompt: false };
     }
@@ -2457,12 +2435,11 @@ async function sendSeparateRouterRequest(context, prompt, {
         mvuSummary,
         candidates,
     );
-    const retryRequest = createSeparateModelRequestData(context, compactPrompt, {
+    const retryRequest = buildPlainSeparateChatPayload(compactPrompt, {
         systemPrompt: '你是前置世界书路由 JSON 输出器。禁止解释，禁止 reasoning，只输出 {"selected":[...]}。',
         maxTokens: Math.min(Math.max(settings.aiResponseLength, 180), 220),
-        jsonSchema: undefined,
     });
-    raw = await sendSeparateModelRequest(context, retryRequest);
+    raw = await sendPlainSeparateChatRequest(context, retryRequest);
     return { raw, usedRetry: true, usedCompactPrompt: true, retryPrompt: compactPrompt };
 }
 
@@ -2470,19 +2447,17 @@ async function sendSeparateMemoryRequest(context, prompt, {
     systemPrompt,
     maxTokens,
 } = {}) {
-    const requestData = createSeparateModelRequestData(context, prompt, {
+    const requestData = buildPlainSeparateChatPayload(prompt, {
         systemPrompt,
         maxTokens,
-        jsonSchema: undefined,
     });
-    return await sendSeparateModelRequest(context, requestData);
+    return await sendPlainSeparateChatRequest(context, requestData);
 }
 
 function getRouterRequestData(context, prompt) {
-    return createSeparateModelRequestData(context, prompt, {
+    return buildPlainSeparateChatPayload(prompt, {
         systemPrompt: settings.systemPrompt,
         maxTokens: Math.max(settings.aiResponseLength, 384),
-        jsonSchema: getSelectionSchema(),
     });
 }
 
