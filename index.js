@@ -1525,21 +1525,26 @@ async function runMemoryGraphUpdate(reason = 'auto') {
         const prompt = buildMemoryExtractionPrompt(recentMessages, graph);
         const memorySystemPrompt = '你是严格 JSON 输出的长期记忆图谱整理器。不要输出 Markdown，不要解释。';
         let raw;
-        if (settings.routerUseSeparateModel && settings.routerApiUrl && settings.routerApiKey && settings.routerModel) {
-            const data = getSeparateModelRequestData(context, prompt, {
-                systemPrompt: memorySystemPrompt,
-                maxTokens: 1024,
-                jsonSchema: getMemoryExtractionSchema(),
-            });
-            raw = await context.ChatCompletionService.sendRequest(data, true);
-        } else {
-            raw = await context.generateRaw({
-                prompt,
-                systemPrompt: memorySystemPrompt,
-                responseLength: 1024,
-                trimNames: false,
-                jsonSchema: getMemoryExtractionSchema(),
-            });
+        try {
+            isRouterSelectionRequest = true;
+            if (settings.routerUseSeparateModel && settings.routerApiUrl && settings.routerApiKey && settings.routerModel) {
+                const data = getSeparateModelRequestData(context, prompt, {
+                    systemPrompt: memorySystemPrompt,
+                    maxTokens: 1024,
+                    jsonSchema: getMemoryExtractionSchema(),
+                });
+                raw = await context.ChatCompletionService.sendRequest(data, true);
+            } else {
+                raw = await context.generateRaw({
+                    prompt,
+                    systemPrompt: memorySystemPrompt,
+                    responseLength: 1024,
+                    trimNames: false,
+                    jsonSchema: getMemoryExtractionSchema(),
+                });
+            }
+        } finally {
+            isRouterSelectionRequest = false;
         }
         const update = parseMemoryUpdate(raw, prompt);
         applyMemoryGraphUpdate(update);
