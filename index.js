@@ -1273,32 +1273,96 @@ ${currentGraph || '{}'}
 最近对话：
 ${recentContext || '(空)'}
 
-输出严格 JSON，不要 Markdown。格式：
-{
-  "state": {
-    "current_location": "如有变化则填写，否则可省略",
-    "current_objective": "如有变化则填写，否则可省略",
-    "active_topics": ["最多8个"],
-    "open_questions": ["最多8个"]
-  },
-  "nodes": [
-    {"id":"稳定英文或拼音id","title":"简短标题","type":"event|character|location|faction|item|concept|rule|quest","content":"已确认事实","tags":["标签"],"importance":0.6,"credibility":0.8}
-  ],
-  "updates": [
-    {"id":"已有节点id或标题","title":"可选新标题","content":"更新后的合并内容","importance":0.7,"credibility":0.9}
-  ],
-  "links": [
-    {"source":"源节点id或标题","target":"目标节点id或标题","type":"INVOLVES|PART_OF|HAPPENS_AT|FOLLOWS|UPDATES|OPPOSES|ALLIED_WITH|CAUSES|RELATED","weight":0.7,"description":"关系证据"}
-  ],
-  "remove_node_ids": [],
-  "remove_link_ids": [],
-  "summary": "本轮对长期状态有价值的极简摘要；如果创建了节点，这里必须概括节点依据"
-}
+严禁返回 JSON 对象、严禁返回 {content:{}}、严禁返回 Markdown。
+你必须只返回下面这个“变量块”，字段名一字不差，所有右侧内容都必须是**单行 JSON 值**：
 
-只有在最近对话确实只是问候、空回复、报错噪声、没有剧情/设定/任务信息时，才返回 {"summary":""}。`;
+[[AIWBR_MEMORY_VARS_BEGIN]]
+memory_state_current_location_json=""
+memory_state_current_objective_json=""
+memory_active_topics_json=[]
+memory_open_questions_json=[]
+memory_nodes_json=[]
+memory_updates_json=[]
+memory_links_json=[]
+memory_remove_node_ids_json=[]
+memory_remove_link_ids_json=[]
+memory_summary_json=""
+[[AIWBR_MEMORY_VARS_END]]
+
+规则：
+1. 以上 10 行必须全部输出，顺序不要变。
+2. 每行等号右边必须是合法 JSON 值：
+   - 字符串用 "..."
+   - 数组用 [...]
+3. 如果没有内容，字符串填 ""，数组填 []。
+4. nodes_json 中每个节点格式：
+   {"id":"稳定英文或拼音id","title":"简短标题","type":"event|character|location|faction|item|concept|rule|quest","content":"已确认事实","tags":["标签"],"importance":0.6,"credibility":0.8}
+5. links_json 中每个关系格式：
+   {"source":"源节点id或标题","target":"目标节点id或标题","type":"INVOLVES|PART_OF|HAPPENS_AT|FOLLOWS|UPDATES|OPPOSES|ALLIED_WITH|CAUSES|RELATED","weight":0.7,"description":"关系证据"}
+6. 如果最近对话存在剧情推进/角色互动/设定变化，memory_nodes_json 不能为空。
+7. memory_summary_json 必须概括本轮为什么值得写入记忆；只有确实没有长期价值时才允许是 ""。
+8. 不要输出任何解释、前后缀、代码块、额外字段。
+
+请开始输出变量块。`;
 }
 
 function parseMemoryUpdate(rawResponse, prompt = '') {
+    const parseMemoryVariableBlock = (text) => {
+        const raw = String(text || '');
+        if (!raw.trim()) {
+            return null;
+        }
+
+        const blockMatch = raw.match(/\[\[AIWBR_MEMORY_VARS_BEGIN\]\]([\s\S]*?)\[\[AIWBR_MEMORY_VARS_END\]\]/u);
+        const body = (blockMatch ? blockMatch[1] : raw).trim();
+        if (!body.includes('memory_nodes_json=') && !body.includes('memory_summary_json=')) {
+            return null;
+        }
+
+        const lines = body
+            .split(/\r?\n/u)
+            .map(line => line.trim())
+            .filter(Boolean);
+
+        const values = {};
+        for (const line of lines) {
+            const index = line.indexOf('=');
+            if (index <= 0) {
+                continue;
+            }
+            const key = line.slice(0, index).trim();
+            const valueText = line.slice(index + 1).trim();
+            values[key] = valueText;
+        }
+
+        const readJsonValue = (key, fallback) => {
+            const valueText = values[key];
+            if (valueText === undefined) {
+                return fallback;
+            }
+            try {
+                return JSON.parse(valueText);
+            } catch {
+                return fallback;
+            }
+        };
+
+        return {
+            state: {
+                current_location: readJsonValue('memory_state_current_location_json', ''),
+                current_objective: readJsonValue('memory_state_current_objective_json', ''),
+                active_topics: readJsonValue('memory_active_topics_json', []),
+                open_questions: readJsonValue('memory_open_questions_json', []),
+            },
+            nodes: readJsonValue('memory_nodes_json', []),
+            updates: readJsonValue('memory_updates_json', []),
+            links: readJsonValue('memory_links_json', []),
+            remove_node_ids: readJsonValue('memory_remove_node_ids_json', []),
+            remove_link_ids: readJsonValue('memory_remove_link_ids_json', []),
+            summary: readJsonValue('memory_summary_json', ''),
+        };
+    };
+
     const looksLikeMemoryPayload = (value) => {
         return value && typeof value === 'object' && !Array.isArray(value) && (
             value.state !== undefined
@@ -1329,6 +1393,10 @@ function parseMemoryUpdate(rawResponse, prompt = '') {
 
     const texts = collectRouterResponseTexts(rawResponse);
     for (const text of texts) {
+        const variableParsed = parseMemoryVariableBlock(text);
+        if (variableParsed) {
+            return variableParsed;
+        }
         const parsed = tryParseSelectionText(text);
         if (parsed && !Array.isArray(parsed)) {
             return parsed;
@@ -1347,6 +1415,13 @@ function parseMemoryUpdate(rawResponse, prompt = '') {
             } catch {
                 // keep trying
             }
+        }
+    }
+
+    if (typeof rawResponse === 'string') {
+        const variableParsed = parseMemoryVariableBlock(rawResponse);
+        if (variableParsed) {
+            return variableParsed;
         }
     }
 
@@ -1566,7 +1641,7 @@ async function runMemoryGraphUpdate(reason = 'auto') {
                 raw = await sendSeparateModelWithFallback(context, prompt, {
                     systemPrompt: memorySystemPrompt,
                     maxTokens: 1024,
-                    jsonSchema: getMemoryExtractionSchema(),
+                    jsonSchema: undefined,
                 });
             } else {
                 raw = await context.generateRaw({
@@ -1574,7 +1649,6 @@ async function runMemoryGraphUpdate(reason = 'auto') {
                     systemPrompt: memorySystemPrompt,
                     responseLength: 1024,
                     trimNames: false,
-                    jsonSchema: getMemoryExtractionSchema(),
                 });
             }
         } finally {
