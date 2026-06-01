@@ -123,6 +123,9 @@ let fetchFallbackInstalled = false;
 let lastRouteCompletedAt = 0;
 let isMemoryWorkerRunning = false;
 let memoryUpdateTimer = null;
+let memoryGraphView = { x: 0, y: 0, width: 620, height: 300 };
+let memoryGraphDrag = null;
+let memoryGraphLinkSourceId = '';
 
 function beginRouterBusy() {
     if (routerBusyPromise) {
@@ -2360,6 +2363,15 @@ function escapeHtml(value) {
         .replace(/'/g, '&#39;');
 }
 
+function escapeCssSelector(value) {
+    const text = String(value ?? '');
+    if (globalThis.CSS?.escape) {
+        return CSS.escape(text);
+    }
+
+    return text.replace(/["\\]/g, '\\$&');
+}
+
 function renderMemoryGraphSvg(graph) {
     const container = $('#ai_wbr_memory_graph');
     if (!container.length) {
@@ -2379,10 +2391,20 @@ function renderMemoryGraphSvg(graph) {
     const radius = Math.min(120, 42 + nodes.length * 7);
     const positions = new Map();
     nodes.forEach((node, index) => {
+        if (Number.isFinite(Number(node.x)) && Number.isFinite(Number(node.y))) {
+            positions.set(node.id, {
+                x: Number(node.x),
+                y: Number(node.y),
+            });
+            return;
+        }
+
         const angle = (Math.PI * 2 * index / nodes.length) - Math.PI / 2;
+        node.x = centerX + Math.cos(angle) * radius;
+        node.y = centerY + Math.sin(angle) * radius;
         positions.set(node.id, {
-            x: centerX + Math.cos(angle) * radius,
-            y: centerY + Math.sin(angle) * radius,
+            x: node.x,
+            y: node.y,
         });
     });
 
@@ -2395,20 +2417,259 @@ function renderMemoryGraphSvg(graph) {
             return '';
         }
         const opacity = Math.max(0.22, Math.min(0.85, Number(link.weight || 0.5)));
-        return `<line x1="${source.x}" y1="${source.y}" x2="${target.x}" y2="${target.y}" class="ai-wbr-memory-edge" style="opacity:${opacity}"><title>${escapeHtml(link.type || 'RELATED')}</title></line>`;
+        return `<line x1="${source.x}" y1="${source.y}" x2="${target.x}" y2="${target.y}" class="ai-wbr-memory-edge" data-source-id="${escapeHtml(link.source)}" data-target-id="${escapeHtml(link.target)}" style="opacity:${opacity}"><title>${escapeHtml(link.type || 'RELATED')}</title></line>`;
     }).join('');
 
     const circles = nodes.map(node => {
         const position = positions.get(node.id);
         const colorClass = `ai-wbr-memory-node-${escapeHtml(String(node.type || 'event').toLowerCase())}`;
-        return `<g class="ai-wbr-memory-node ${colorClass}" transform="translate(${position.x},${position.y})">
+        return `<g class="ai-wbr-memory-node ${colorClass}" data-memory-node-id="${escapeHtml(node.id)}" transform="translate(${position.x},${position.y})">
             <circle r="${18 + (Number(node.importance || 0.5) * 8)}"></circle>
-            <text y="4">${escapeHtml(truncateText(node.title, 8))}</text>
+            <text y="${32 + (Number(node.importance || 0.5) * 4)}">${escapeHtml(truncateText(node.title, 12))}</text>
             <title>${escapeHtml(`${node.title}\n${node.content || ''}`)}</title>
         </g>`;
     }).join('');
 
-    container.html(`<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="记忆图谱">${lines}${circles}</svg>`);
+    if (!memoryGraphView || !Number.isFinite(memoryGraphView.width)) {
+        memoryGraphView = { x: 0, y: 0, width, height };
+    }
+
+    container.html(`
+        <div class="ai-wbr-memory-graph-toolbar">
+            <button class="menu_button ai-wbr-memory-zoom-in" type="button">＋</button>
+            <button class="menu_button ai-wbr-memory-zoom-out" type="button">－</button>
+            <button class="menu_button ai-wbr-memory-zoom-reset" type="button">重置视图</button>
+            <span class="ai-wbr-memory-link-hint">${memoryGraphLinkSourceId ? `连线起点：${escapeHtml(graph.nodes.find(node => node.id === memoryGraphLinkSourceId)?.title || memoryGraphLinkSourceId)}` : '点击节点可编辑/连线，拖动节点可调整位置，滚轮缩放'}</span>
+        </div>
+        <svg viewBox="${memoryGraphView.x} ${memoryGraphView.y} ${memoryGraphView.width} ${memoryGraphView.height}" role="img" aria-label="记忆图谱">${lines}${circles}</svg>
+        <div id="ai_wbr_memory_node_popover" class="ai-wbr-memory-node-popover"></div>
+    `);
+    bindMemoryGraphSvgInteractions();
+}
+
+function getMemoryGraphSvgPoint(svg, clientX, clientY) {
+    const point = svg.createSVGPoint();
+    point.x = clientX;
+    point.y = clientY;
+    return point.matrixTransform(svg.getScreenCTM().inverse());
+}
+
+function updateMemoryGraphViewBox(svg) {
+    svg.setAttribute('viewBox', `${memoryGraphView.x} ${memoryGraphView.y} ${memoryGraphView.width} ${memoryGraphView.height}`);
+}
+
+function showMemoryNodePopover(nodeId, clientX, clientY) {
+    const graph = getMemoryGraph();
+    const node = graph.nodes.find(item => item.id === nodeId);
+    const popover = $('#ai_wbr_memory_node_popover');
+    if (!node || !popover.length) {
+        return;
+    }
+
+    const sourceTitle = memoryGraphLinkSourceId
+        ? graph.nodes.find(item => item.id === memoryGraphLinkSourceId)?.title || memoryGraphLinkSourceId
+        : '';
+
+    popover
+        .attr('data-memory-node-id', node.id)
+        .html(`
+            <div class="ai-wbr-memory-popover-title">${escapeHtml(node.title || node.id)}</div>
+            <label>标题<input class="text_pole" type="text" data-popover-node-field="title" value="${escapeHtml(node.title || '')}" /></label>
+            <label>类型<input class="text_pole" type="text" data-popover-node-field="type" value="${escapeHtml(node.type || 'event')}" /></label>
+            <label>内容<textarea class="text_pole" rows="3" data-popover-node-field="content">${escapeHtml(node.content || '')}</textarea></label>
+            <div class="ai-wbr-memory-popover-actions">
+                <button class="menu_button ai-wbr-memory-popover-save" type="button">保存</button>
+                <button class="menu_button ai-wbr-memory-set-link-source" type="button">设为起点</button>
+                <button class="menu_button ai-wbr-memory-link-to-source" type="button" ${memoryGraphLinkSourceId && memoryGraphLinkSourceId !== node.id ? '' : 'disabled'}>连接到起点${sourceTitle ? `：${escapeHtml(truncateText(sourceTitle, 8))}` : ''}</button>
+                <button class="menu_button ai-wbr-memory-popover-delete" type="button">删除</button>
+            </div>
+        `)
+        .css({
+            left: `${Math.min(Math.max(clientX - $('#ai_wbr_memory_graph').offset().left + 12, 8), $('#ai_wbr_memory_graph').width() - 290)}px`,
+            top: `${Math.min(Math.max(clientY - $('#ai_wbr_memory_graph').offset().top + 12, 38), $('#ai_wbr_memory_graph').height() - 220)}px`,
+        })
+        .show();
+}
+
+function bindMemoryGraphSvgInteractions() {
+    const container = $('#ai_wbr_memory_graph');
+    const svg = container.find('svg')[0];
+    if (!svg) {
+        return;
+    }
+
+    container.off('.memoryGraphSvg');
+    $(document).off('.memoryGraphSvg');
+
+    container.on('wheel.memoryGraphSvg', 'svg', function (event) {
+        event.preventDefault();
+        const original = event.originalEvent;
+        const svgPoint = getMemoryGraphSvgPoint(svg, original.clientX, original.clientY);
+        const factor = original.deltaY < 0 ? 0.88 : 1.14;
+        const nextWidth = Math.min(1400, Math.max(120, memoryGraphView.width * factor));
+        const nextHeight = Math.min(900, Math.max(80, memoryGraphView.height * factor));
+        const ratioX = (svgPoint.x - memoryGraphView.x) / memoryGraphView.width;
+        const ratioY = (svgPoint.y - memoryGraphView.y) / memoryGraphView.height;
+        memoryGraphView = {
+            x: svgPoint.x - (nextWidth * ratioX),
+            y: svgPoint.y - (nextHeight * ratioY),
+            width: nextWidth,
+            height: nextHeight,
+        };
+        updateMemoryGraphViewBox(svg);
+    });
+
+    container.on('click.memoryGraphSvg', '.ai-wbr-memory-zoom-in', () => {
+        memoryGraphView.width = Math.max(120, memoryGraphView.width * 0.82);
+        memoryGraphView.height = Math.max(80, memoryGraphView.height * 0.82);
+        updateMemoryGraphViewBox(svg);
+    });
+
+    container.on('click.memoryGraphSvg', '.ai-wbr-memory-zoom-out', () => {
+        memoryGraphView.width = Math.min(1400, memoryGraphView.width * 1.18);
+        memoryGraphView.height = Math.min(900, memoryGraphView.height * 1.18);
+        updateMemoryGraphViewBox(svg);
+    });
+
+    container.on('click.memoryGraphSvg', '.ai-wbr-memory-zoom-reset', () => {
+        memoryGraphView = { x: 0, y: 0, width: 620, height: 300 };
+        updateMemoryGraphViewBox(svg);
+    });
+
+    container.on('mousedown.memoryGraphSvg', '.ai-wbr-memory-node', function (event) {
+        const nodeId = String($(this).data('memoryNodeId'));
+        const start = getMemoryGraphSvgPoint(svg, event.clientX, event.clientY);
+        const graph = getMemoryGraph();
+        const node = graph.nodes.find(item => item.id === nodeId);
+        if (!node) {
+            return;
+        }
+        memoryGraphDrag = {
+            nodeId,
+            startX: start.x,
+            startY: start.y,
+            nodeX: Number(node.x || 0),
+            nodeY: Number(node.y || 0),
+            moved: false,
+        };
+        event.preventDefault();
+    });
+
+    $(document).on('mousemove.memoryGraphSvg', (event) => {
+        if (!memoryGraphDrag) {
+            return;
+        }
+        const point = getMemoryGraphSvgPoint(svg, event.clientX, event.clientY);
+        const dx = point.x - memoryGraphDrag.startX;
+        const dy = point.y - memoryGraphDrag.startY;
+        if (Math.abs(dx) + Math.abs(dy) > 1.5) {
+            memoryGraphDrag.moved = true;
+        }
+        const graph = getMemoryGraph();
+        const node = graph.nodes.find(item => item.id === memoryGraphDrag.nodeId);
+        if (!node) {
+            return;
+        }
+        node.x = memoryGraphDrag.nodeX + dx;
+        node.y = memoryGraphDrag.nodeY + dy;
+        const group = container.find(`.ai-wbr-memory-node[data-memory-node-id="${escapeCssSelector(memoryGraphDrag.nodeId)}"]`);
+        group.attr('transform', `translate(${node.x},${node.y})`);
+        graph.links.forEach((link) => {
+            if (link.source !== node.id && link.target !== node.id) {
+                return;
+            }
+            const line = container.find(`.ai-wbr-memory-edge[data-source-id="${escapeCssSelector(link.source)}"][data-target-id="${escapeCssSelector(link.target)}"]`);
+            const source = graph.nodes.find(item => item.id === link.source);
+            const target = graph.nodes.find(item => item.id === link.target);
+            if (source && target) {
+                line.attr({
+                    x1: source.x,
+                    y1: source.y,
+                    x2: target.x,
+                    y2: target.y,
+                });
+            }
+        });
+    });
+
+    $(document).on('mouseup.memoryGraphSvg', (event) => {
+        if (!memoryGraphDrag) {
+            return;
+        }
+        const drag = memoryGraphDrag;
+        memoryGraphDrag = null;
+        const graph = getMemoryGraph();
+        graph.updatedAt = new Date().toISOString();
+        settings.memoryGraph = graph;
+        Object.assign(extension_settings[MODULE_NAME], settings);
+        saveSettingsDebounced();
+
+        if (!drag.moved) {
+            showMemoryNodePopover(drag.nodeId, event.clientX, event.clientY);
+        } else {
+            $('#ai_wbr_memory_json').val(JSON.stringify(graph, null, 2));
+        }
+    });
+
+    container.on('click.memoryGraphSvg', '.ai-wbr-memory-popover-save', function () {
+        const graph = getMemoryGraph();
+        const popover = $('#ai_wbr_memory_node_popover');
+        const node = graph.nodes.find(item => item.id === String(popover.data('memoryNodeId')));
+        if (!node) {
+            return;
+        }
+        popover.find('[data-popover-node-field]').each(function () {
+            const field = String($(this).data('popoverNodeField'));
+            node[field] = String($(this).val() || '');
+        });
+        node.updatedAt = new Date().toISOString();
+        saveMemoryGraph(graph);
+        popover.hide();
+    });
+
+    container.on('click.memoryGraphSvg', '.ai-wbr-memory-set-link-source', function () {
+        const nodeId = String($('#ai_wbr_memory_node_popover').data('memoryNodeId'));
+        memoryGraphLinkSourceId = nodeId;
+        renderMemoryGraphSvg(getMemoryGraph());
+    });
+
+    container.on('click.memoryGraphSvg', '.ai-wbr-memory-link-to-source', function () {
+        const graph = getMemoryGraph();
+        const targetId = String($('#ai_wbr_memory_node_popover').data('memoryNodeId'));
+        if (!memoryGraphLinkSourceId || memoryGraphLinkSourceId === targetId) {
+            return;
+        }
+        const link = normalizeMemoryLink({
+            source: memoryGraphLinkSourceId,
+            target: targetId,
+            type: 'RELATED',
+            weight: 0.7,
+            description: '手动创建的记忆关系',
+        }, new Set(graph.nodes.map(node => node.id)), graph.links.length);
+        if (link && !graph.links.some(item => item.source === link.source && item.target === link.target && item.type === link.type)) {
+            graph.links.push(link);
+            graph.updatedAt = new Date().toISOString();
+            saveMemoryGraph(graph);
+        }
+        memoryGraphLinkSourceId = '';
+        $('#ai_wbr_memory_node_popover').hide();
+    });
+
+    container.on('click.memoryGraphSvg', '.ai-wbr-memory-popover-delete', function () {
+        const graph = getMemoryGraph();
+        const nodeId = String($('#ai_wbr_memory_node_popover').data('memoryNodeId'));
+        graph.nodes = graph.nodes.filter(node => node.id !== nodeId);
+        graph.links = graph.links.filter(link => link.source !== nodeId && link.target !== nodeId);
+        saveMemoryGraph(graph);
+        $('#ai_wbr_memory_node_popover').hide();
+    });
+
+    container.on('click.memoryGraphSvg', function (event) {
+        if ($(event.target).closest('.ai-wbr-memory-node, .ai-wbr-memory-node-popover, .ai-wbr-memory-graph-toolbar').length) {
+            return;
+        }
+        $('#ai_wbr_memory_node_popover').hide();
+    });
 }
 
 function renderMemoryPanel() {
