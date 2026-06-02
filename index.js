@@ -3541,6 +3541,15 @@ function bindMemoryGraphSvgInteractions() {
         const drag = memoryGraphDrag;
         memoryGraphDrag = null;
         const graph = getMemoryGraph();
+        const node = graph.nodes.find(item => item.id === drag.nodeId);
+        if (node) {
+            const point = getMemoryGraphSvgPoint(svg, event.clientX, event.clientY);
+            const dx = point.x - drag.startX;
+            const dy = point.y - drag.startY;
+            node.x = drag.nodeX + dx;
+            node.y = drag.nodeY + dy;
+            node.updatedAt = new Date().toISOString();
+        }
         graph.updatedAt = new Date().toISOString();
         saveMemoryGraph(graph);
         lastObservedChatScopedUiSignature = getChatScopedUiSignature();
