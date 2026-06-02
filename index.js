@@ -328,13 +328,16 @@ function handleChatScopedUiMaybeChanged() {
 }
 
 function installChatScopedUiRefreshEventHooks() {
-    const hookedValues = new Set();
-    const pattern = /(CHAT|CHARACTER|CHARA|GROUP|OPEN|LOAD|SELECT|SWIPE)/i;
-    for (const [key, value] of Object.entries(event_types || {})) {
-        if (!value || hookedValues.has(value) || !pattern.test(String(key))) {
+    const strictScopeEvents = [
+        'CHAT_CHANGED',
+        'CHAT_LOADED',
+    ];
+
+    for (const key of strictScopeEvents) {
+        const value = event_types?.[key];
+        if (!value) {
             continue;
         }
-        hookedValues.add(value);
         try {
             eventSource.on(value, (...args) => {
                 memoryScopeDebugLog(`event ${key}`, {
@@ -350,7 +353,7 @@ function installChatScopedUiRefreshEventHooks() {
                 handleChatScopedUiMaybeChanged();
             });
         } catch {
-            // no-op: some event names may not be hookable on older builds
+            // no-op
         }
     }
 }
@@ -4641,7 +4644,6 @@ jQuery(async () => {
         });
 
         eventSource.on(event_types.CHAT_CHANGED, () => {
-            handleChatScopedUiMaybeChanged();
             pendingCompatSend = false;
             suppressCompatReplay = false;
             lastRun = {
