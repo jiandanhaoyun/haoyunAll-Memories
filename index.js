@@ -3594,7 +3594,7 @@ function renderMemoryGraphSvg(graph) {
             <button class="menu_button ai-wbr-memory-zoom-in" type="button">＋</button>
             <button class="menu_button ai-wbr-memory-zoom-out" type="button">－</button>
             <button class="menu_button ai-wbr-memory-zoom-reset" type="button">重置视图</button>
-            <span class="ai-wbr-memory-link-hint">${memoryGraphLinkSourceId ? `连线起点：${escapeHtml(graph.nodes.find(node => node.id === memoryGraphLinkSourceId)?.title || memoryGraphLinkSourceId)}` : '点击节点可编辑/连线，拖动节点可调整位置，滚轮缩放'}</span>
+            <span class="ai-wbr-memory-link-hint">${memoryGraphLinkSourceId ? `连线起点：${escapeHtml(graph.nodes.find(node => node.id === memoryGraphLinkSourceId)?.title || memoryGraphLinkSourceId)}` : ''}</span>
         </div>
         <svg viewBox="${memoryGraphView.x} ${memoryGraphView.y} ${memoryGraphView.width} ${memoryGraphView.height}" role="img" aria-label="记忆图谱">${lines}${circles}</svg>
     `);
