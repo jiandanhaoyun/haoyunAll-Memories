@@ -264,6 +264,7 @@
     background-size: auto, auto, 22px 22px, 22px 22px, auto;
     overflow: hidden;
     min-height: 16rem;
+    height: clamp(18rem, 42vw, 22rem);
 }
 
 .ai-wbr-memory-graph-toolbar {
@@ -294,7 +295,7 @@
 
 .ai-wbr-memory-graph svg {
     width: 100%;
-    height: auto;
+    height: 100%;
     display: block;
     cursor: grab;
     user-select: none;
