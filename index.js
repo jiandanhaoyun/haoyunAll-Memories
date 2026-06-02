@@ -129,6 +129,7 @@ let fetchFallbackInstalled = false;
 let lastRouteCompletedAt = 0;
 let isMemoryWorkerRunning = false;
 let memoryUpdateTimer = null;
+let chatUiRefreshTimers = [];
 let memoryGraphView = { x: 0, y: 0, width: 620, height: 300 };
 let memoryGraphDrag = null;
 let memoryGraphPan = null;
@@ -155,6 +156,25 @@ function beginRouterBusy() {
         resolve?.();
         scheduleCompatFlush();
     };
+}
+
+function clearChatUiRefreshTimers() {
+    for (const timer of chatUiRefreshTimers) {
+        clearTimeout(timer);
+    }
+    chatUiRefreshTimers = [];
+}
+
+function scheduleChatScopedUiRefresh() {
+    clearChatUiRefreshTimers();
+    const delays = [0, 40, 140, 360];
+    for (const delay of delays) {
+        const timer = setTimeout(() => {
+            renderDebugPanel();
+            renderMemoryPanel();
+        }, delay);
+        chatUiRefreshTimers.push(timer);
+    }
 }
 
 async function waitForCompatIdle() {
@@ -4401,6 +4421,7 @@ jQuery(async () => {
             stopWorldInfoAnimation();
             $('#ai_wbr_memory_node_popover').hide();
             clearTimeout(memoryUpdateTimer);
+            clearChatUiRefreshTimers();
             memoryGraphSelectedNodeId = '';
             memoryGraphLinkSourceId = '';
             pendingCompatSend = false;
@@ -4416,8 +4437,7 @@ jQuery(async () => {
                 routerRaw: '',
             };
             setExtensionPrompt(PROMPT_KEY, '', settings.position, settings.depth, false, settings.role);
-            renderDebugPanel();
-            renderMemoryPanel();
+            scheduleChatScopedUiRefresh();
         });
 
         debugLog('Loaded');
