@@ -24,6 +24,7 @@ const MAX_RECALL_TERMS = 32;
 const MAX_ROUTER_CONTEXT_PREVIEW = 360;
 const MAX_BURST_ITEMS = 5;
 const MAX_MEMORY_CONTEXT_PREVIEW = 260;
+const MAX_MEMORY_SELECTED = 4;
 const MEMORY_LINK_TYPES = new Set([
     'INVOLVES', 'PART_OF', 'HAPPENS_AT', 'FOLLOWS', 'UPDATES', 'OPPOSES',
     'ALLIED_WITH', 'CAUSES', 'RELATED', 'MENTIONS',
@@ -101,6 +102,8 @@ const settings = structuredClone(defaultSettings);
 let lastRun = {
     candidates: [],
     selected: [],
+    memoryCandidates: [],
+    selectedMemories: [],
     injectedChars: 0,
     injectionText: '',
     source: 'none',
@@ -2786,40 +2789,166 @@ function selectWithFallback(candidates) {
     }));
 }
 
-function buildInjection(selectedEntries) {
-    if (!selectedEntries.length) {
+function hasMemoryState(graph) {
+    const state = graph?.state || {};
+    return !!(
+        String(state.current_location || '').trim()
+        || String(state.current_objective || '').trim()
+        || (Array.isArray(state.active_topics) && state.active_topics.length)
+        || (Array.isArray(state.open_questions) && state.open_questions.length)
+    );
+}
+
+function collectMemoryKeywords(node) {
+    const keys = [];
+    const push = (value) => {
+        const text = String(value || '').trim();
+        if (text) {
+            keys.push(text);
+        }
+    };
+
+    push(node.id);
+    push(node.title);
+    for (const tag of Array.isArray(node.tags) ? node.tags : []) {
+        push(tag);
+    }
+
+    const snippets = String(node.content || '')
+        .split(/[，,。.!?\n；;：:]/u)
+        .map(part => part.trim())
+        .filter(part => part.length >= 2 && part.length <= 18)
+        .slice(0, 8);
+    for (const snippet of snippets) {
+        push(snippet);
+    }
+
+    return uniqueStrings(keys);
+}
+
+function buildMemoryCandidates(graph) {
+    const nodes = Array.isArray(graph?.nodes) ? graph.nodes : [];
+    return nodes.map((node, index) => {
+        const allKeys = collectMemoryKeywords(node);
+        return {
+            routerId: `memory:${node.id}`,
+            uid: node.id,
+            source: 'memory',
+            world: 'memory',
+            comment: node.title || `记忆 ${index + 1}`,
+            content: node.content || node.title || '',
+            order: index,
+            constant: false,
+            disable: false,
+            keys: {
+                primary: uniqueStrings([node.title, ...(Array.isArray(node.tags) ? node.tags.slice(0, 2) : [])].filter(Boolean)),
+                secondary: uniqueStrings(allKeys.slice(1)),
+                all: allKeys,
+            },
+            memoryType: String(node.type || 'event'),
+            nodeRef: node,
+        };
+    });
+}
+
+function recallMemoryCandidates(graph, recentMessages, mvuSummary) {
+    const candidates = recallCandidates(buildMemoryCandidates(graph), recentMessages, mvuSummary)
+        .filter(entry => entry.score > 0 || ['event', 'quest', 'character', 'location'].includes(entry.memoryType));
+
+    return candidates
+        .sort((a, b) => (b.score - a.score) || String(b.nodeRef?.updatedAt || '').localeCompare(String(a.nodeRef?.updatedAt || '')))
+        .slice(0, MAX_MEMORY_SELECTED + 4);
+}
+
+function selectMemoryWithFallback(candidates) {
+    return candidates.slice(0, MAX_MEMORY_SELECTED).map(entry => ({
+        ...entry,
+        reason: entry.matchedKeys?.length
+            ? `记忆关键词命中：${entry.matchedKeys.join(', ')}`
+            : `近期记忆 fallback：${entry.score}`,
+    }));
+}
+
+function buildMemoryInjection(graph, selectedMemories) {
+    const state = graph?.state || {};
+    const hasState = hasMemoryState(graph);
+    const memoryItems = Array.isArray(selectedMemories) ? selectedMemories : [];
+    if (!hasState && !memoryItems.length) {
         return '';
     }
 
-    const header = '[本轮相关世界书]\n以下条目由前置路由器按当前用户消息、最近上下文和可选状态筛选，仅用于本轮回复保持设定一致。\n';
-    const footer = '\n[/本轮相关世界书]';
-    const parts = [header];
-    let used = header.length + footer.length;
+    const parts = ['[本轮相关记忆]\n以下内容来自当前聊天的动态记忆，仅用于本轮回复保持剧情连续性。\n'];
 
-    for (const entry of selectedEntries) {
-        const title = entry.comment || entry.keys.primary[0] || entry.uid;
-        const separator = `\n--- ${title} | ${entry.world || entry.source}#${entry.uid} ---\n`;
-        const remaining = settings.maxChars - used - separator.length - footer.length;
-        if (remaining <= 0) {
-            break;
+    if (String(state.current_location || '').trim()) {
+        parts.push(`\n当前地点：${state.current_location.trim()}\n`);
+    }
+    if (String(state.current_objective || '').trim()) {
+        parts.push(`当前目标：${state.current_objective.trim()}\n`);
+    }
+    if (Array.isArray(state.active_topics) && state.active_topics.length) {
+        parts.push(`活跃主题：${state.active_topics.join('、')}\n`);
+    }
+    if (Array.isArray(state.open_questions) && state.open_questions.length) {
+        parts.push('未解问题：\n');
+        for (const question of state.open_questions.slice(0, 6)) {
+            parts.push(`- ${question}\n`);
         }
-
-        const content = truncateText(entry.content, remaining);
-        parts.push(separator, content, '\n');
-        used += separator.length + content.length + 1;
     }
 
-    parts.push(footer);
-    return truncateText(parts.join(''), settings.maxChars);
+    if (memoryItems.length) {
+        parts.push('\n近期相关记忆：\n');
+        for (const entry of memoryItems.slice(0, MAX_MEMORY_SELECTED)) {
+            const node = entry.nodeRef || {};
+            parts.push(`- ${entry.comment || node.title || entry.uid}：${truncateText(node.content || entry.content || '', 220)}\n`);
+        }
+    }
+
+    parts.push('[/本轮相关记忆]');
+    return parts.join('');
+}
+
+function buildInjection(selectedEntries, memoryGraph = null, selectedMemories = []) {
+    const worldbookBlock = (() => {
+        if (!selectedEntries.length) {
+            return '';
+        }
+
+        const header = '[本轮相关世界书]\n以下条目由前置路由器按当前用户消息、最近上下文和可选状态筛选，仅用于本轮回复保持设定一致。\n';
+        const footer = '\n[/本轮相关世界书]';
+        const parts = [header];
+        let used = header.length + footer.length;
+
+        for (const entry of selectedEntries) {
+            const title = entry.comment || entry.keys.primary[0] || entry.uid;
+            const separator = `\n--- ${title} | ${entry.world || entry.source}#${entry.uid} ---\n`;
+            const remaining = settings.maxChars - used - separator.length - footer.length;
+            if (remaining <= 0) {
+                break;
+            }
+
+            const content = truncateText(entry.content, remaining);
+            parts.push(separator, content, '\n');
+            used += separator.length + content.length + 1;
+        }
+
+        parts.push(footer);
+        return truncateText(parts.join(''), settings.maxChars);
+    })();
+
+    const memoryBlock = buildMemoryInjection(memoryGraph || getMemoryGraph(), selectedMemories);
+    if (!worldbookBlock && !memoryBlock) {
+        return '';
+    }
+    return [worldbookBlock, memoryBlock].filter(Boolean).join('\n\n');
 }
 
 function renderDebugPanel() {
     const summary = lastRun.error
         ? `失败：${lastRun.error}`
-        : `候选 ${lastRun.candidates.length} 条，选择 ${lastRun.selected.length} 条，注入 ${lastRun.injectedChars} 字符，来源：${lastRun.source}`;
+        : `世界书候选 ${lastRun.candidates.length} 条，选择 ${lastRun.selected.length} 条；记忆候选 ${lastRun.memoryCandidates.length} 条，选择 ${lastRun.selectedMemories.length} 条；注入 ${lastRun.injectedChars} 字符，来源：${lastRun.source}`;
     $('#ai_wbr_last_summary').text(summary);
 
-    const items = lastRun.selected.map(entry => {
+    const worldbookItems = lastRun.selected.map(entry => {
         const title = entry.comment || entry.keys?.primary?.[0] || entry.uid;
         const keys = entry.matchedKeys?.length ? ` | keys: ${entry.matchedKeys.join(', ')}` : '';
         return $('<div class="ai-wbr-last-item"></div>')
@@ -2827,7 +2956,15 @@ function renderDebugPanel() {
             .append($('<small></small>').text(`${entry.reason || ''}${keys}`));
     });
 
-    $('#ai_wbr_last_items').empty().append(items);
+    const memoryItems = lastRun.selectedMemories.map(entry => {
+        const title = entry.comment || entry.uid;
+        const keys = entry.matchedKeys?.length ? ` | keys: ${entry.matchedKeys.join(', ')}` : '';
+        return $('<div class="ai-wbr-last-item"></div>')
+            .append($('<div></div>').text(`[记忆] ${title} (${entry.memoryType || 'memory'}#${entry.uid})`))
+            .append($('<small></small>').text(`${entry.reason || ''}${keys}`));
+    });
+
+    $('#ai_wbr_last_items').empty().append([...worldbookItems, ...memoryItems]);
     $('#ai_wbr_injection_text').text(lastRun.injectionText || '尚无本轮注入记录');
     $('#ai_wbr_router_prompt').text(lastRun.routerPrompt || '尚无前置 AI Prompt 记录');
     $('#ai_wbr_router_raw').text(lastRun.routerRaw || '尚无前置 AI 返回记录');
@@ -3374,10 +3511,12 @@ function debugLog(...args) {
     }
 }
 
-function debugRun(candidates, selected, injection, source, routerPrompt = '', routerRaw = '') {
+function debugRun(candidates, selected, injection, source, routerPrompt = '', routerRaw = '', memoryCandidates = [], selectedMemories = []) {
     lastRun = {
         candidates,
         selected,
+        memoryCandidates,
+        selectedMemories,
         injectedChars: injection.length,
         injectionText: injection,
         source,
@@ -3387,7 +3526,7 @@ function debugRun(candidates, selected, injection, source, routerPrompt = '', ro
     };
 
     if (settings.debug) {
-        console.groupCollapsed(`${LOG_PREFIX} routed ${selected.length}/${candidates.length}`);
+        console.groupCollapsed(`${LOG_PREFIX} routed wb ${selected.length}/${candidates.length}, memory ${selectedMemories.length}/${memoryCandidates.length}`);
         console.debug('Candidates:', candidates.map(entry => ({
             id: entry.routerId,
             world: entry.world,
@@ -3398,6 +3537,18 @@ function debugRun(candidates, selected, injection, source, routerPrompt = '', ro
             constant: entry.constant,
         })));
         console.debug('Selected:', selected.map(entry => ({
+            id: entry.routerId,
+            reason: entry.reason,
+        })));
+        console.debug('Memory candidates:', memoryCandidates.map(entry => ({
+            id: entry.routerId,
+            title: entry.comment,
+            keys: entry.keys.all,
+            matchedKeys: entry.matchedKeys,
+            score: entry.score,
+            type: entry.memoryType,
+        })));
+        console.debug('Selected memories:', selectedMemories.map(entry => ({
             id: entry.routerId,
             reason: entry.reason,
         })));
@@ -3413,6 +3564,8 @@ function debugError(error) {
     lastRun = {
         candidates: [],
         selected: [],
+        memoryCandidates: [],
+        selectedMemories: [],
         injectedChars: 0,
         injectionText: '',
         source: 'error',
@@ -3428,15 +3581,20 @@ async function routeWorldbookForMessages(context, recentMessages, routeSource = 
     debugLog('Generation intercepted', { ...logMeta, routeSource, lastUserMessage });
 
     const mvuSummary = getCombinedStateSummary(context);
+    const memoryGraph = getMemoryGraph(context);
+    const memoryCandidates = recallMemoryCandidates(memoryGraph, recentMessages, mvuSummary);
+    const selectedMemories = selectMemoryWithFallback(memoryCandidates);
     const entries = await getWorldbookEntries(context);
     const candidates = recallCandidates(entries, recentMessages, mvuSummary);
 
-    if (candidates.length === 0) {
-        debugRun([], [], '', `none-${routeSource}`);
+    if (candidates.length === 0 && !selectedMemories.length && !hasMemoryState(memoryGraph)) {
+        debugRun([], [], '', `none-${routeSource}`, '', '', [], []);
         lastRouteCompletedAt = Date.now();
         return {
             candidates,
             selected: [],
+            memoryCandidates,
+            selectedMemories: [],
             injection: '',
             source: `none-${routeSource}`,
         };
@@ -3447,35 +3605,43 @@ async function routeWorldbookForMessages(context, recentMessages, routeSource = 
     let routerRaw = '';
     let source = `ai-${routeSource}`;
     let shouldFallback = false;
-    try {
-        isRouterSelectionRequest = true;
-        const aiResult = await selectWithAi(context, recentMessages, mvuSummary, candidates);
-        selected = aiResult.selected;
-        routerPrompt = aiResult.prompt;
-        routerRaw = aiResult.rawPreview;
-        source = selected.length ? `ai-${routeSource}` : `empty-ai-${routeSource}`;
-    } catch (error) {
-        source = `keyword-ai-fallback-${routeSource}`;
-        shouldFallback = true;
-        console.warn(`${LOG_PREFIX} AI selection failed; falling back to keyword score.`, error);
-        routerPrompt = error?.routerPrompt || '';
-        routerRaw = error?.routerRaw || error?.message || String(error);
-    } finally {
-        isRouterSelectionRequest = false;
+    if (candidates.length) {
+        try {
+            isRouterSelectionRequest = true;
+            const aiResult = await selectWithAi(context, recentMessages, mvuSummary, candidates);
+            selected = aiResult.selected;
+            routerPrompt = aiResult.prompt;
+            routerRaw = aiResult.rawPreview;
+            source = selected.length ? `ai-${routeSource}` : `empty-ai-${routeSource}`;
+        } catch (error) {
+            source = `keyword-ai-fallback-${routeSource}`;
+            shouldFallback = true;
+            console.warn(`${LOG_PREFIX} AI selection failed; falling back to keyword score.`, error);
+            routerPrompt = error?.routerPrompt || '';
+            routerRaw = error?.routerRaw || error?.message || String(error);
+        } finally {
+            isRouterSelectionRequest = false;
+        }
     }
 
     if (shouldFallback && !selected.length) {
         selected = selectWithFallback(candidates);
     }
 
-    const injection = buildInjection(selected);
+    if (!candidates.length && (selectedMemories.length || hasMemoryState(memoryGraph))) {
+        source = `memory-${routeSource}`;
+    }
+
+    const injection = buildInjection(selected, memoryGraph, selectedMemories);
     setExtensionPrompt(PROMPT_KEY, injection, settings.position, settings.depth, false, settings.role);
-    debugRun(candidates, selected, injection, source, routerPrompt, routerRaw);
+    debugRun(candidates, selected, injection, source, routerPrompt, routerRaw, memoryCandidates, selectedMemories);
     lastRouteCompletedAt = Date.now();
 
     return {
         candidates,
         selected,
+        memoryCandidates,
+        selectedMemories,
         injection,
         source,
     };
