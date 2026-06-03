@@ -357,6 +357,31 @@ function handleChatScopedUiMaybeChanged() {
     scheduleChatScopedUiRefresh();
 }
 
+function handleMessageDeletedOrSwiped() {
+    try {
+        const context = getContext();
+        const container = getChatMemoryContainer(context);
+        if (container.graphBackup) {
+            memoryScopeDebugLog('Restoring memory graph from backup due to message deletion/swipe');
+            container.graph = cloneMemoryGraph(container.graphBackup);
+            container.graphBackup = null;
+            persistChatMemoryContainer(container, context);
+            settings.memoryGraph = container.graph;
+            Object.assign(extension_settings[MODULE_NAME], settings);
+            saveSettingsDebounced();
+            setCurrentMemoryLastTurnSignature('', context);
+            setMemoryStatus('已回退记忆状态（检测到重刷/删除）', context);
+            
+            // Re-render UI if applicable
+            if (!memoryGraphDrag && !memoryGraphPan) {
+                scheduleChatScopedUiRefresh();
+            }
+        }
+    } catch (error) {
+        console.warn(`${LOG_PREFIX} Failed to restore memory graph backup`, error);
+    }
+}
+
 function installChatScopedUiRefreshEventHooks() {
     const strictScopeEvents = [
         'CHAT_CHANGED',
@@ -381,6 +406,21 @@ function installChatScopedUiRefreshEventHooks() {
                     }),
                 });
                 handleChatScopedUiMaybeChanged();
+            });
+        } catch {
+            // no-op
+        }
+    }
+
+    const rollbackEvents = ['MESSAGE_DELETED', 'MESSAGE_SWIPED'];
+    for (const key of rollbackEvents) {
+        const value = event_types?.[key];
+        if (!value) {
+            continue;
+        }
+        try {
+            eventSource.on(value, () => {
+                handleMessageDeletedOrSwiped();
             });
         } catch {
             // no-op
@@ -1510,6 +1550,9 @@ function normalizeChatMemoryContainer(container) {
     normalized.graph.state.custom_values = normalized.graph.state.custom_values && typeof normalized.graph.state.custom_values === 'object'
         ? { ...normalized.graph.state.custom_values }
         : {};
+    normalized.graphBackup = normalized.graphBackup && typeof normalized.graphBackup === 'object'
+        ? cloneMemoryGraph(normalized.graphBackup)
+        : null;
     normalized.status = String(normalized.status || '');
     normalized.lastTurnSignature = String(normalized.lastTurnSignature || '');
     normalized.lastPrompt = String(normalized.lastPrompt || '');
@@ -2405,6 +2448,12 @@ async function runMemoryGraphUpdate(reason = 'auto') {
             try {
                 const update = parseMemoryUpdate(raw, promptLog);
                 setCurrentMemoryLastError('', context);
+                
+                // Backup graph before applying update
+                const container = getChatMemoryContainer(context);
+                container.graphBackup = cloneMemoryGraph(graph);
+                persistChatMemoryContainer(container, context);
+                
                 const memoryResult = applyMemoryGraphUpdate(update);
                 setCurrentMemoryLastTurnSignature(signature, context);
                 const nodeCount = memoryResult.graph.nodes.length;
