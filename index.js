@@ -97,6 +97,7 @@ const defaultSettings = {
     mainHistoryAiTurns: 0,
     memoryEnabled: false,
     memoryAutoRun: true,
+    memoryAutoRunInterval: 20,
     memoryInjectToRouter: true,
     memoryDebug: false,
     memoryScopeDebug: false,
@@ -105,6 +106,8 @@ const defaultSettings = {
     memoryRetries: 3,
     memoryMaxNodes: 60,
     memoryMaxLinks: 120,
+    memoryContainersByChat: {},
+    memoryLegacyGraphChatKeys: {},
     memoryGraphsByChat: {},
     memoryStatusesByChat: {},
     memoryLastTurnSignaturesByChat: {},
@@ -167,6 +170,7 @@ let memoryGraphPan = null;
 let memoryGraphLinkSourceId = '';
 let memoryGraphSelectedNodeId = '';
 let memoryGraphSelectedLinkId = '';
+let lastKnownChatFileName = '';
 
 function beginRouterBusy() {
     if (routerBusyPromise) {
@@ -216,6 +220,20 @@ function getChatScopedUiSignature(context = getContext()) {
         String(chat.length),
         memoryStamp,
     ].join('|');
+}
+
+function rememberChatIdentifierFromEvent(...args) {
+    for (const arg of args) {
+        const value = typeof arg === 'string'
+            ? arg
+            : (arg?.chatId || arg?.chat_id || arg?.file_name || arg?.filename || arg?.name || '');
+        const text = String(value || '').trim();
+        if (text && text !== 'null' && text !== 'undefined') {
+            lastKnownChatFileName = text;
+            return text;
+        }
+    }
+    return '';
 }
 
 function getMemoryGraphSummary(graph) {
@@ -395,6 +413,7 @@ function installChatScopedUiRefreshEventHooks() {
         }
         try {
             eventSource.on(value, (...args) => {
+                rememberChatIdentifierFromEvent(...args);
                 memoryScopeDebugLog(`event ${key}`, {
                     eventValue: value,
                     argsPreview: args.slice(0, 2).map(arg => {
@@ -616,6 +635,8 @@ function ensureSettings() {
     }
 
     Object.assign(settings, defaultSettings, extension_settings[MODULE_NAME]);
+    settings.memoryContainersByChat = settings.memoryContainersByChat && typeof settings.memoryContainersByChat === 'object' ? settings.memoryContainersByChat : {};
+    settings.memoryLegacyGraphChatKeys = settings.memoryLegacyGraphChatKeys && typeof settings.memoryLegacyGraphChatKeys === 'object' ? settings.memoryLegacyGraphChatKeys : {};
     settings.memoryGraphsByChat = settings.memoryGraphsByChat && typeof settings.memoryGraphsByChat === 'object' ? settings.memoryGraphsByChat : {};
     settings.memoryStatusesByChat = settings.memoryStatusesByChat && typeof settings.memoryStatusesByChat === 'object' ? settings.memoryStatusesByChat : {};
     settings.memoryLastTurnSignaturesByChat = settings.memoryLastTurnSignaturesByChat && typeof settings.memoryLastTurnSignaturesByChat === 'object' ? settings.memoryLastTurnSignaturesByChat : {};
@@ -1437,11 +1458,19 @@ function getCurrentChatMemoryKey(context = getContext()) {
         context?.chat_id,
         context?.conversationId,
         context?.sessionId,
+        context?.chatFileName,
+        context?.chat_filename,
+        context?.chatName,
+        context?.chat_name,
+        lastKnownChatFileName,
         context?.chatMetadata?.chat_id,
         context?.chatMetadata?.session_id,
+        context?.chatMetadata?.filename,
         context?.chatMetadata?.file_name,
         context?.chatMetadata?.main_chat,
         context?.chatMetadata?.mainChat,
+        context?.chatMetadata?.chat_name,
+        context?.chatMetadata?.name,
     ];
     for (const candidate of stableChatCandidates) {
         const value = String(candidate ?? '').trim();
@@ -1469,7 +1498,7 @@ function getCurrentChatMemoryKey(context = getContext()) {
         scopeParts.push(charaFile);
     }
 
-    if (stableChatParts.length || scopeParts.length) {
+    if (stableChatParts.length) {
         return `chat:${[...scopeParts, ...stableChatParts].join('|')}`;
     }
 
@@ -1491,12 +1520,11 @@ function getCurrentChatMemoryKey(context = getContext()) {
     const chat = Array.isArray(context?.chat) ? context.chat : [];
     if (chat.length) {
         const fingerprint = chat
-            .slice(0, 3)
-            .concat(chat.slice(-3))
+            .slice(0, 6)
             .map(item => `${item?.is_user ? 'u' : 'a'}:${item?.name || ''}:${item?.mes || item?.text || ''}`)
             .join('\n');
         if (fingerprint.trim()) {
-            return `chat:fallback:${hashString(`${scopeParts.join('|')}|${chat.length}|${fingerprint}`)}`;
+            return `chat:fallback:${hashString(`${scopeParts.join('|')}|${fingerprint}`)}`;
         }
     }
 
@@ -1553,6 +1581,8 @@ function normalizeChatMemoryContainer(container) {
     normalized.graphBackup = normalized.graphBackup && typeof normalized.graphBackup === 'object'
         ? cloneMemoryGraph(normalized.graphBackup)
         : null;
+    normalized.chatKey = String(normalized.chatKey || '');
+    normalized.lastAutoMessageCount = clampNumber(normalized.lastAutoMessageCount, 0, 0, 1000000);
     normalized.status = String(normalized.status || '');
     normalized.lastTurnSignature = String(normalized.lastTurnSignature || '');
     normalized.lastPrompt = String(normalized.lastPrompt || '');
@@ -1562,10 +1592,24 @@ function normalizeChatMemoryContainer(container) {
 }
 
 function getChatMemoryContainer(context = getContext()) {
+    const currentChatKey = getCurrentChatMemoryKey(context);
+    const storedContainer = settings.memoryContainersByChat?.[currentChatKey];
+    if (storedContainer && typeof storedContainer === 'object' && !Array.isArray(storedContainer)) {
+        const normalizedStored = normalizeChatMemoryContainer(storedContainer);
+        normalizedStored.chatKey = currentChatKey;
+        memoryScopeDebugLog('getChatMemoryContainer from settings map', {
+            chatKey: currentChatKey,
+            graph: getMemoryGraphSummary(normalizedStored.graph),
+        }, context);
+        return normalizedStored;
+    }
+
     const first = getChatMemoryFirstMessage(context);
     if (!first) {
         memoryScopeDebugLog('getChatMemoryContainer no first message', {}, context);
-        return normalizeChatMemoryContainer(null);
+        const empty = normalizeChatMemoryContainer(null);
+        empty.chatKey = currentChatKey;
+        return empty;
     }
 
     const raw = first[CHAT_MEMORY_FIELD];
@@ -1581,8 +1625,38 @@ function getChatMemoryContainer(context = getContext()) {
 
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
         const normalized = normalizeChatMemoryContainer(parsed);
+        if (normalized.chatKey && normalized.chatKey !== currentChatKey) {
+            memoryScopeDebugLog('getChatMemoryContainer ignored mismatched chatKey', {
+                storedChatKey: normalized.chatKey,
+                currentChatKey,
+                graph: getMemoryGraphSummary(normalized.graph),
+            }, context);
+            const empty = normalizeChatMemoryContainer(null);
+            empty.chatKey = currentChatKey;
+            return empty;
+        }
+        if (!normalized.chatKey && (normalized.graph?.nodes?.length || normalized.graph?.links?.length || hasMemoryState(normalized.graph))) {
+            const legacySignature = hashString(JSON.stringify(getMemoryGraphSummary(normalized.graph)));
+            const legacyOwnerKey = settings.memoryLegacyGraphChatKeys?.[legacySignature];
+            if (legacyOwnerKey && legacyOwnerKey !== currentChatKey) {
+                memoryScopeDebugLog('getChatMemoryContainer ignored legacy graph claimed by another chat', {
+                    legacyOwnerKey,
+                    currentChatKey,
+                    graph: getMemoryGraphSummary(normalized.graph),
+                }, context);
+                const empty = normalizeChatMemoryContainer(null);
+                empty.chatKey = currentChatKey;
+                return empty;
+            }
+            settings.memoryLegacyGraphChatKeys[legacySignature] = currentChatKey;
+        }
+        normalized.chatKey = currentChatKey;
+        settings.memoryContainersByChat[currentChatKey] = normalized;
+        Object.assign(extension_settings[MODULE_NAME], settings);
+        saveSettingsDebounced();
         memoryScopeDebugLog('getChatMemoryContainer from chat[0]', {
             rawType: typeof raw,
+            chatKey: normalized.chatKey,
             graph: getMemoryGraphSummary(normalized.graph),
         }, context);
         return normalized;
@@ -1592,18 +1666,28 @@ function getChatMemoryContainer(context = getContext()) {
         rawType: raw === undefined ? 'undefined' : typeof raw,
         rawPreview: typeof raw === 'string' ? raw.slice(0, 180) : JSON.stringify(raw || null).slice(0, 180),
     }, context);
-    return normalizeChatMemoryContainer(null);
+    const empty = normalizeChatMemoryContainer(null);
+    empty.chatKey = currentChatKey;
+    return empty;
 }
 
 function persistChatMemoryContainer(container, context = getContext()) {
+    const chatKey = getCurrentChatMemoryKey(context);
+    const normalized = normalizeChatMemoryContainer(container);
+    normalized.chatKey = chatKey;
+    settings.memoryContainersByChat[chatKey] = normalized;
+    Object.assign(extension_settings[MODULE_NAME], settings);
+    saveSettingsDebounced();
+
     const first = getChatMemoryFirstMessage(context);
     if (!first) {
         memoryScopeDebugLog('persistChatMemoryContainer skipped no first message', {}, context);
         return;
     }
 
-    first[CHAT_MEMORY_FIELD] = normalizeChatMemoryContainer(container);
+    first[CHAT_MEMORY_FIELD] = normalized;
     memoryScopeDebugLog('persistChatMemoryContainer wrote chat[0]', {
+        chatKey: normalized.chatKey,
         graph: getMemoryGraphSummary(first[CHAT_MEMORY_FIELD]?.graph),
         hasSaveChat: typeof context?.saveChat === 'function',
     }, context);
@@ -1808,6 +1892,11 @@ function getMemoryRelevantMessages(chat, count) {
             text: sanitizeMemoryMessageText(message.text),
         }))
         .filter(message => message.text);
+}
+
+function getMemoryAutoRunMessageCount(context = getContext()) {
+    const chat = Array.isArray(context?.chat) ? context.chat : [];
+    return chat.filter(message => message && !message.is_system && message.mes).length;
 }
 
 function getMemoryTurnSignature(recentMessages) {
@@ -2186,8 +2275,8 @@ function resolveMemoryNodeId(value, graph) {
     return byTitle?.id || direct;
 }
 
-function applyMemoryGraphUpdate(update) {
-    const graph = getMemoryGraph();
+function applyMemoryGraphUpdate(update, context = getContext()) {
+    const graph = getMemoryGraph(context);
     const now = new Date().toISOString();
     let addedOrUpdatedNodeCount = 0;
     const touchedEntries = [];
@@ -2357,7 +2446,7 @@ function applyMemoryGraphUpdate(update) {
         graph.lastSummary = truncateText(update.summary, 900);
     }
     graph.updatedAt = now;
-    saveMemoryGraph(graph);
+    saveMemoryGraph(graph, context);
     return {
         graph,
         touchedEntries: uniqueStrings(touchedEntries.map(entry => entry?.id))
@@ -2385,6 +2474,7 @@ async function runMemoryGraphUpdate(reason = 'auto') {
     }
 
     const context = getContext();
+    const memoryRunChatKey = getCurrentChatMemoryKey(context);
     const chat = Array.isArray(context?.chat) ? context.chat : [];
     const recentMessages = getMemoryRelevantMessages(chat, settings.memoryScanMessages);
     if (recentMessages.length < 2) {
@@ -2425,7 +2515,7 @@ async function runMemoryGraphUpdate(reason = 'auto') {
                 raw = await requestMemoryExtraction(context, activePrompt, activeSystemPrompt);
             } catch (error) {
                 lastError = error;
-                if (attempt >= maxAttempts) {
+                if (isGatewayLikeError(error) || attempt >= maxAttempts) {
                     throw error;
                 }
                 playStatusBurst('🔄', 'retry');
@@ -2448,14 +2538,24 @@ async function runMemoryGraphUpdate(reason = 'auto') {
             try {
                 const update = parseMemoryUpdate(raw, promptLog);
                 setCurrentMemoryLastError('', context);
+                if (getCurrentChatMemoryKey() !== memoryRunChatKey) {
+                    debugLog('Discarded memory update because chat changed before completion', {
+                        started: memoryRunChatKey,
+                        current: getCurrentChatMemoryKey(),
+                    });
+                    return false;
+                }
                 
                 // Backup graph before applying update
                 const container = getChatMemoryContainer(context);
                 container.graphBackup = cloneMemoryGraph(graph);
                 persistChatMemoryContainer(container, context);
                 
-                const memoryResult = applyMemoryGraphUpdate(update);
+                const memoryResult = applyMemoryGraphUpdate(update, context);
                 setCurrentMemoryLastTurnSignature(signature, context);
+                const updatedContainer = getChatMemoryContainer(context);
+                updatedContainer.lastAutoMessageCount = getMemoryAutoRunMessageCount(context);
+                persistChatMemoryContainer(updatedContainer, context);
                 const nodeCount = memoryResult.graph.nodes.length;
                 const linkCount = memoryResult.graph.links.length;
                 setMemoryStatus(`已更新：${nodeCount} 节点 / ${linkCount} 关系`);
@@ -2503,6 +2603,16 @@ function scheduleMemoryGraphUpdate() {
     if (!settings.memoryEnabled || !settings.memoryAutoRun) {
         return;
     }
+
+    const context = getContext();
+    const interval = clampNumber(settings.memoryAutoRunInterval, defaultSettings.memoryAutoRunInterval, 1, 100);
+    const currentCount = getMemoryAutoRunMessageCount(context);
+    const lastCount = clampNumber(getChatMemoryContainer(context).lastAutoMessageCount, 0, 0, 1000000);
+    if (currentCount - lastCount < interval) {
+        debugLog('Memory auto-run skipped by interval', { currentCount, lastCount, interval });
+        return;
+    }
+
     clearTimeout(memoryUpdateTimer);
     memoryUpdateTimer = setTimeout(() => {
         runMemoryGraphUpdate('auto');
@@ -3121,6 +3231,17 @@ function hasEmptyVisibleContentDueToLength(rawResponse) {
         && !choice.message.content.trim();
 }
 
+function isGatewayLikeError(error) {
+    if (error?.isGatewayError) {
+        return true;
+    }
+    const text = `${error?.message || ''}\n${String(error || '')}`.toLowerCase();
+    return /\b(502|503|504)\b/u.test(text)
+        || text.includes('gateway time-out')
+        || text.includes('gateway timeout')
+        || text.includes('endpoint failed');
+}
+
 function buildPlainSeparateChatPayload(prompt, {
     systemPrompt = settings.systemPrompt,
     maxTokens = getRouterRequestMaxTokens(),
@@ -3149,6 +3270,20 @@ async function sendPlainSeparateChatRequest(context, payload) {
     });
 
     const text = await response.text();
+    if (!response.ok) {
+        let errorMessage = text;
+        try {
+            const parsed = JSON.parse(text);
+            errorMessage = parsed?.error?.message || parsed?.message || text;
+        } catch {
+            errorMessage = text.slice(0, 180);
+        }
+        const error = new Error(`Endpoint failed (${response.status}): ${errorMessage}`);
+        error.status = response.status;
+        error.isGatewayError = [502, 503, 504].includes(response.status);
+        throw error;
+    }
+
     try {
         return JSON.parse(text);
     } catch {
@@ -3277,7 +3412,7 @@ async function selectWithAi(context, recentMessages, mvuSummary, candidates, max
             rawPreview = error?.routerRaw || rawPreview || error?.message || String(error);
             debugLog(`Router attempt ${attempt}/${maxAttempts} failed`, error);
 
-            if (attempt < maxAttempts) {
+            if (!isGatewayLikeError(error) && attempt < maxAttempts) {
                 playStatusBurst('🔄', 'retry');
                 continue;
             }
@@ -4500,6 +4635,7 @@ function bindMemoryPanelActions() {
     bindCheckbox('#ai_wbr_memory_inject_to_router', 'memoryInjectToRouter');
     bindCheckbox('#ai_wbr_memory_debug', 'memoryDebug');
     bindCheckbox('#ai_wbr_memory_scope_debug', 'memoryScopeDebug');
+    bindNumber('#ai_wbr_memory_auto_run_interval', 'memoryAutoRunInterval', 1, 100);
     bindNumber('#ai_wbr_memory_scan_messages', 'memoryScanMessages', 2, 40);
     bindNumber('#ai_wbr_memory_retries', 'memoryRetries', 0, 10);
     bindNumber('#ai_wbr_memory_max_nodes', 'memoryMaxNodes', 5, 200);
@@ -5253,7 +5389,8 @@ jQuery(async () => {
             scheduleCompatFlush();
         });
 
-        eventSource.on(event_types.CHAT_CHANGED, () => {
+        eventSource.on(event_types.CHAT_CHANGED, (...args) => {
+            rememberChatIdentifierFromEvent(...args);
             pendingCompatSend = false;
             suppressCompatReplay = false;
             lastRun = {

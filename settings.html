@@ -148,6 +148,9 @@
                 </label>
 
                 <div class="ai-wbr-grid">
+                    <label for="ai_wbr_memory_auto_run_interval"><span class="fa-solid fa-circle-info ai-wbr-help" title="开启自动整理时，每隔多少条聊天消息触发一次。填 1 表示每轮都整理；填 20 表示每 20 条聊天楼层整理一次。"></span>自动整理间隔消息数</label>
+                    <input id="ai_wbr_memory_auto_run_interval" class="text_pole" type="number" min="1" max="100" step="1" />
+
                     <label for="ai_wbr_memory_scan_messages"><span class="fa-solid fa-circle-info ai-wbr-help" title="后置记忆整理读取最近多少条聊天消息。只用于总结，不影响主模型历史楼层限制。"></span>记忆整理读取消息数</label>
                     <input id="ai_wbr_memory_scan_messages" class="text_pole" type="number" min="2" max="40" step="1" />
 
