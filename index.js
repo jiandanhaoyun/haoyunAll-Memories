@@ -124,7 +124,6 @@ const defaultSettings = {
     useMvu: false,
     allowConstant: false,
     titleBlocklist: '',
-    worldBlocklist: '',
     worldSelectionStates: {},
     position: extension_prompt_types.IN_CHAT,
     depth: 4,
@@ -212,6 +211,9 @@ function getChatScopedUiSignature(context = getContext()) {
         : JSON.stringify(memoryRaw || {}).slice(0, 120);
     const charaFile = String(getCharaFilename?.() || '');
     const character = context?.characters?.[context?.characterId] || context?.character;
+    const worldStamp = getActiveWorldbookBindings(context)
+        .map(binding => `${binding.worldName}:${binding.source}:${getWorldSelectionState(binding.worldName) ? '1' : '0'}`)
+        .join(',');
     return [
         charaFile,
         String(context?.characterId ?? context?.character_id ?? ''),
@@ -221,6 +223,7 @@ function getChatScopedUiSignature(context = getContext()) {
         String(context?.chatMetadata?.file_name ?? context?.chatMetadata?.main_chat ?? context?.chatMetadata?.name ?? ''),
         String(chat.length),
         memoryStamp,
+        worldStamp,
     ].join('|');
 }
 
@@ -982,15 +985,6 @@ function getBlockedTitleRule(entry) {
     }
 
     return parseBlockRules(settings.titleBlocklist).find(rule => matchesBlockRule(comment, rule)) || '';
-}
-
-function getBlockedWorldRule(worldName) {
-    const name = String(worldName || '').trim();
-    if (!name) {
-        return '';
-    }
-
-    return parseBlockRules(settings.worldBlocklist).find(rule => matchesBlockRule(name, rule)) || '';
 }
 
 function getWorldSelectionState(worldName) {
@@ -2730,7 +2724,7 @@ async function getEmbeddedCharacterEntries(context) {
     }
 
     const worldName = book.name || character?.name || 'embedded';
-    if (!getWorldSelectionState(worldName) || getBlockedWorldRule(worldName)) {
+    if (!getWorldSelectionState(worldName)) {
         return [];
     }
 
@@ -2772,11 +2766,6 @@ async function getLinkedWorldEntries(context) {
             debugLog('Skipped unselected worldbook', { worldName, source });
             continue;
         }
-        const blockedRule = getBlockedWorldRule(worldName);
-        if (blockedRule) {
-            debugLog('Skipped blocked worldbook', { worldName, source, blockedRule });
-            continue;
-        }
         try {
             const data = await loadWorldInfo(worldName);
             allEntries.push(...worldEntriesFromData(data, source, worldName));
@@ -2797,15 +2786,6 @@ async function getWorldbookEntries(context) {
     const deduped = [];
     const seen = new Set();
     for (const entry of [...embedded, ...linked]) {
-        const blockedRule = getBlockedWorldRule(entry.world);
-        if (blockedRule) {
-            debugLog('Skipped blocked worldbook entry after merge', {
-                world: entry.world,
-                source: entry.source,
-                blockedRule,
-            });
-            continue;
-        }
         const key = `${entry.world}:${entry.uid}:${entry.content}`;
         if (seen.has(key)) {
             continue;
@@ -5384,33 +5364,6 @@ function renderTitleBlocklistEditor() {
     }
 }
 
-function renderWorldBlocklistEditor() {
-    const container = $('#ai_wbr_world_block_items');
-    if (!container.length) {
-        return;
-    }
-
-    const rules = parseBlockRules(settings.worldBlocklist);
-    container.empty();
-
-    if (!rules.length) {
-        container.append('<div class="ai-wbr-token-empty">暂无拦截世界书</div>');
-        return;
-    }
-
-    for (const rule of rules) {
-        const item = $('<div class="ai-wbr-token-item"></div>');
-        item.append($('<span class="ai-wbr-token-label"></span>').text(rule));
-        item.append($('<button class="ai-wbr-token-remove" type="button" aria-label="删除">×</button>')
-            .on('click', () => {
-                const nextRules = parseBlockRules(settings.worldBlocklist).filter(entry => entry !== rule);
-                saveSetting('worldBlocklist', nextRules.join('\n'));
-                renderWorldBlocklistEditor();
-            }));
-        container.append(item);
-    }
-}
-
 function renderActiveWorldbookSelector(context = getContext()) {
     const container = $('#ai_wbr_active_world_items');
     if (!container.length) {
@@ -5474,40 +5427,6 @@ function bindTitleBlocklistEditor() {
     renderTitleBlocklistEditor();
 }
 
-function bindWorldBlocklistEditor() {
-    const input = $('#ai_wbr_world_block_input');
-    const button = $('#ai_wbr_world_block_add');
-    if (!input.length || !button.length) {
-        return;
-    }
-
-    const submit = () => {
-        const value = String(input.val() || '').trim();
-        if (!value) {
-            return;
-        }
-
-        const rules = parseBlockRules(settings.worldBlocklist);
-        if (!rules.includes(value)) {
-            rules.push(value);
-            saveSetting('worldBlocklist', rules.join('\n'));
-        }
-
-        input.val('');
-        renderWorldBlocklistEditor();
-    };
-
-    button.on('click', submit);
-    input.on('keydown', (event) => {
-        if (event.key === 'Enter') {
-            event.preventDefault();
-            submit();
-        }
-    });
-
-    renderWorldBlocklistEditor();
-}
-
 async function addSettingsUi() {
     const html = await renderExtensionTemplateAsync('third-party/ai-worldbook-router', 'settings');
     $('#extensions_settings2').append(html);
@@ -5533,7 +5452,6 @@ async function addSettingsUi() {
     bindSelectNumber('#ai_wbr_position', 'position');
     bindSelectNumber('#ai_wbr_role', 'role');
     bindTitleBlocklistEditor();
-    bindWorldBlocklistEditor();
     bindTextarea('#ai_wbr_system_prompt', 'systemPrompt');
     bindText('#ai_wbr_router_api_url', 'routerApiUrl', normalizeUrl);
     bindText('#ai_wbr_router_api_key', 'routerApiKey', (value) => String(value).trim());
