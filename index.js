@@ -5467,7 +5467,57 @@ function createFloatingMemoryWindow() {
         }
     }
 
-    fab.on('click', toggleWindow);
+    // FAB 拖拽（区分点击与拖拽：移动超过 4px 视为拖拽，松手不触发开窗）
+    let fabDragging = false;
+    let fabMoved = false;
+    let fabStartX = 0, fabStartY = 0, fabInitialLeft = 0, fabInitialTop = 0;
+
+    fab.on('mousedown', (e) => {
+        if (e.button !== 0) return; // 仅左键
+        fabDragging = true;
+        fabMoved = false;
+        fabStartX = e.clientX;
+        fabStartY = e.clientY;
+        // 把 right/bottom 定位转换为 left/top，便于拖拽
+        const rect = fab[0].getBoundingClientRect();
+        fabInitialLeft = rect.left;
+        fabInitialTop = rect.top;
+        fab.css({ right: 'auto', bottom: 'auto', left: fabInitialLeft + 'px', top: fabInitialTop + 'px' });
+        $('body').css('user-select', 'none');
+    });
+
+    $(document).on('mousemove.fabDrag', (e) => {
+        if (!fabDragging) return;
+        const dx = e.clientX - fabStartX;
+        const dy = e.clientY - fabStartY;
+        if (!fabMoved && Math.hypot(dx, dy) < 4) return; // 阈值内仍视为点击
+        fabMoved = true;
+        const rect = fab[0].getBoundingClientRect();
+        const maxLeft = Math.max(0, window.innerWidth - rect.width);
+        const maxTop = Math.max(0, window.innerHeight - rect.height);
+        const newLeft = Math.max(0, Math.min(fabInitialLeft + dx, maxLeft));
+        const newTop = Math.max(0, Math.min(fabInitialTop + dy, maxTop));
+        fab.css({ left: newLeft + 'px', top: newTop + 'px' });
+    });
+
+    $(document).on('mouseup.fabDrag', () => {
+        if (fabDragging) {
+            fabDragging = false;
+            $('body').css('user-select', '');
+        }
+    });
+
+    fab.on('click', (e) => {
+        if (fabMoved) {
+            // 拖拽结束，抑制本次开窗
+            fabMoved = false;
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+        }
+        toggleWindow();
+    });
+
     $('#ai_wbr_floating_close').on('click', toggleWindow);
 
     // ESC 关闭
