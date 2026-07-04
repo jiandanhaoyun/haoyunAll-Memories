@@ -5678,7 +5678,29 @@ function createFloatingMemoryWindow() {
     parkStandalonePanels();
 
     // 切换悬浮窗显隐
+    function clearForcedWindowStyles() {
+        const node = win?.[0];
+        if (!node) return;
+        [
+            'visibility',
+            'opacity',
+            'pointer-events',
+            'z-index',
+            'transform',
+            'position',
+            'inset',
+            'right',
+            'bottom',
+            'width',
+            'height',
+            'max-width',
+            'max-height',
+            'border-radius',
+        ].forEach((property) => node.style.removeProperty(property));
+    }
+
     function openWindow(tabId = getStandaloneTabId()) {
+        clearForcedWindowStyles();
         win.removeClass('closing').addClass('open');
         renderStandaloneConsole(tabId || 'overview');
         // 动画结束后再渲染一次，确保记忆 SVG 取到动画终态的准确尺寸
@@ -5687,8 +5709,15 @@ function createFloatingMemoryWindow() {
 
     function closeWindow() {
         win.removeClass('open').addClass('closing');
+        const node = win?.[0];
+        if (node) {
+            node.style.setProperty('visibility', 'hidden', 'important');
+            node.style.setProperty('opacity', '0', 'important');
+            node.style.setProperty('pointer-events', 'none', 'important');
+        }
         setTimeout(() => {
             win.removeClass('closing');
+            clearForcedWindowStyles();
         }, 220); // 与 CSS 关闭动画时长一致
     }
 
