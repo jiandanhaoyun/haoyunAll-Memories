@@ -5643,6 +5643,15 @@ function bindTitleBlocklistEditor() {
 
 function createFloatingMemoryWindow() {
     if ($('#ai_wbr_fab').length) {
+        globalThis.aiWbrOpenConsole = (tabId = 'overview') => {
+            const existingWin = $('#ai_wbr_floating_window');
+            if (!existingWin.length) {
+                return;
+            }
+            existingWin.removeClass('closing').addClass('open');
+            renderStandaloneConsole(tabId || 'overview');
+            setTimeout(() => renderStandaloneConsole(tabId || getStandaloneTabId()), 340);
+        };
         return;
     }
 
@@ -5669,20 +5678,33 @@ function createFloatingMemoryWindow() {
     parkStandalonePanels();
 
     // 切换悬浮窗显隐
+    function openWindow(tabId = getStandaloneTabId()) {
+        win.removeClass('closing').addClass('open');
+        renderStandaloneConsole(tabId || 'overview');
+        // 动画结束后再渲染一次，确保记忆 SVG 取到动画终态的准确尺寸
+        setTimeout(() => renderStandaloneConsole(tabId || getStandaloneTabId()), 340);
+    }
+
+    function closeWindow() {
+        win.removeClass('open').addClass('closing');
+        setTimeout(() => {
+            win.removeClass('closing');
+        }, 220); // 与 CSS 关闭动画时长一致
+    }
+
     function toggleWindow() {
         const isOpen = win.hasClass('open');
         if (isOpen) {
-            win.removeClass('open').addClass('closing');
-            setTimeout(() => {
-                win.removeClass('closing');
-            }, 220); // 与 CSS 关闭动画时长一致
+            closeWindow();
         } else {
-            win.removeClass('closing').addClass('open');
-            renderStandaloneConsole();
-            // 动画结束后再渲染一次，确保记忆 SVG 取到动画终态的准确尺寸
-            setTimeout(() => renderStandaloneConsole(), 340);
+            openWindow();
         }
     }
+
+    globalThis.aiWbrOpenConsole = (tabId = 'overview') => {
+        openWindow(tabId);
+    };
+    globalThis.aiWbrCloseConsole = closeWindow;
 
     // FAB 拖拽（区分点击与拖拽：移动超过 4px 视为拖拽，松手不触发开窗）
     let fabDragging = false;

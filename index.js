@@ -6,11 +6,29 @@ const BOOT_MENU_RETRY_LIMIT = 80;
 let bootMenuRetryTimer = null;
 
 function openRouterConsoleFromBootstrap() {
-    const fullButton = document.getElementById('ai_wbr_fab');
-    if (fullButton) {
-        fullButton.click();
+    if (typeof globalThis.aiWbrOpenConsole === 'function') {
+        globalThis.aiWbrOpenConsole('overview');
         return;
     }
+
+    const fullWindow = document.getElementById('ai_wbr_floating_window');
+    if (fullWindow) {
+        fullWindow.classList.remove('closing');
+        fullWindow.classList.add('open');
+        return;
+    }
+
+    const fullButton = document.getElementById('ai_wbr_fab');
+    if (fullButton) {
+        fullButton.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+        window.setTimeout(() => {
+            if (!document.getElementById('ai_wbr_floating_window')?.classList.contains('open')) {
+                showBootstrapPanel('已触发完整入口，但控制台未打开。请查看下方状态。');
+            }
+        }, 160);
+        return;
+    }
+
     showBootstrapPanel();
 }
 
