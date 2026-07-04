@@ -10,6 +10,12 @@ This repository contains a converted copy of **AI Worldbook Router / 世界书�
   - `ai-worldbook-router.user.js`
   - `ai-worldbook-router.tavern-helper.json`
 
+## Maintained Fork
+
+- Current maintained repository: https://github.com/jiandanhaoyun/haoyunAll-Memories
+- This fork keeps the original project source and author information visible.
+- Future updates for this converted/extended version should be published to the maintained repository above.
+
 ## License Notice
 
 No `LICENSE`, `LICENCE`, `COPYING`, or similar license file was found in the upstream repository at the time this conversion was prepared. No explicit license statement was found in the upstream README either.

@@ -4,6 +4,7 @@
 
 - 原项目地址：https://github.com/wominIII/ai-worldbook-router
 - 原作者：zmer
+- 后续维护仓库：https://github.com/jiandanhaoyun/haoyunAll-Memories
 - 本仓库保留原项目来源、作者信息与插件主体文件。
 - 截至本次整理时，原仓库内未发现 `LICENSE` / `LICENCE` / `COPYING` 等开源许可证文件，也未在 README 中发现明确许可证声明。
 - 因此，本仓库不擅自为原项目追加或替换许可证；使用、修改、再分发时请以原作者后续发布的授权说明为准。
