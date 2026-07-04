@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ????? AI Worldbook Router - Tavern Helper?
 // @namespace    https://github.com/wominIII/ai-worldbook-router
-// @version      0.3.6-userscript.5
+// @version      0.3.6-userscript.6
 // @description  ? SillyTavern ????????????????/??????????
 // @author       zmer / converted by Codex
 // @match        *://*/*
