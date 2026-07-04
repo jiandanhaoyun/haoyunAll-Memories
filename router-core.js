@@ -5865,18 +5865,41 @@ function bindTitleBlocklistEditor() {
 }
 
 function createFloatingMemoryWindow() {
-    if ($('#ai_wbr_fab').length) {
+    if ($('#ai_wbr_fab').length && $('#ai_wbr_floating_window').length) {
         globalThis.aiWbrOpenConsole = (tabId = 'overview') => {
             const existingWin = $('#ai_wbr_floating_window');
             if (!existingWin.length) {
                 return;
             }
             existingWin.removeClass('closing').addClass('open');
+            const node = existingWin[0];
+            node.style.setProperty('visibility', 'visible', 'important');
+            node.style.setProperty('opacity', '1', 'important');
+            node.style.setProperty('pointer-events', 'auto', 'important');
+            node.style.setProperty('z-index', '2147483646', 'important');
+            node.style.setProperty('display', 'flex', 'important');
+            node.style.setProperty('transform', 'none', 'important');
+            if (globalThis.matchMedia?.('(max-width: 720px)').matches) {
+                node.style.setProperty('position', 'fixed', 'important');
+                node.style.setProperty('inset', '0', 'important');
+                node.style.setProperty('left', '0', 'important');
+                node.style.setProperty('top', '0', 'important');
+                node.style.setProperty('right', '0', 'important');
+                node.style.setProperty('bottom', '0', 'important');
+                node.style.setProperty('width', '100vw', 'important');
+                node.style.setProperty('height', '100dvh', 'important');
+                node.style.setProperty('max-width', '100vw', 'important');
+                node.style.setProperty('max-height', '100dvh', 'important');
+                node.style.setProperty('border-radius', '0', 'important');
+            }
             renderStandaloneConsole(tabId || 'overview');
             setTimeout(() => renderStandaloneConsole(tabId || getStandaloneTabId()), 340);
         };
         return;
     }
+
+    $('#ai_wbr_fab').remove();
+    $('#ai_wbr_floating_window').remove();
 
     const fab = $('<div id="ai_wbr_fab" class="ai-wbr-fab" title="打开世界书读取控制台"><i class="fa-solid fa-network-wired"></i></div>');
     // 注意：局部变量命名为 win，避免遮蔽全局 window 对象（拖拽时需要用 window.innerWidth/innerHeight 取视口尺寸）
@@ -5912,6 +5935,8 @@ function createFloatingMemoryWindow() {
             'transform',
             'position',
             'inset',
+            'left',
+            'top',
             'right',
             'bottom',
             'width',
@@ -5919,15 +5944,40 @@ function createFloatingMemoryWindow() {
             'max-width',
             'max-height',
             'border-radius',
+            'display',
         ].forEach((property) => node.style.removeProperty(property));
     }
 
-    function openWindow(tabId = getStandaloneTabId()) {
-        clearForcedWindowStyles();
+    function forceWindowVisible(tabId = getStandaloneTabId()) {
+        const node = win?.[0];
+        if (!node) return;
         win.removeClass('closing').addClass('open');
+        node.style.setProperty('visibility', 'visible', 'important');
+        node.style.setProperty('opacity', '1', 'important');
+        node.style.setProperty('pointer-events', 'auto', 'important');
+        node.style.setProperty('z-index', '2147483646', 'important');
+        node.style.setProperty('display', 'flex', 'important');
+        node.style.setProperty('transform', 'none', 'important');
+        if (globalThis.matchMedia?.('(max-width: 720px)').matches) {
+            node.style.setProperty('position', 'fixed', 'important');
+            node.style.setProperty('inset', '0', 'important');
+            node.style.setProperty('left', '0', 'important');
+            node.style.setProperty('top', '0', 'important');
+            node.style.setProperty('right', '0', 'important');
+            node.style.setProperty('bottom', '0', 'important');
+            node.style.setProperty('width', '100vw', 'important');
+            node.style.setProperty('height', '100dvh', 'important');
+            node.style.setProperty('max-width', '100vw', 'important');
+            node.style.setProperty('max-height', '100dvh', 'important');
+            node.style.setProperty('border-radius', '0', 'important');
+        }
         renderStandaloneConsole(tabId || 'overview');
         // 动画结束后再渲染一次，确保记忆 SVG 取到动画终态的准确尺寸
         setTimeout(() => renderStandaloneConsole(tabId || getStandaloneTabId()), 340);
+    }
+
+    function openWindow(tabId = getStandaloneTabId()) {
+        forceWindowVisible(tabId || 'overview');
     }
 
     function closeWindow() {
@@ -6009,7 +6059,11 @@ function createFloatingMemoryWindow() {
         toggleWindow();
     });
 
-    $('#ai_wbr_floating_close').on('click', toggleWindow);
+    $('#ai_wbr_floating_close').on('click touchend pointerup', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        closeWindow();
+    });
     $('#ai_wbr_console_tabs').on('click', '.ai-wbr-console-tab', function () {
         renderStandaloneConsole(String($(this).data('tab') || 'overview'));
     });

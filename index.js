@@ -6,7 +6,7 @@
     'use strict';
 
     const NAMESPACE = 'AIWorldbookRouter';
-    const VERSION = '0.4.3';
+    const VERSION = '0.4.4';
     const LOG_PREFIX = '[AI Worldbook Router Bootstrap]';
     const ENTRY_ID = 'ai_wbr_extension_entry';
     const ROW_ID = 'ai_wbr_extension_row';
@@ -77,12 +77,15 @@
         win.style.setProperty('pointer-events', 'auto', 'important');
         win.style.setProperty('z-index', '2147483646', 'important');
         win.style.setProperty('transform', 'none', 'important');
+        win.style.setProperty('display', 'flex', 'important');
 
         if (window.matchMedia?.('(max-width: 720px)').matches) {
             win.style.setProperty('position', 'fixed', 'important');
             win.style.setProperty('inset', '0', 'important');
             win.style.setProperty('right', '0', 'important');
             win.style.setProperty('bottom', '0', 'important');
+            win.style.setProperty('left', '0', 'important');
+            win.style.setProperty('top', '0', 'important');
             win.style.setProperty('width', '100vw', 'important');
             win.style.setProperty('height', '100dvh', 'important');
             win.style.setProperty('max-width', '100vw', 'important');
@@ -91,6 +94,18 @@
         }
 
         return true;
+    }
+
+    function callOpenConsole(tab = 'overview') {
+        let opened = false;
+        if (typeof window.aiWbrOpenConsole === 'function') {
+            window.aiWbrOpenConsole(tab);
+            opened = true;
+        }
+        if (forceConsoleVisible()) {
+            opened = true;
+        }
+        return opened;
     }
 
     function closeHostMenusBeforeOpen() {
@@ -259,20 +274,16 @@
         }
 
         window.setTimeout(() => {
-            if (typeof window.aiWbrOpenConsole === 'function') {
-                try {
-                    window.aiWbrOpenConsole('overview');
-                    forceConsoleVisible();
-                } catch (error) {
-                    coreLoadError = error;
-                    showPanel('\u5b8c\u6574\u63a7\u5236\u53f0\u6253\u5f00\u65f6\u62a5\u9519\uff1a' + (error?.message || error));
-                    return;
+            try {
+                if (!callOpenConsole('overview') && document.getElementById('ai_wbr_fab')) {
+                    document.getElementById('ai_wbr_fab').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+                    window.setTimeout(() => callOpenConsole('overview'), 80);
                 }
-            } else if (document.getElementById('ai_wbr_floating_window')) {
-                forceConsoleVisible();
-            } else if (document.getElementById('ai_wbr_fab')) {
-                document.getElementById('ai_wbr_fab').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
-                window.setTimeout(forceConsoleVisible, 80);
+                window.setTimeout(() => callOpenConsole('overview'), 180);
+            } catch (error) {
+                coreLoadError = error;
+                showPanel('\u5b8c\u6574\u63a7\u5236\u53f0\u6253\u5f00\u65f6\u62a5\u9519\uff1a' + (error?.message || error));
+                return;
             }
 
             window.setTimeout(() => {
@@ -290,7 +301,9 @@
         event?.preventDefault?.();
         event?.stopPropagation?.();
         event?.stopImmediatePropagation?.();
-        window.setTimeout(() => openConsole({ forcePanel: true }), 80);
+        const openNow = () => openConsole({ forcePanel: true });
+        openNow();
+        window.setTimeout(openNow, 90);
     }
 
     function createExtensionMenuEntry() {
