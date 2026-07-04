@@ -6,7 +6,7 @@
     'use strict';
 
     const NAMESPACE = 'AIWorldbookRouter';
-    const VERSION = '0.3.8';
+    const VERSION = '0.3.9';
     const LOG_PREFIX = '[AI Worldbook Router Bootstrap]';
     const ENTRY_ID = 'ai_wbr_extension_entry';
     const ROW_ID = 'ai_wbr_extension_row';
@@ -16,7 +16,8 @@
     const MENU_RETRY_LIMIT = 160;
     const DISPLAY_NAME = '\u4e16\u754c\u4e66\u8bfb\u53d6';
 
-    const baseUrl = new URL('./', import.meta.url).href;
+    const currentScript = document.currentScript || Array.from(document.scripts).find((script) => script.src && script.src.includes('/ai-worldbook-router/')) || Array.from(document.scripts).find((script) => script.src && script.src.includes('/All-Memories/')) || Array.from(document.scripts).find((script) => script.src && script.src.endsWith('/index.js'));
+    const baseUrl = currentScript?.src ? new URL('./', currentScript.src).href : './';
     let coreLoadError = null;
     let coreLoading = false;
     let coreLoaded = false;
@@ -375,7 +376,7 @@
         watchExtensionMenuButton();
         startDomObserver();
         startRetryMounting();
-        console.info(LOG_PREFIX + ' v' + VERSION + ' mounted', { baseUrl });
+        console.warn(LOG_PREFIX + ' v' + VERSION + ' mounted - bootstrap is executing', { baseUrl });
     }
 
     if (document.readyState === 'loading') {
