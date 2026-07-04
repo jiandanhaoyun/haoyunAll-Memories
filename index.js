@@ -6,7 +6,7 @@
     'use strict';
 
     const NAMESPACE = 'AIWorldbookRouter';
-    const VERSION = '0.4.7';
+    const VERSION = '0.4.8';
     const LOG_PREFIX = '[AI Worldbook Router Bootstrap]';
     const ENTRY_ID = 'ai_wbr_extension_entry';
     const ROW_ID = 'ai_wbr_extension_row';
@@ -15,6 +15,7 @@
     const CORE_SCRIPT_ID = 'ai_wbr_router_core_script';
     const MENU_RETRY_LIMIT = 160;
     const DISPLAY_NAME = '\u4e16\u754c\u4e66\u8bfb\u53d6';
+    const ENTRY_DIAGNOSTICS_KEY = 'AIWBR_entryDiagnosticsEnabled';
 
     const EXTENSION_DIR_NAMES = [
         'haoyunAll-Memories',
@@ -42,8 +43,25 @@
         baseUrl,
         open: openConsole,
         diag: () => showPanel('\u624b\u52a8\u8bca\u65ad\u5df2\u6253\u5f00\u3002'),
+        setEntryDiagnostics: setEntryDiagnosticsEnabled,
         mount,
     });
+
+    function isEntryDiagnosticsEnabled() {
+        try {
+            return localStorage.getItem(ENTRY_DIAGNOSTICS_KEY) === 'true';
+        } catch (_) {
+            return false;
+        }
+    }
+
+    function setEntryDiagnosticsEnabled(value) {
+        try {
+            localStorage.setItem(ENTRY_DIAGNOSTICS_KEY, value ? 'true' : 'false');
+        } catch (_) {
+            // localStorage may be unavailable in some embedded webviews.
+        }
+    }
 
     function resolveModule(path) {
         const url = new URL(path, baseUrl);
@@ -182,6 +200,35 @@
         ].join(';');
     }
 
+    function closeDiagnosticPanel() {
+        document.getElementById(PANEL_ID)?.remove();
+    }
+
+    function appendPanelCloseButton(panel) {
+        const closeTop = document.createElement('button');
+        closeTop.type = 'button';
+        closeTop.textContent = '×';
+        closeTop.title = '关闭诊断层';
+        closeTop.setAttribute('aria-label', '关闭诊断层');
+        closeTop.style.cssText = [
+            'position:absolute',
+            'right:8px',
+            'top:8px',
+            'width:30px',
+            'height:30px',
+            'border-radius:999px',
+            'border:1px solid rgba(176,225,255,.35)',
+            'background:rgba(255,255,255,.1)',
+            'color:#fff',
+            'font-size:20px',
+            'line-height:26px',
+            'cursor:pointer',
+            'z-index:1',
+        ].join(';');
+        closeTop.addEventListener('click', closeDiagnosticPanel);
+        panel.appendChild(closeTop);
+    }
+
     function showPanel(message) {
         let panel = document.getElementById(PANEL_ID);
         if (!panel) {
@@ -201,12 +248,15 @@
                 'color:#f2fbff',
                 'box-shadow:0 18px 42px rgba(0,0,0,.45)',
                 'padding:14px',
+                'padding-top:42px',
                 'font:14px/1.5 system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif',
+                'pointer-events:auto',
             ].join(';');
             (document.body || document.documentElement).appendChild(panel);
         }
 
         panel.innerHTML = '';
+        appendPanelCloseButton(panel);
 
         const title = document.createElement('div');
         title.textContent = DISPLAY_NAME;
@@ -238,7 +288,7 @@
         close.type = 'button';
         close.textContent = '\u5173\u95ed';
         close.style.cssText = buttonStyle(false);
-        close.addEventListener('click', () => panel.remove());
+        close.addEventListener('click', closeDiagnosticPanel);
         actions.appendChild(close);
         panel.appendChild(actions);
 
@@ -250,7 +300,11 @@
         return panel;
     }
 
-    function showInstantClickPanel(source = '入口') {
+    function showInstantClickPanel(source = '入口', options = {}) {
+        const force = !!options.force;
+        if (!force && !isEntryDiagnosticsEnabled()) {
+            return null;
+        }
         let panel = document.getElementById(PANEL_ID);
         if (!panel) {
             panel = document.createElement('div');
@@ -273,11 +327,13 @@
             'color:#f2fbff',
             'box-shadow:0 20px 48px rgba(0,0,0,.55)',
             'padding:14px',
+            'padding-top:42px',
             'font:14px/1.5 system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif',
             'pointer-events:auto',
         ].join(';');
 
         panel.innerHTML = [
+            '<button id="ai_wbr_panel_close_top" type="button" title="关闭诊断层" aria-label="关闭诊断层" style="position:absolute;right:8px;top:8px;width:30px;height:30px;border-radius:999px;border:1px solid rgba(176,225,255,.35);background:rgba(255,255,255,.1);color:#fff;font-size:20px;line-height:26px;cursor:pointer;z-index:1">×</button>',
             '<div style="font-weight:800;font-size:16px;margin-bottom:8px;color:#d7f5ff">世界书读取</div>',
             '<div>点击已收到：' + source + '。正在加载完整控制台...</div>',
             '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">',
@@ -288,7 +344,8 @@
         ].join('');
 
         document.getElementById('ai_wbr_panel_retry')?.addEventListener('click', () => openConsole({ forcePanel: true }));
-        document.getElementById('ai_wbr_panel_close')?.addEventListener('click', () => panel.remove());
+        document.getElementById('ai_wbr_panel_close')?.addEventListener('click', closeDiagnosticPanel);
+        document.getElementById('ai_wbr_panel_close_top')?.addEventListener('click', closeDiagnosticPanel);
         return panel;
     }
 
@@ -398,6 +455,7 @@
             await waitForCoreUi();
         } catch (error) {
             coreLoadError = error;
+            showInstantClickPanel('核心模块加载失败', { force: true });
             showPanel('\u6838\u5fc3\u6a21\u5757\u52a0\u8f7d\u5931\u8d25\uff1a' + (error?.message || error));
             return;
         }
@@ -411,6 +469,7 @@
                 window.setTimeout(() => callOpenConsole('overview'), 180);
             } catch (error) {
                 coreLoadError = error;
+                showInstantClickPanel('控制台打开失败', { force: true });
                 showPanel('\u5b8c\u6574\u63a7\u5236\u53f0\u6253\u5f00\u65f6\u62a5\u9519\uff1a' + (error?.message || error));
                 return;
             }
@@ -420,6 +479,7 @@
                 if (isVisible && Date.now() > keepPanelUntil) {
                     panel?.remove();
                 } else if (!isVisible) {
+                    showInstantClickPanel('控制台未显示', { force: true });
                     showPanel('\u5165\u53e3\u70b9\u51fb\u5df2\u6536\u5230\uff0c\u4f46\u5b8c\u6574\u63a7\u5236\u53f0\u4ecd\u672a\u8fdb\u5165\u6253\u5f00\u72b6\u6001\u3002\u8bf7\u628a\u4e0b\u9762\u72b6\u6001\u53d1\u7ed9\u6211\u3002');
                 }
             }, 300);

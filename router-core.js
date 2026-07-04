@@ -83,6 +83,7 @@ const defaultSystemPrompt = `你是 SillyTavern 的前置世界书路由器。
 const defaultSettings = {
     enabled: false,
     debug: false,
+    entryDiagnostics: false,
     routerUseSeparateModel: false,
     routerApiUrl: '',
     routerApiKey: '',
@@ -660,6 +661,14 @@ function ensureSettings() {
 function saveSetting(key, value) {
     settings[key] = value;
     Object.assign(extension_settings[MODULE_NAME], settings);
+    if (key === 'entryDiagnostics') {
+        try {
+            localStorage.setItem('AIWBR_entryDiagnosticsEnabled', value ? 'true' : 'false');
+            globalThis.AIWorldbookRouter?.setEntryDiagnostics?.(!!value);
+        } catch (_) {
+            // localStorage may be unavailable in some embedded webviews.
+        }
+    }
     saveSettingsDebounced();
 }
 
@@ -6174,6 +6183,7 @@ async function addSettingsUi() {
 
     bindCheckbox('#ai_wbr_enabled', 'enabled');
     bindCheckbox('#ai_wbr_debug', 'debug');
+    bindCheckbox('#ai_wbr_entry_diagnostics', 'entryDiagnostics');
     bindCheckbox('#ai_wbr_router_use_separate_model', 'routerUseSeparateModel');
     bindCheckbox('#ai_wbr_keyword_recall', 'keywordRecall');
     bindCheckbox('#ai_wbr_use_mvu', 'useMvu');
