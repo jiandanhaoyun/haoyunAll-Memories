@@ -6,7 +6,7 @@
     'use strict';
 
     const NAMESPACE = 'AIWorldbookRouter';
-    const VERSION = '0.4.4';
+    const VERSION = '0.4.5';
     const LOG_PREFIX = '[AI Worldbook Router Bootstrap]';
     const ENTRY_ID = 'ai_wbr_extension_entry';
     const ROW_ID = 'ai_wbr_extension_row';
@@ -306,10 +306,51 @@
         window.setTimeout(openNow, 90);
     }
 
+    function isWorldbookMenuTarget(target) {
+        if (!target?.closest) return false;
+        if (target.closest('#' + PANEL_ID + ', #ai_wbr_fab, #' + FALLBACK_BUTTON_ID + ', #ai_wbr_floating_window')) {
+            return false;
+        }
+        if (target.closest('#' + ENTRY_ID + ', #' + ROW_ID + ', [data-ai-wbr-entry="true"]')) {
+            return true;
+        }
+
+        const menuHost = target.closest('#extensionsMenu, #top-settings-holder, .drawer-content, .popup, .menu, .list-group');
+        if (!menuHost) return false;
+
+        let node = target;
+        while (node && node !== document && node !== menuHost.parentElement) {
+            const text = String(node.innerText || node.textContent || '').replace(/\s+/g, ' ').trim();
+            if (text.includes(DISPLAY_NAME)) {
+                return true;
+            }
+            if (node === menuHost) break;
+            node = node.parentElement;
+        }
+        return false;
+    }
+
+    function bindGlobalEntryDelegates() {
+        if (window[NAMESPACE]?.entryDelegatesBound) return;
+        window[NAMESPACE].entryDelegatesBound = true;
+
+        const delegateOpen = (event) => {
+            if (!isWorldbookMenuTarget(event.target)) return;
+            handleOpen(event);
+        };
+
+        document.addEventListener('pointerdown', delegateOpen, true);
+        document.addEventListener('touchstart', delegateOpen, { capture: true, passive: false });
+        document.addEventListener('click', delegateOpen, true);
+        document.addEventListener('pointerup', delegateOpen, true);
+    }
+
     function createExtensionMenuEntry() {
         const entry = document.createElement('div');
         entry.id = ENTRY_ID;
         entry.className = 'extension_container interactable ai-wbr-extension-entry';
+        entry.dataset.aiWbrEntry = 'true';
+        entry.dataset.extensionId = 'ai_worldbook_router';
         entry.title = DISPLAY_NAME;
         entry.setAttribute('role', 'button');
         entry.setAttribute('aria-label', DISPLAY_NAME);
@@ -318,6 +359,8 @@
         const row = document.createElement('div');
         row.id = ROW_ID;
         row.className = 'list-group-item flex-container flexGap5 interactable ai-wbr-extension-row';
+        row.dataset.aiWbrEntry = 'true';
+        row.dataset.extensionId = 'ai_worldbook_router';
         row.setAttribute('role', 'listitem');
         row.tabIndex = 0;
         row.title = DISPLAY_NAME;
@@ -362,31 +405,33 @@
     }
 
     function createFallbackButton() {
-        if (document.getElementById(FALLBACK_BUTTON_ID) || document.getElementById('ai_wbr_fab')) return;
+        if (document.getElementById(FALLBACK_BUTTON_ID)) return;
 
         const button = document.createElement('button');
         button.id = FALLBACK_BUTTON_ID;
         button.type = 'button';
-        button.textContent = '\u4e16\u754c\u4e66';
+        button.textContent = '\u8bb0\u5fc6';
         button.title = '\u6253\u5f00\u4e16\u754c\u4e66\u8bfb\u53d6\u63a7\u5236\u53f0';
         button.setAttribute('aria-label', '\u6253\u5f00\u4e16\u754c\u4e66\u8bfb\u53d6\u63a7\u5236\u53f0');
         button.style.cssText = [
             'position:fixed',
-            'right:14px',
-            'bottom:calc(82px + env(safe-area-inset-bottom, 0px))',
+            'right:10px',
+            'top:48vh',
             'z-index:2147483647',
-            'min-width:58px',
-            'height:42px',
-            'padding:0 10px',
+            'min-width:46px',
+            'height:46px',
+            'padding:0 9px',
             'border-radius:999px',
             'border:1px solid rgba(176,225,255,.72)',
             'background:rgba(20,24,34,.96)',
             'color:#d7f5ff',
             'font-size:13px',
             'font-weight:700',
+            'line-height:1',
             'box-shadow:0 10px 24px rgba(0,0,0,.35),0 0 18px rgba(125,212,255,.28)',
             'backdrop-filter:blur(8px)',
             'cursor:pointer',
+            'touch-action:none',
         ].join(';');
         button.addEventListener('pointerdown', handleOpen, true);
         button.addEventListener('touchstart', handleOpen, { capture: true, passive: false });
@@ -434,6 +479,7 @@
         createFallbackButton();
         mountExtensionMenuEntry();
         watchExtensionMenuButton();
+        bindGlobalEntryDelegates();
         startDomObserver();
         startRetryMounting();
         console.warn(LOG_PREFIX + ' v' + VERSION + ' mounted - bootstrap is executing', { baseUrl });
