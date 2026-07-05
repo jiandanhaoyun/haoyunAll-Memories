@@ -6,7 +6,7 @@
     'use strict';
 
     const NAMESPACE = 'AIWorldbookRouter';
-const VERSION = '0.5.19';
+const VERSION = '0.5.20';
     const LOG_PREFIX = '[AI Worldbook Router Bootstrap]';
     const ENTRY_ID = 'ai_wbr_extension_entry';
     const ROW_ID = 'ai_wbr_extension_row';
@@ -179,7 +179,7 @@ const VERSION = '0.5.19';
 
     function closeHostMenusBeforeOpen() {
         document.getElementById('extensionsMenu')?.classList?.remove?.('open');
-        document.querySelectorAll('.drawer-content.openDrawer, .drawer-content.open, .popup, .menu, .list-group, .openDrawer, .open')
+        document.querySelectorAll('.drawer-content.openDrawer, .drawer-content.open, #extensionsMenu.open, #top-settings-holder.open, .popup.open, .menu.open')
             .forEach((node) => {
                 if (node.id !== 'ai_wbr_floating_window' && !node.closest?.('#ai_wbr_floating_window')) {
                     node.classList?.remove?.('openDrawer');
@@ -482,7 +482,7 @@ const VERSION = '0.5.19';
         const forcePanel = !!options.forcePanel;
         const directUserOpen = !!options.source;
         const diagnosticsEnabled = isEntryDiagnosticsEnabled();
-        if (now - lastOpenAt < 120 && !directUserOpen && !forcePanel) return;
+        if (now - lastOpenAt < 180 && !forcePanel) return;
         lastOpenAt = now;
 
         keepPanelUntil = Date.now() + ((forcePanel || diagnosticsEnabled) ? 1600 : 0);
@@ -529,6 +529,7 @@ const VERSION = '0.5.19';
         event?.stopPropagation?.();
         event?.stopImmediatePropagation?.();
         const openNow = () => openConsole({ source: event?.type || '入口' });
+        openNow();
         window.setTimeout(openNow, 20);
         window.setTimeout(openNow, 90);
         window.setTimeout(openNow, 240);
@@ -549,9 +550,11 @@ const VERSION = '0.5.19';
         } catch (_) {
             // no-op
         }
-        window.setTimeout(() => openConsole({ source: event?.type || '悬浮按钮' }), 20);
-        window.setTimeout(() => openConsole({ source: event?.type || '悬浮按钮' }), 220);
-        window.setTimeout(() => openConsole({ source: event?.type || '悬浮按钮' }), 520);
+        const openNow = () => openConsole({ source: event?.type || '悬浮按钮' });
+        openNow();
+        window.setTimeout(openNow, 20);
+        window.setTimeout(openNow, 220);
+        window.setTimeout(openNow, 520);
         return false;
     }
 

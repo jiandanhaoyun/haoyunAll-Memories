@@ -7013,19 +7013,66 @@ function createFloatingMemoryWindow() {
         ].forEach((property) => node.style.removeProperty(property));
     }
 
+    function clampWindowToViewport() {
+        const node = win?.[0];
+        if (!node) return;
+        const viewportWidth = Math.max(1, globalThis.visualViewport?.width || window.innerWidth || document.documentElement.clientWidth || 1);
+        const viewportHeight = Math.max(1, globalThis.visualViewport?.height || window.innerHeight || document.documentElement.clientHeight || 1);
+        const mobile = viewportWidth <= 640 || viewportHeight <= 520;
+        if (mobile) {
+            node.style.setProperty('position', 'fixed', 'important');
+            node.style.setProperty('inset', '0', 'important');
+            node.style.setProperty('left', '0', 'important');
+            node.style.setProperty('top', '0', 'important');
+            node.style.setProperty('right', 'auto', 'important');
+            node.style.setProperty('bottom', 'auto', 'important');
+            node.style.setProperty('width', '100vw', 'important');
+            node.style.setProperty('height', '100dvh', 'important');
+            node.style.setProperty('max-width', '100vw', 'important');
+            node.style.setProperty('max-height', '100dvh', 'important');
+            node.style.setProperty('border-radius', '0', 'important');
+            return;
+        }
+
+        const rect = node.getBoundingClientRect();
+        const width = Math.min(Math.max(320, rect.width || node.offsetWidth || 720), Math.max(320, viewportWidth - 16));
+        const height = Math.min(Math.max(360, rect.height || node.offsetHeight || 640), Math.max(360, viewportHeight - 16));
+        const nextLeft = Math.max(8, Math.min(Number.isFinite(rect.left) ? rect.left : viewportWidth - width - 24, viewportWidth - width - 8));
+        const nextTop = Math.max(8, Math.min(Number.isFinite(rect.top) ? rect.top : viewportHeight - height - 88, viewportHeight - height - 8));
+        node.style.setProperty('position', 'fixed', 'important');
+        node.style.setProperty('left', `${nextLeft}px`, 'important');
+        node.style.setProperty('top', `${nextTop}px`, 'important');
+        node.style.setProperty('right', 'auto', 'important');
+        node.style.setProperty('bottom', 'auto', 'important');
+        node.style.setProperty('width', `${width}px`, 'important');
+        node.style.setProperty('height', `${height}px`, 'important');
+        node.style.setProperty('max-width', 'calc(100vw - 16px)', 'important');
+        node.style.setProperty('max-height', 'calc(100dvh - 16px)', 'important');
+    }
+
     function forceWindowVisible(tabId = getStandaloneTabId()) {
         const node = win?.[0];
         if (!node) return;
         win.removeClass('closing').addClass('open');
+        node.hidden = false;
+        node.removeAttribute('aria-hidden');
         node.style.setProperty('visibility', 'visible', 'important');
         node.style.setProperty('opacity', '1', 'important');
         node.style.setProperty('pointer-events', 'auto', 'important');
         node.style.setProperty('z-index', '2147483646', 'important');
         node.style.setProperty('display', 'flex', 'important');
         node.style.setProperty('transform', 'none', 'important');
+        clampWindowToViewport();
         renderStandaloneConsole(tabId || 'overview');
         // 动画结束后再渲染一次，确保记忆 SVG 取到动画终态的准确尺寸
-        setTimeout(() => renderStandaloneConsole(tabId || getStandaloneTabId()), 340);
+        setTimeout(() => {
+            clampWindowToViewport();
+            renderStandaloneConsole(tabId || getStandaloneTabId());
+        }, 120);
+        setTimeout(() => {
+            clampWindowToViewport();
+            renderStandaloneConsole(tabId || getStandaloneTabId());
+        }, 340);
     }
 
     function openWindow(tabId = getStandaloneTabId()) {
@@ -7281,7 +7328,20 @@ function createFloatingMemoryWindow() {
         .on('resize.aiWbrFabSafeArea orientationchange.aiWbrFabSafeArea', () => {
             setTimeout(clampFloatingFabToViewport, 80);
             setTimeout(clampFloatingFabToViewport, 360);
+            if (win.hasClass('open')) {
+                setTimeout(clampWindowToViewport, 80);
+                setTimeout(clampWindowToViewport, 360);
+            }
         });
+
+    globalThis.visualViewport?.addEventListener?.('resize', () => {
+        clampFloatingFabToViewport();
+        if (win.hasClass('open')) clampWindowToViewport();
+    }, { passive: true });
+    globalThis.visualViewport?.addEventListener?.('scroll', () => {
+        clampFloatingFabToViewport();
+        if (win.hasClass('open')) clampWindowToViewport();
+    }, { passive: true });
 
     renderStandaloneConsole('overview');
 }
