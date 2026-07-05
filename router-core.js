@@ -110,6 +110,8 @@ const defaultSettings = {
     memoryReviewRequired: true,
     memoryDebug: false,
     memoryScopeDebug: false,
+    memoryHistorySkipDone: true,
+    memoryHistoryMode: 'history',
     memoryScanMessages: 6,
     memoryRequestMaxTokens: 10000,
     memoryRetries: 3,
@@ -1763,6 +1765,9 @@ function normalizeChatMemoryContainer(container) {
     normalized.lastPrompt = String(normalized.lastPrompt || '');
     normalized.lastRaw = String(normalized.lastRaw || '');
     normalized.lastError = String(normalized.lastError || '');
+    normalized.historyImports = Array.isArray(normalized.historyImports)
+        ? normalized.historyImports.filter(item => item && typeof item === 'object').slice(0, 120)
+        : [];
     normalized.reviewQueue = Array.isArray(normalized.reviewQueue)
         ? normalized.reviewQueue.filter(item => item && typeof item === 'object').slice(0, 40)
         : [];
@@ -2191,6 +2196,126 @@ function getMemoryRelevantMessages(chat, count) {
         .filter(message => message.text);
 }
 
+function getAllMemoryMessages(chat) {
+    return (Array.isArray(chat) ? chat : [])
+        .map((message, index) => ({ message, index }))
+        .filter(({ message }) => message && !message.is_system && message.mes)
+        .map(({ message, index }) => ({
+            index,
+            floor: index + 1,
+            messageId: String(message.id || message.messageId || message.extra?.id || message.send_date || ''),
+            swipeId: String(message.swipe_id ?? message.swipeId ?? message.extra?.swipe_id ?? message.extra?.swipeId ?? ''),
+            name: message.name || '',
+            text: sanitizeMemoryMessageText(message.is_user ? extractActualUserInput(message.mes) : String(message.mes || '')),
+            isUser: !!message.is_user,
+        }))
+        .filter(message => message.text);
+}
+
+function getHistoryImportRangeFromUi(context = getContext()) {
+    const messages = getAllMemoryMessages(Array.isArray(context?.chat) ? context.chat : []);
+    const maxFloor = messages.length ? Math.max(...messages.map(message => message.floor)) : 0;
+    const startRaw = Number($('#ai_wbr_memory_history_start_floor').val());
+    const endRaw = Number($('#ai_wbr_memory_history_end_floor').val());
+    const startFloor = clampNumber(Number.isFinite(startRaw) ? startRaw : 1, 1, 1, Math.max(1, maxFloor));
+    const endFloor = clampNumber(Number.isFinite(endRaw) ? endRaw : maxFloor, maxFloor, 1, Math.max(1, maxFloor));
+    const first = Math.min(startFloor, endFloor);
+    const last = Math.max(startFloor, endFloor);
+    return {
+        startFloor: first,
+        endFloor: last,
+        maxFloor,
+        messages: messages.filter(message => message.floor >= first && message.floor <= last),
+    };
+}
+
+function buildHistoryImportPreview(rangeInfo, context = getContext()) {
+    const box = $('#ai_wbr_memory_history_preview_box');
+    const status = $('#ai_wbr_memory_history_status');
+    if (!box.length && !status.length) {
+        return;
+    }
+
+    const messages = Array.isArray(rangeInfo?.messages) ? rangeInfo.messages : [];
+    const signature = messages.length ? getHistoryImportSignature(messages, context) : '';
+    const imported = signature ? getHistoryImportRecord(signature, context) : null;
+    const floorLabel = rangeInfo?.maxFloor
+        ? `${rangeInfo.startFloor}-${rangeInfo.endFloor} / 共 ${rangeInfo.maxFloor} 层`
+        : '当前聊天没有可整理楼层';
+    status.text(messages.length
+        ? `已选 ${floorLabel}，可整理 ${messages.length} 条消息${imported ? '，此范围已补录过' : ''}。`
+        : `已选 ${floorLabel}。`);
+
+    box.empty();
+    if (!messages.length) {
+        box.append('<div class="ai-wbr-token-empty">这个范围内没有可整理的聊天内容。</div>');
+        return;
+    }
+
+    box.append(
+        $('<div class="ai-wbr-memory-history-preview-meta"></div>')
+            .text(`${messages[0].floor}-${messages[messages.length - 1].floor} 楼 · ${messages.length} 条 · ${imported ? '已补录' : '未补录'}`),
+    );
+    for (const message of messages.slice(0, 6)) {
+        box.append(
+            $('<div class="ai-wbr-memory-history-preview-item"></div>')
+                .append($('<b></b>').text(`#${message.floor} ${message.name || (message.isUser ? 'User' : 'Assistant')}`))
+                .append($('<span></span>').text(truncateText(message.text, 180))),
+        );
+    }
+    if (messages.length > 6) {
+        box.append($('<div class="ai-wbr-memory-history-preview-more"></div>').text(`还有 ${messages.length - 6} 条未展示，将一起整理。`));
+    }
+}
+
+function getHistoryImportSignature(messages, context = getContext()) {
+    const chatKey = getCurrentChatMemoryKey(context);
+    const sourceSignature = getMemorySourceSignature(messages);
+    const firstFloor = messages[0]?.floor || 0;
+    const lastFloor = messages[messages.length - 1]?.floor || 0;
+    return `hist_${hashString(`${chatKey}|${firstFloor}|${lastFloor}|${messages.length}|${sourceSignature}`)}`;
+}
+
+function getHistoryImportRecord(signature, context = getContext()) {
+    const container = getChatMemoryContainer(context);
+    return (Array.isArray(container.historyImports) ? container.historyImports : [])
+        .find(item => String(item.signature || '') === String(signature || ''));
+}
+
+function recordHistoryImport(signature, source, context = getContext()) {
+    if (!signature) {
+        return;
+    }
+    const container = getChatMemoryContainer(context);
+    const records = Array.isArray(container.historyImports) ? container.historyImports : [];
+    const nextRecord = {
+        signature,
+        source,
+        createdAt: new Date().toISOString(),
+    };
+    container.historyImports = [
+        nextRecord,
+        ...records.filter(item => String(item.signature || '') !== signature),
+    ].slice(0, 120);
+    persistChatMemoryContainer(container, context);
+}
+
+function setHistoryImportRange(startFloor, endFloor, context = getContext()) {
+    const messages = getAllMemoryMessages(Array.isArray(context?.chat) ? context.chat : []);
+    const maxFloor = messages.length ? Math.max(...messages.map(message => message.floor)) : 0;
+    if (!maxFloor) {
+        $('#ai_wbr_memory_history_start_floor').val('');
+        $('#ai_wbr_memory_history_end_floor').val('');
+        buildHistoryImportPreview({ startFloor: 1, endFloor: 1, maxFloor: 0, messages: [] }, context);
+        return;
+    }
+    const first = clampNumber(startFloor, 1, 1, maxFloor);
+    const last = clampNumber(endFloor, maxFloor, 1, maxFloor);
+    $('#ai_wbr_memory_history_start_floor').val(Math.min(first, last));
+    $('#ai_wbr_memory_history_end_floor').val(Math.max(first, last));
+    buildHistoryImportPreview(getHistoryImportRangeFromUi(context), context);
+}
+
 function getMemoryAutoRunMessageCount(context = getContext()) {
     const chat = Array.isArray(context?.chat) ? context.chat : [];
     return chat.filter(message => message && !message.is_system && message.mes).length;
@@ -2267,6 +2392,20 @@ function isMemorySourceCurrent(source, context = getContext()) {
         return false;
     }
     const chat = Array.isArray(context?.chat) ? context.chat : [];
+    if (source.mode === 'history') {
+        const startFloor = Number(source.rangeStartFloor || 0);
+        const endFloor = Number(source.rangeEndFloor || 0);
+        if (!startFloor || !endFloor) {
+            return true;
+        }
+        const currentMessages = getAllMemoryMessages(chat)
+            .filter(message => message.floor >= Math.min(startFloor, endFloor) && message.floor <= Math.max(startFloor, endFloor));
+        const last = currentMessages[currentMessages.length - 1] || {};
+        return currentMessages.length === Number(source.scanMessages || 0)
+            && getMemorySourceSignature(currentMessages) === String(source.sourceSignature || '')
+            && Number(last.index ?? -1) === Number(source.lastIndex ?? -1)
+            && hashString(last.text || '') === String(source.lastHash || '');
+    }
     const scanCount = clampNumber(source.scanMessages, settings.memoryRealtimeScanMessages || settings.memoryScanMessages, 2, 40);
     const currentMessages = getMemoryRelevantMessages(chat, scanCount);
     const current = getMemorySourceSnapshot(context, currentMessages);
@@ -2852,6 +2991,176 @@ function stopMemoryAnimation(success = true) {
     } else {
         underline.addClass('ai-wbr-book-underline-error');
         setTimeout(() => underline.remove(), 980);
+    }
+}
+
+async function runHistoryMemoryImport() {
+    if (!settings.memoryEnabled || isMemoryWorkerRunning || isRouterSelectionRequest) {
+        toastr?.warning?.('记忆整理正在运行，稍后再试。', '世界书读取');
+        return false;
+    }
+
+    const context = getContext();
+    const memoryRunChatKey = getCurrentChatMemoryKey(context);
+    const rangeInfo = getHistoryImportRangeFromUi(context);
+    const recentMessages = rangeInfo.messages;
+    buildHistoryImportPreview(rangeInfo, context);
+
+    if (recentMessages.length < 2) {
+        setMemoryStatus('历史补录失败：所选楼层不足 2 条可整理消息', context);
+        toastr?.warning?.('请选择至少 2 条有效聊天楼层。', '世界书读取');
+        return false;
+    }
+
+    const mode = String($('#ai_wbr_memory_history_mode').val() || settings.memoryHistoryMode || 'history');
+    saveSetting('memoryHistoryMode', mode);
+    const skipDone = !!$('#ai_wbr_memory_history_skip_done').prop('checked');
+    saveSetting('memoryHistorySkipDone', skipDone);
+
+    const signature = getHistoryImportSignature(recentMessages, context);
+    const existingRecord = getHistoryImportRecord(signature, context);
+    if (skipDone && existingRecord) {
+        setMemoryStatus(`历史补录已跳过：${rangeInfo.startFloor}-${rangeInfo.endFloor} 楼已整理过`, context);
+        toastr?.info?.('这个楼层范围已经补录过，已按设置跳过。', '世界书读取');
+        return false;
+    }
+
+    const source = {
+        ...getMemorySourceSnapshot(context, recentMessages, recentMessages.length),
+        id: signature,
+        mode: 'history',
+        importMode: mode,
+        scanMessages: recentMessages.length,
+        rangeStartFloor: rangeInfo.startFloor,
+        rangeEndFloor: rangeInfo.endFloor,
+        indices: recentMessages.map(message => message.index).filter(index => Number.isFinite(index)),
+    };
+
+    isMemoryWorkerRunning = true;
+    startMemoryAnimation();
+    setMemoryStatus(`历史补录整理中：${rangeInfo.startFloor}-${rangeInfo.endFloor} 楼`, context);
+
+    try {
+        const graph = getMemoryGraph(context);
+        const prompt = buildMemoryExtractionPrompt(recentMessages, graph)
+            + `\n\n<history_import_mode>${mode === 'summary' ? '阶段摘要：优先压缩这段楼层的阶段性剧情、关系变化和未解问题。' : '长期记忆：优先提取可复用的事实、关系、设定、承诺和关键事件。'}</history_import_mode>`
+            + `\n<history_import_range>第 ${rangeInfo.startFloor} 楼到第 ${rangeInfo.endFloor} 楼，共 ${recentMessages.length} 条有效消息。</history_import_range>`;
+        const maxAttempts = Math.max(1, Number(settings.memoryRetries || 0) + 1);
+        const baseSystemPrompt = '你是后置轻量记忆变量块输出器。禁止解释，禁止 reasoning，禁止 Markdown，禁止 JSON 对象；只输出指定变量块。';
+        const retrySystemPrompt = '你是变量块输出器。禁止空回复，禁止解释，禁止思考过程，直接输出变量块。';
+        let raw = '';
+        let lastError = null;
+        setCurrentMemoryLastRaw('', context);
+        setCurrentMemoryLastError('', context);
+
+        for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+            const useRetryPrompt = attempt > 1;
+            const activePrompt = useRetryPrompt ? buildMemoryExtractionRetryPrompt(recentMessages, graph) : prompt;
+            const activeSystemPrompt = useRetryPrompt ? retrySystemPrompt : baseSystemPrompt;
+            const promptLog = useRetryPrompt
+                ? `${prompt}\n\n----- HISTORY RETRY #${attempt - 1} PROMPT -----\n\n${activePrompt}`
+                : prompt;
+            setCurrentMemoryLastPrompt(promptLog, context);
+
+            try {
+                isRouterSelectionRequest = true;
+                raw = await requestMemoryExtraction(context, activePrompt, activeSystemPrompt);
+            } catch (error) {
+                lastError = error;
+                if (isGatewayLikeError(error) || attempt >= maxAttempts) {
+                    throw error;
+                }
+                playStatusBurst('🔄', 'retry');
+                continue;
+            } finally {
+                isRouterSelectionRequest = false;
+            }
+
+            setCurrentMemoryLastRaw(summarizeRouterResponse(raw), context);
+
+            if (hasEmptyVisibleContentDueToLength(raw)) {
+                lastError = new Error('Memory extraction returned empty visible content due to length.');
+                if (attempt >= maxAttempts) {
+                    throw lastError;
+                }
+                playStatusBurst('🔄', 'retry');
+                continue;
+            }
+
+            try {
+                const update = parseMemoryUpdate(raw, promptLog);
+                setCurrentMemoryLastError('', context);
+                if (getCurrentChatMemoryKey() !== memoryRunChatKey) {
+                    debugLog('Discarded history memory import because chat changed before completion', {
+                        started: memoryRunChatKey,
+                        current: getCurrentChatMemoryKey(),
+                    });
+                    return false;
+                }
+
+                const container = getChatMemoryContainer(context);
+                container.graphBackup = cloneMemoryGraph(graph);
+                persistChatMemoryContainer(container, context);
+
+                if (settings.memoryReviewRequired) {
+                    const review = enqueueMemoryReview(update, {
+                        reason: 'history_import',
+                        signature,
+                        source,
+                        prompt: promptLog,
+                        raw: summarizeRouterResponse(raw),
+                    }, context);
+                    recordHistoryImport(signature, source, context);
+                    setCurrentMemorySource(source, context);
+                    setMemoryStatus(`历史补录待确认：${rangeInfo.startFloor}-${rangeInfo.endFloor} 楼 · ${getMemoryReviewQueue(context).length} 条待确认`, context);
+                    playStatusBurst('✦', 'memory');
+                    toastr?.info?.(`历史补录已加入待确认：${review.title}`, '世界书读取');
+                    stopMemoryAnimation(true);
+                    return true;
+                }
+
+                const memoryResult = applyMemoryGraphUpdate(update, context);
+                recordHistoryImport(signature, source, context);
+                setCurrentMemorySource(source, context);
+                setMemoryStatus(`历史补录已更新：${rangeInfo.startFloor}-${rangeInfo.endFloor} 楼 · ${memoryResult.graph.nodes.length} 节点 / ${memoryResult.graph.links.length} 关系`, context);
+                if (memoryResult.touchedEntries.length) {
+                    playEntryBurst(memoryResult.touchedEntries, {
+                        variant: 'memory',
+                        labelGetter: getMemoryBurstLabel,
+                    });
+                } else {
+                    playStatusBurst('✦', 'memory');
+                }
+                stopMemoryAnimation(true);
+                return true;
+            } catch (error) {
+                lastError = error;
+                setCurrentMemoryLastError(error?.message || String(error), context);
+                if (attempt >= maxAttempts) {
+                    throw error;
+                }
+                playStatusBurst('🔄', 'retry');
+            }
+        }
+
+        throw lastError || new Error('History memory import failed.');
+    } catch (error) {
+        console.warn(`${LOG_PREFIX} History memory import failed`, error);
+        setCurrentMemoryLastError(error?.message || String(error), context);
+        if (error?.routerRaw && !getCurrentMemoryLastRaw(context)) {
+            setCurrentMemoryLastRaw(error.routerRaw, context);
+        }
+        if (error?.routerPrompt && !getCurrentMemoryLastPrompt(context)) {
+            setCurrentMemoryLastPrompt(error.routerPrompt, context);
+        }
+        setMemoryStatus(`历史补录失败：${truncateText(error?.message || error, 80)}`, context);
+        playStatusBurst('×', 'fail');
+        stopMemoryAnimation(false);
+        return false;
+    } finally {
+        isMemoryWorkerRunning = false;
+        buildHistoryImportPreview(getHistoryImportRangeFromUi(context), context);
+        renderMemoryPanel();
     }
 }
 
@@ -5460,6 +5769,9 @@ function renderMemoryPanel(scope = 'all') {
         $('#ai_wbr_memory_error').text(getCurrentMemoryLastError() || '尚无错误');
         renderMemoryDashboard(graph);
         renderMemoryReviewQueue();
+        if ($('#ai_wbr_memory_history_preview_box').length) {
+            buildHistoryImportPreview(getHistoryImportRangeFromUi(), getContext());
+        }
     }
     renderMemoryGraphSvg(graph);
     renderMemoryNodeEditor(graph);
@@ -5715,6 +6027,7 @@ function bindMemoryPanelActions() {
     bindCheckbox('#ai_wbr_memory_review_required', 'memoryReviewRequired');
     bindCheckbox('#ai_wbr_memory_debug', 'memoryDebug');
     bindCheckbox('#ai_wbr_memory_scope_debug', 'memoryScopeDebug');
+    bindCheckbox('#ai_wbr_memory_history_skip_done', 'memoryHistorySkipDone');
     bindNumber('#ai_wbr_memory_auto_run_interval', 'memorySummaryIntervalMessages', 1, 100);
     bindNumber('#ai_wbr_memory_scan_messages', 'memorySummaryScanMessages', 2, 40);
     bindNumber('#ai_wbr_memory_realtime_scan_messages', 'memoryRealtimeScanMessages', 2, 40);
@@ -5723,6 +6036,45 @@ function bindMemoryPanelActions() {
     bindNumber('#ai_wbr_memory_retries', 'memoryRetries', 0, 10);
     bindNumber('#ai_wbr_memory_max_nodes', 'memoryMaxNodes', 5, 200);
     bindNumber('#ai_wbr_memory_max_links', 'memoryMaxLinks', 0, 400);
+
+    $('#ai_wbr_memory_history_mode')
+        .val(settings.memoryHistoryMode || 'history')
+        .on('change', function () {
+            const nextMode = String($(this).val() || 'history');
+            saveSetting('memoryHistoryMode', ['history', 'summary'].includes(nextMode) ? nextMode : 'history');
+        });
+
+    $('[data-ai-wbr-history-range]').on('click', function (event) {
+        event.preventDefault();
+        const context = getContext();
+        const messages = getAllMemoryMessages(Array.isArray(context?.chat) ? context.chat : []);
+        const maxFloor = messages.length ? Math.max(...messages.map(message => message.floor)) : 0;
+        const range = String($(this).data('aiWbrHistoryRange') || '');
+        if (!maxFloor) {
+            setHistoryImportRange(1, 1, context);
+            return;
+        }
+        if (range === 'all') {
+            setHistoryImportRange(1, maxFloor, context);
+            return;
+        }
+        const count = clampNumber(Number(range), 20, 1, 100000);
+        setHistoryImportRange(Math.max(1, maxFloor - count + 1), maxFloor, context);
+    });
+
+    $('#ai_wbr_memory_history_start_floor, #ai_wbr_memory_history_end_floor').on('input change', () => {
+        buildHistoryImportPreview(getHistoryImportRangeFromUi(), getContext());
+    });
+
+    $('#ai_wbr_memory_history_preview').on('click', (event) => {
+        event.preventDefault();
+        buildHistoryImportPreview(getHistoryImportRangeFromUi(), getContext());
+    });
+
+    $('#ai_wbr_memory_history_import').on('click', async (event) => {
+        event.preventDefault();
+        await runHistoryMemoryImport();
+    });
 
     $('#ai_wbr_memory_run_now').on('click', async (event) => {
         event.preventDefault();

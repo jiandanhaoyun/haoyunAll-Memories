@@ -200,6 +200,37 @@
                     <span id="ai_wbr_memory_status" class="ai-wbr-status">未启用</span>
                 </div>
 
+                <div class="ai-wbr-memory-history-import">
+                    <div class="ai-wbr-memory-subtitle">
+                        <b>历史聊天补录</b>
+                        <small>把已经存在的旧楼层按范围整理进当前记忆。</small>
+                    </div>
+                    <div class="ai-wbr-memory-history-grid">
+                        <label for="ai_wbr_memory_history_start_floor">起始楼层</label>
+                        <input id="ai_wbr_memory_history_start_floor" class="text_pole" type="number" min="1" step="1" placeholder="1" />
+                        <label for="ai_wbr_memory_history_end_floor">结束楼层</label>
+                        <input id="ai_wbr_memory_history_end_floor" class="text_pole" type="number" min="1" step="1" placeholder="当前最新" />
+                        <label for="ai_wbr_memory_history_mode">整理方式</label>
+                        <select id="ai_wbr_memory_history_mode" class="text_pole">
+                            <option value="history">补录为长期记忆</option>
+                            <option value="summary">补录为阶段摘要</option>
+                        </select>
+                    </div>
+                    <label class="checkbox_label" for="ai_wbr_memory_history_skip_done">
+                        <input id="ai_wbr_memory_history_skip_done" type="checkbox" />
+                        <span>跳过已补录过的楼层范围</span>
+                    </label>
+                    <div class="ai-wbr-memory-history-actions">
+                        <button class="menu_button" type="button" data-ai-wbr-history-range="all">全部聊天</button>
+                        <button class="menu_button" type="button" data-ai-wbr-history-range="20">最近 20 层</button>
+                        <button class="menu_button" type="button" data-ai-wbr-history-range="50">最近 50 层</button>
+                        <button id="ai_wbr_memory_history_preview" class="menu_button" type="button">预览范围</button>
+                        <button id="ai_wbr_memory_history_import" class="menu_button" type="button">整理写入</button>
+                    </div>
+                    <div id="ai_wbr_memory_history_status" class="ai-wbr-memory-history-status">尚未选择楼层范围。</div>
+                    <div id="ai_wbr_memory_history_preview_box" class="ai-wbr-memory-history-preview"></div>
+                </div>
+
                 <div id="ai_wbr_memory_dashboard" class="ai-wbr-memory-dashboard"></div>
                 <div id="ai_wbr_memory_review_queue" class="ai-wbr-memory-review-queue"></div>
                 <div id="ai_wbr_memory_state_editor" class="ai-wbr-memory-state-editor"></div>
