@@ -147,6 +147,7 @@ const defaultSettings = {
     bookshelfApiUrl: '',
     bookshelfApiKey: '',
     bookshelfApiModel: '',
+    bookshelfApiModels: [],
     bookshelfApiBatchSize: 8,
     bookshelfLocalModelId: 'Xenova/paraphrase-multilingual-MiniLM-L12-v2',
     bookshelfLocalModelStatus: 'not_loaded',
@@ -1855,6 +1856,35 @@ function setBookshelfModelStatus(text) {
     $('#ai_wbr_bookshelf_model_status').text(String(text || '未测试'));
 }
 
+function renderBookshelfApiModelOptions() {
+    const select = $('#ai_wbr_bookshelf_api_model');
+    if (!select.length || !select.is('select')) return;
+
+    const models = Array.isArray(settings.bookshelfApiModels)
+        ? settings.bookshelfApiModels.map(model => String(model || '').trim()).filter(Boolean)
+        : [];
+    const current = String(settings.bookshelfApiModel || '').trim();
+    select.empty().append($('<option></option>', {
+        value: '',
+        text: models.length ? '请选择向量模型' : '先点击“获取模型”',
+    }));
+    for (const model of models) {
+        select.append($('<option></option>', {
+            value: model,
+            text: model,
+            selected: model === current,
+        }));
+    }
+    if (current && !models.includes(current)) {
+        select.append($('<option></option>', {
+            value: current,
+            text: `${current}（手动）`,
+            selected: true,
+        }));
+    }
+    select.val(current);
+}
+
 function syncBookshelfProviderVisibility() {
     const mode = getBookshelfEmbeddingMode();
     const toggleField = (id, visible) => {
@@ -1865,11 +1895,58 @@ function syncBookshelfProviderVisibility() {
     toggleField('#ai_wbr_bookshelf_api_url', mode === 'api');
     toggleField('#ai_wbr_bookshelf_api_key', mode === 'api');
     toggleField('#ai_wbr_bookshelf_api_model', mode === 'api');
+    $('#ai_wbr_bookshelf_fetch_models').toggle(mode === 'api');
     toggleField('#ai_wbr_bookshelf_local_model', mode === 'browser-local');
     $('#ai_wbr_bookshelf_load_local').toggle(mode === 'browser-local');
     setBookshelfModelStatus(mode === 'browser-local'
         ? `本地模型状态：${settings.bookshelfLocalModelStatus || 'not_loaded'}`
         : (settings.bookshelfApiModel ? `API 模型：${settings.bookshelfApiModel}` : 'API 未配置'));
+}
+
+function getBookshelfModelsApiUrl() {
+    const base = normalizeUrl(settings.bookshelfApiUrl || '');
+    if (!base) {
+        throw new Error('请先填写书架 API 地址。');
+    }
+    if (/\/models$/i.test(base)) return base;
+    if (/\/embeddings$/i.test(base)) return base.replace(/\/embeddings$/i, '/models');
+    if (/\/v1$/i.test(base)) return `${base}/models`;
+    return `${base.replace(/\/$/, '')}/v1/models`;
+}
+
+async function fetchBookshelfApiModels() {
+    const apiUrl = getBookshelfModelsApiUrl();
+    const apiKey = String(settings.bookshelfApiKey || '').trim();
+    const headers = { 'Content-Type': 'application/json' };
+    if (apiKey) {
+        headers.Authorization = `Bearer ${apiKey}`;
+    }
+
+    setBookshelfModelStatus('正在获取模型...');
+    const response = await fetch(apiUrl, {
+        method: 'GET',
+        headers,
+        cache: 'no-cache',
+    });
+    const data = await response.json().catch(() => ({}));
+    const models = Array.isArray(data?.data)
+        ? data.data.map(model => String(model?.id || model?.name || '')).filter(Boolean)
+        : [];
+
+    if (!response.ok || !models.length) {
+        throw new Error(data?.error?.message || data?.message || `没有拿到可用模型（HTTP ${response.status}）`);
+    }
+
+    settings.bookshelfApiModels = uniqueStrings(models);
+    if (!settings.bookshelfApiModel || !settings.bookshelfApiModels.includes(settings.bookshelfApiModel)) {
+        settings.bookshelfApiModel = settings.bookshelfApiModels[0] || '';
+    }
+    Object.assign(extension_settings[MODULE_NAME], settings);
+    saveSettingsDebounced();
+    renderBookshelfApiModelOptions();
+    $('#ai_wbr_bookshelf_api_model').val(settings.bookshelfApiModel || '');
+    setBookshelfModelStatus(`已获取 ${settings.bookshelfApiModels.length} 个模型`);
+    toastr?.success?.(`已获取 ${settings.bookshelfApiModels.length} 个向量模型`, '书架向量库');
 }
 
 function readBookshelfTextFile(file) {
@@ -5563,77 +5640,115 @@ function createBookshelfStandaloneFold() {
     return $(`
         <details class="ai-wbr-memory-fold ai-wbr-bookshelf-fold" open>
             <summary>
-                <span>书架向量库</span>
-                <small>导入 TXT 后需手动调用 API 或浏览器本地模型向量化；图谱记忆可同步建立向量索引。</small>
+                <span>书架</span>
+                <small>像小说软件书架一样管理 TXT 补充资料；高级设置从侧边打开。</small>
             </summary>
             <div id="ai_wbr_bookshelf_panel" class="ai-wbr-memory-fold-body ai-wbr-bookshelf-panel">
-                <div class="ai-wbr-bookshelf-switches">
-                    <label class="checkbox_label" for="ai_wbr_bookshelf_enabled"><input id="ai_wbr_bookshelf_enabled" type="checkbox" />启用向量召回</label>
-                    <label class="checkbox_label" for="ai_wbr_bookshelf_auto_inject"><input id="ai_wbr_bookshelf_auto_inject" type="checkbox" />发送前自动注入</label>
-                    <label class="checkbox_label" for="ai_wbr_bookshelf_memory_vector"><input id="ai_wbr_bookshelf_memory_vector" type="checkbox" />图谱记忆参与向量召回</label>
-                    <label class="checkbox_label" for="ai_wbr_bookshelf_only_bound"><input id="ai_wbr_bookshelf_only_bound" type="checkbox" />仅召回绑定书籍</label>
-                    <label class="checkbox_label" for="ai_wbr_bookshelf_allow_global"><input id="ai_wbr_bookshelf_allow_global" type="checkbox" />允许全局书籍</label>
-                </div>
-                <div class="ai-wbr-bookshelf-import">
-                    <input id="ai_wbr_bookshelf_file" type="file" accept=".txt,text/plain" multiple hidden />
-                    <select id="ai_wbr_bookshelf_import_type" class="text_pole">
-                        <option value="plot">剧情记录</option>
-                        <option value="character">人物档案</option>
-                        <option value="world">世界观</option>
-                        <option value="rule">规则设定</option>
-                        <option value="other">其他资料</option>
-                    </select>
-                    <select id="ai_wbr_bookshelf_import_binding" class="text_pole">
-                        <option value="character">绑定当前角色</option>
-                        <option value="chat">绑定当前聊天</option>
-                        <option value="global">全局补充</option>
-                        <option value="none">暂不绑定</option>
-                    </select>
-                    <button id="ai_wbr_bookshelf_import" class="menu_button" type="button">导入 TXT</button>
-                </div>
-                <div class="ai-wbr-grid ai-wbr-bookshelf-config">
-                    <label for="ai_wbr_bookshelf_embedding_mode">Embedding 模式</label>
-                    <select id="ai_wbr_bookshelf_embedding_mode" class="text_pole">
-                        <option value="api">API 向量模型</option>
-                        <option value="browser-local">浏览器本地模型</option>
-                    </select>
-                    <label for="ai_wbr_bookshelf_api_url">API 地址</label>
-                    <input id="ai_wbr_bookshelf_api_url" class="text_pole" type="text" placeholder="https://example.com/v1 或 /v1/embeddings" />
-                    <label for="ai_wbr_bookshelf_api_key">API Key</label>
-                    <input id="ai_wbr_bookshelf_api_key" class="text_pole" type="password" placeholder="sk-..." />
-                    <label for="ai_wbr_bookshelf_api_model">API 模型名</label>
-                    <input id="ai_wbr_bookshelf_api_model" class="text_pole" type="text" placeholder="text-embedding-3-small" />
-                    <label for="ai_wbr_bookshelf_local_model">本地模型 ID</label>
-                    <input id="ai_wbr_bookshelf_local_model" class="text_pole" type="text" placeholder="Xenova/paraphrase-multilingual-MiniLM-L12-v2" />
-                    <label for="ai_wbr_bookshelf_memory_vector_max">图谱召回数量</label>
-                    <input id="ai_wbr_bookshelf_memory_vector_max" class="text_pole" type="number" min="1" max="12" step="1" />
-                    <label for="ai_wbr_bookshelf_max_chunks">TXT 召回数量</label>
-                    <input id="ai_wbr_bookshelf_max_chunks" class="text_pole" type="number" min="1" max="12" step="1" />
-                    <label for="ai_wbr_bookshelf_max_chars">每段最大字数</label>
-                    <input id="ai_wbr_bookshelf_max_chars" class="text_pole" type="number" min="120" max="2000" step="20" />
-                    <label for="ai_wbr_bookshelf_min_score">最低相似度</label>
-                    <input id="ai_wbr_bookshelf_min_score" class="text_pole" type="number" min="0" max="1" step="0.05" />
-                </div>
-                <div class="ai-wbr-bookshelf-actions">
-                    <button id="ai_wbr_bookshelf_test_provider" class="menu_button" type="button">测试向量模型</button>
-                    <button id="ai_wbr_bookshelf_load_local" class="menu_button" type="button">下载/加载本地模型</button>
-                    <button id="ai_wbr_bookshelf_vectorize_memory" class="menu_button" type="button">同步图谱向量</button>
-                    <button id="ai_wbr_bookshelf_reset_memory_vectors" class="menu_button" type="button">重置图谱向量</button>
-                    <span id="ai_wbr_bookshelf_model_status" class="ai-wbr-status">未测试</span>
-                </div>
-                <div id="ai_wbr_bookshelf_status" class="ai-wbr-memory-history-status">书架待命。导入 TXT 后会进入待向量化，需要点击“开始向量化”。</div>
-                <div class="ai-wbr-bookshelf-layout">
-                    <section><h4>当前作用域</h4><div id="ai_wbr_bookshelf_scope" class="ai-wbr-bookshelf-scope"></div></section>
-                    <section><h4>书籍</h4><div id="ai_wbr_bookshelf_books" class="ai-wbr-bookshelf-books"></div></section>
-                    <section><h4>详情</h4><div id="ai_wbr_bookshelf_detail" class="ai-wbr-bookshelf-detail"></div></section>
-                </div>
-                <div class="ai-wbr-bookshelf-test">
-                    <h4>统一召回测试</h4>
-                    <textarea id="ai_wbr_bookshelf_test_query" class="text_pole" rows="3" placeholder="输入一句当前剧情问题，测试图谱记忆和绑定 TXT 会召回哪些片段。"></textarea>
-                    <div class="ai-wbr-bookshelf-actions">
-                        <button id="ai_wbr_bookshelf_test" class="menu_button" type="button">测试召回</button>
+                <div class="ai-wbr-bookshelf-app">
+                    <div class="ai-wbr-bookshelf-toolbar">
+                        <div>
+                            <b>我的书架</b>
+                            <small id="ai_wbr_bookshelf_status">书架待命。导入 TXT 后会进入待向量化。</small>
+                        </div>
+                        <div class="ai-wbr-bookshelf-toolbar-actions">
+                            <input id="ai_wbr_bookshelf_file" type="file" accept=".txt,text/plain" multiple hidden />
+                            <button id="ai_wbr_bookshelf_import" class="menu_button" type="button">导入 TXT</button>
+                            <button id="ai_wbr_bookshelf_open_settings" class="menu_button" type="button">设置</button>
+                        </div>
                     </div>
-                    <div id="ai_wbr_bookshelf_results" class="ai-wbr-bookshelf-results"></div>
+
+                    <div class="ai-wbr-bookshelf-quickbar">
+                        <select id="ai_wbr_bookshelf_import_type" class="text_pole">
+                            <option value="plot">剧情记录</option>
+                            <option value="character">人物档案</option>
+                            <option value="world">世界观</option>
+                            <option value="rule">规则设定</option>
+                            <option value="other">其他资料</option>
+                        </select>
+                        <select id="ai_wbr_bookshelf_import_binding" class="text_pole">
+                            <option value="character">绑定当前角色</option>
+                            <option value="chat">绑定当前聊天</option>
+                            <option value="global">全局补充</option>
+                            <option value="none">暂不绑定</option>
+                        </select>
+                        <label class="checkbox_label" for="ai_wbr_bookshelf_enabled"><input id="ai_wbr_bookshelf_enabled" type="checkbox" />启用召回</label>
+                        <label class="checkbox_label" for="ai_wbr_bookshelf_auto_inject"><input id="ai_wbr_bookshelf_auto_inject" type="checkbox" />自动注入</label>
+                    </div>
+
+                    <div class="ai-wbr-bookshelf-layout">
+                        <section class="ai-wbr-bookshelf-main">
+                            <div class="ai-wbr-bookshelf-section-title">
+                                <b>书籍</b>
+                                <span id="ai_wbr_bookshelf_count">0 本</span>
+                            </div>
+                            <div id="ai_wbr_bookshelf_books" class="ai-wbr-bookshelf-books"></div>
+                        </section>
+                        <section class="ai-wbr-bookshelf-detail-pane">
+                            <div class="ai-wbr-bookshelf-section-title">
+                                <b>详情</b>
+                                <span>选中书籍后编辑</span>
+                            </div>
+                            <div id="ai_wbr_bookshelf_detail" class="ai-wbr-bookshelf-detail"></div>
+                        </section>
+                    </div>
+
+                    <div class="ai-wbr-bookshelf-drawer-backdrop" id="ai_wbr_bookshelf_settings_backdrop"></div>
+                    <aside class="ai-wbr-bookshelf-settings-drawer" id="ai_wbr_bookshelf_settings_drawer" aria-hidden="true">
+                        <div class="ai-wbr-bookshelf-drawer-head">
+                            <div>
+                                <b>书架设置</b>
+                                <small id="ai_wbr_bookshelf_model_status">未测试</small>
+                            </div>
+                            <button id="ai_wbr_bookshelf_close_settings" class="menu_button" type="button">关闭</button>
+                        </div>
+                        <div id="ai_wbr_bookshelf_scope" class="ai-wbr-bookshelf-scope"></div>
+                        <div class="ai-wbr-bookshelf-switches">
+                            <label class="checkbox_label" for="ai_wbr_bookshelf_memory_vector"><input id="ai_wbr_bookshelf_memory_vector" type="checkbox" />图谱记忆参与召回</label>
+                            <label class="checkbox_label" for="ai_wbr_bookshelf_only_bound"><input id="ai_wbr_bookshelf_only_bound" type="checkbox" />仅召回绑定书籍</label>
+                            <label class="checkbox_label" for="ai_wbr_bookshelf_allow_global"><input id="ai_wbr_bookshelf_allow_global" type="checkbox" />允许全局书籍</label>
+                        </div>
+                        <div class="ai-wbr-grid ai-wbr-bookshelf-config">
+                            <label for="ai_wbr_bookshelf_embedding_mode">Embedding 模式</label>
+                            <select id="ai_wbr_bookshelf_embedding_mode" class="text_pole">
+                                <option value="api">API 向量模型</option>
+                                <option value="browser-local">浏览器本地模型</option>
+                            </select>
+                            <label for="ai_wbr_bookshelf_api_url">API 地址</label>
+                            <input id="ai_wbr_bookshelf_api_url" class="text_pole" type="text" placeholder="https://example.com/v1 或 /v1/embeddings" />
+                            <label for="ai_wbr_bookshelf_api_key">API Key</label>
+                            <input id="ai_wbr_bookshelf_api_key" class="text_pole" type="password" placeholder="sk-..." />
+                            <label for="ai_wbr_bookshelf_api_model">API 模型</label>
+                            <select id="ai_wbr_bookshelf_api_model" class="text_pole">
+                                <option value="">先点击“获取模型”</option>
+                            </select>
+                            <label></label>
+                            <button id="ai_wbr_bookshelf_fetch_models" class="menu_button" type="button">获取模型</button>
+                            <label for="ai_wbr_bookshelf_local_model">本地模型 ID</label>
+                            <input id="ai_wbr_bookshelf_local_model" class="text_pole" type="text" placeholder="Xenova/paraphrase-multilingual-MiniLM-L12-v2" />
+                            <label for="ai_wbr_bookshelf_memory_vector_max">图谱召回数量</label>
+                            <input id="ai_wbr_bookshelf_memory_vector_max" class="text_pole" type="number" min="1" max="12" step="1" />
+                            <label for="ai_wbr_bookshelf_max_chunks">TXT 召回数量</label>
+                            <input id="ai_wbr_bookshelf_max_chunks" class="text_pole" type="number" min="1" max="12" step="1" />
+                            <label for="ai_wbr_bookshelf_max_chars">每段最大字数</label>
+                            <input id="ai_wbr_bookshelf_max_chars" class="text_pole" type="number" min="120" max="2000" step="20" />
+                            <label for="ai_wbr_bookshelf_min_score">最低相似度</label>
+                            <input id="ai_wbr_bookshelf_min_score" class="text_pole" type="number" min="0" max="1" step="0.05" />
+                        </div>
+                        <div class="ai-wbr-bookshelf-actions">
+                            <button id="ai_wbr_bookshelf_test_provider" class="menu_button" type="button">测试向量模型</button>
+                            <button id="ai_wbr_bookshelf_load_local" class="menu_button" type="button">下载/加载本地模型</button>
+                            <button id="ai_wbr_bookshelf_vectorize_memory" class="menu_button" type="button">同步图谱向量</button>
+                            <button id="ai_wbr_bookshelf_reset_memory_vectors" class="menu_button" type="button">重置图谱向量</button>
+                        </div>
+                        <div class="ai-wbr-bookshelf-test">
+                            <div class="ai-wbr-memory-subtitle"><b>召回测试</b></div>
+                            <textarea id="ai_wbr_bookshelf_test_query" class="text_pole" rows="3" placeholder="输入一句当前剧情问题，测试图谱记忆和绑定 TXT 会召回哪些片段。"></textarea>
+                            <div class="ai-wbr-bookshelf-actions">
+                                <button id="ai_wbr_bookshelf_test" class="menu_button" type="button">测试召回</button>
+                            </div>
+                            <div id="ai_wbr_bookshelf_results" class="ai-wbr-bookshelf-results"></div>
+                        </div>
+                    </aside>
                 </div>
             </div>
         </details>
@@ -5643,6 +5758,10 @@ function createBookshelfStandaloneFold() {
 function ensureBookshelfStandaloneControls(section) {
     const panel = section.find('#ai_wbr_bookshelf_panel');
     if (!panel.length) return;
+    if (!panel.find('.ai-wbr-bookshelf-app').length) {
+        const rebuiltPanel = createBookshelfStandaloneFold().find('#ai_wbr_bookshelf_panel');
+        panel.empty().append(rebuiltPanel.children());
+    }
     const switches = panel.find('.ai-wbr-bookshelf-switches').first();
     if (switches.length && !panel.find('#ai_wbr_bookshelf_memory_vector').length) {
         switches.find('#ai_wbr_bookshelf_auto_inject').closest('label').after(
@@ -5662,6 +5781,17 @@ function ensureBookshelfStandaloneControls(section) {
     }
     if (actions.length && !panel.find('#ai_wbr_bookshelf_reset_memory_vectors').length) {
         actions.find('#ai_wbr_bookshelf_vectorize_memory').after('<button id="ai_wbr_bookshelf_reset_memory_vectors" class="menu_button" type="button">重置图谱向量</button>');
+    }
+    if (panel.find('#ai_wbr_bookshelf_api_model').is('input')) {
+        const currentValue = String(panel.find('#ai_wbr_bookshelf_api_model').val() || settings.bookshelfApiModel || '').trim();
+        panel.find('#ai_wbr_bookshelf_api_model').replaceWith(
+            $('<select id="ai_wbr_bookshelf_api_model" class="text_pole"></select>')
+                .append($('<option></option>', { value: currentValue, text: currentValue || '先点击“获取模型”' })),
+        );
+    }
+    if (!panel.find('#ai_wbr_bookshelf_fetch_models').length) {
+        const modelField = panel.find('#ai_wbr_bookshelf_api_model');
+        modelField.after('<button id="ai_wbr_bookshelf_fetch_models" class="menu_button" type="button">获取模型</button>');
     }
 }
 
@@ -6231,11 +6361,9 @@ function createBookshelfBookCard(book, selected) {
             $('<div class="ai-wbr-bookshelf-book-meta"></div>').text(`${getBookshelfTypeLabel(book.type)} · ${book.vectorizedCount || 0}/${book.chunkCount || 0} 个片段 · ${modeLabel}`),
             $('<div class="ai-wbr-bookshelf-tags"></div>').append(getBookshelfBindingLabels(book).map(label => $('<span></span>').text(label))),
             $('<div class="ai-wbr-bookshelf-actions"></div>')
-                .append('<button class="menu_button ai-wbr-bookshelf-select" type="button">详情</button>')
-                .append(`<button class="menu_button ai-wbr-bookshelf-toggle" type="button">${book.enabled === false ? '启用' : '禁用'}</button>`)
+                .append('<button class="menu_button ai-wbr-bookshelf-select" type="button">打开</button>')
                 .append(`<button class="menu_button ai-wbr-bookshelf-rebuild" type="button">${Number(book.vectorizedCount || 0) ? '重新向量化' : '开始向量化'}</button>`)
-                .append('<button class="menu_button ai-wbr-bookshelf-clear-vector" type="button">重置向量</button>')
-                .append('<button class="menu_button ai-wbr-bookshelf-delete" type="button">删除</button>'),
+                .append(`<button class="menu_button ai-wbr-bookshelf-toggle" type="button">${book.enabled === false ? '启用' : '禁用'}</button>`),
         );
 }
 
@@ -6267,6 +6395,7 @@ async function renderBookshelfPanel() {
     }
     const panel = $('#ai_wbr_bookshelf_panel');
     if (!panel.length) return;
+    ensureBookshelfStandaloneControls(panel.closest('#ai_wbr_bookshelf_section, .ai-wbr-bookshelf-fold'));
 
     const scope = getBookshelfScope();
     $('#ai_wbr_bookshelf_enabled').prop('checked', !!settings.bookshelfEnabled);
@@ -6280,6 +6409,7 @@ async function renderBookshelfPanel() {
     $('#ai_wbr_bookshelf_min_score').val(settings.bookshelfMinScore);
     $('#ai_wbr_bookshelf_api_url').val(settings.bookshelfApiUrl || '');
     $('#ai_wbr_bookshelf_api_key').val(settings.bookshelfApiKey || '');
+    renderBookshelfApiModelOptions();
     $('#ai_wbr_bookshelf_api_model').val(settings.bookshelfApiModel || '');
     $('#ai_wbr_bookshelf_local_model').val(settings.bookshelfLocalModelId || defaultSettings.bookshelfLocalModelId);
     $('#ai_wbr_bookshelf_embedding_mode').val(getBookshelfEmbeddingMode());
@@ -6312,6 +6442,7 @@ async function renderBookshelfPanel() {
         }
 
         booksBox.empty();
+        $('#ai_wbr_bookshelf_count').text(`${allBooks.length} 本`);
         if (!allBooks.length) {
             booksBox.append('<div class="ai-wbr-token-empty">还没有导入 TXT。点击“导入 TXT”建立第一本补充资料。</div>');
         } else {
@@ -6338,7 +6469,9 @@ async function renderBookshelfPanel() {
                     .append('<button class="menu_button ai-wbr-bookshelf-clear-vector" type="button">重置向量</button>')
                     .append(`<button class="menu_button ai-wbr-bookshelf-bind-character" type="button">${isCharBound ? '取消角色绑定' : '绑定当前角色'}</button>`)
                     .append(`<button class="menu_button ai-wbr-bookshelf-bind-chat" type="button">${isChatBound ? '取消聊天绑定' : '绑定当前聊天'}</button>`)
-                    .append(`<button class="menu_button ai-wbr-bookshelf-bind-global" type="button">${isGlobalBound ? '取消全局' : '设为全局'}</button>`),
+                    .append(`<button class="menu_button ai-wbr-bookshelf-bind-global" type="button">${isGlobalBound ? '取消全局' : '设为全局'}</button>`)
+                    .append('<button class="menu_button ai-wbr-bookshelf-clear-vector" type="button">重置向量</button>')
+                    .append('<button class="menu_button ai-wbr-bookshelf-delete" type="button">删除</button>'),
                 $('<div class="ai-wbr-bookshelf-chunk-list"></div>').append(
                     selectedChunks.slice(0, 24).map(chunk => (
                         $('<div class="ai-wbr-bookshelf-chunk"></div>')
@@ -7357,6 +7490,11 @@ function renderMemoryEdgeEditor(graph) {
 }
 
 function bindMemoryPanelActions() {
+    const bookshelfSection = $('#ai_wbr_bookshelf_panel').closest('#ai_wbr_bookshelf_section, .ai-wbr-bookshelf-fold');
+    if (bookshelfSection.length) {
+        ensureBookshelfStandaloneControls(bookshelfSection);
+    }
+
     bindCheckbox('#ai_wbr_memory_enabled', 'memoryEnabled');
     bindCheckbox('#ai_wbr_memory_auto_run', 'memoryRealtimeEnabled');
     bindCheckbox('#ai_wbr_memory_realtime_enabled', 'memoryRealtimeEnabled');
@@ -7386,7 +7524,10 @@ function bindMemoryPanelActions() {
 
     bindText('#ai_wbr_bookshelf_api_url', 'bookshelfApiUrl', normalizeUrl);
     bindText('#ai_wbr_bookshelf_api_key', 'bookshelfApiKey', (value) => String(value).trim());
-    bindText('#ai_wbr_bookshelf_api_model', 'bookshelfApiModel', (value) => String(value).trim());
+    $('#ai_wbr_bookshelf_api_model').on('change', function () {
+        saveSetting('bookshelfApiModel', String($(this).val() || '').trim());
+        syncBookshelfProviderVisibility();
+    });
     bindText('#ai_wbr_bookshelf_local_model', 'bookshelfLocalModelId', (value) => String(value).trim());
 
     $('#ai_wbr_bookshelf_embedding_mode')
@@ -7513,6 +7654,18 @@ function bindMemoryPanelActions() {
         $('#ai_wbr_bookshelf_file').trigger('click');
     });
 
+    $(document).off('click.aiWbrBookshelfDrawer', '#ai_wbr_bookshelf_open_settings, #ai_wbr_bookshelf_close_settings, #ai_wbr_bookshelf_settings_backdrop')
+        .on('click.aiWbrBookshelfDrawer', '#ai_wbr_bookshelf_open_settings', (event) => {
+            event.preventDefault();
+            $('#ai_wbr_bookshelf_settings_drawer').addClass('open').attr('aria-hidden', 'false');
+            $('#ai_wbr_bookshelf_settings_backdrop').addClass('open');
+        })
+        .on('click.aiWbrBookshelfDrawer', '#ai_wbr_bookshelf_close_settings, #ai_wbr_bookshelf_settings_backdrop', (event) => {
+            event.preventDefault();
+            $('#ai_wbr_bookshelf_settings_drawer').removeClass('open').attr('aria-hidden', 'true');
+            $('#ai_wbr_bookshelf_settings_backdrop').removeClass('open');
+        });
+
     $('#ai_wbr_bookshelf_file').on('change', async function () {
         try {
             await importBookshelfFiles(this.files);
@@ -7563,6 +7716,19 @@ function bindMemoryPanelActions() {
             toastr?.success?.(`向量模型可用，维度 ${vector.length}`, '书架向量库');
         } catch (error) {
             setBookshelfModelStatus(`失败：${error?.message || error}`);
+            toastr?.error?.(error?.message || String(error), '书架向量库');
+        }
+    });
+
+    $(document).off('click.aiWbrBookshelfFetchModels', '#ai_wbr_bookshelf_fetch_models').on('click.aiWbrBookshelfFetchModels', '#ai_wbr_bookshelf_fetch_models', async (event) => {
+        event.preventDefault();
+        try {
+            saveSetting('bookshelfEmbeddingMode', 'api');
+            $('#ai_wbr_bookshelf_embedding_mode').val('api');
+            await fetchBookshelfApiModels();
+            syncBookshelfProviderVisibility();
+        } catch (error) {
+            setBookshelfModelStatus(`获取失败：${error?.message || error}`);
             toastr?.error?.(error?.message || String(error), '书架向量库');
         }
     });
@@ -7644,7 +7810,7 @@ function bindMemoryPanelActions() {
         })
         .on('click.aiWbrBookshelf', '.ai-wbr-bookshelf-delete', async function (event) {
             event.preventDefault();
-            const bookId = String($(this).closest('[data-bookshelf-book-id]').data('bookshelfBookId') || '');
+            const bookId = String($(this).closest('[data-bookshelf-book-id]').data('bookshelfBookId') || selectedBookshelfBookId || '');
             if (!bookId || !confirm('确定删除这本书和所有向量片段？')) return;
             await bookshelfDeleteBook(bookId);
             if (selectedBookshelfBookId === bookId) selectedBookshelfBookId = '';
