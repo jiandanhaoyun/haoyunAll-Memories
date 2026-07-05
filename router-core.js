@@ -706,6 +706,11 @@ function ensureSettings() {
         settings.memoryGraph = getDefaultMemoryGraph();
     }
     Object.assign(extension_settings[MODULE_NAME], settings);
+    try {
+        globalThis.AIWorldbookRouter?.setEntryDiagnostics?.(!!settings.entryDiagnostics);
+    } catch (_) {
+        // Bootstrap diagnostics sync is best-effort only.
+    }
 }
 
 function saveSetting(key, value) {
@@ -5777,7 +5782,8 @@ function renderMemoryPanel(scope = 'all') {
         return;
     }
 
-    const graph = getMemoryGraph();
+    const context = getContext();
+    const graph = getMemoryGraph(context);
     memoryScopeDebugLog('renderMemoryPanel', {
         graph: getMemoryGraphSummary(graph),
         selectedNodeId: memoryGraphSelectedNodeId,
@@ -5789,13 +5795,13 @@ function renderMemoryPanel(scope = 'all') {
         const showMemoryDebugDetails = !!settings.memoryDebug || !!getCurrentMemoryLastError(context);
         $('.ai-wbr-memory-debug-fold').prop('open', showMemoryDebugDetails);
         $('#ai_wbr_memory_debug_panel .ai-wbr-router-raw-block').toggle(showMemoryDebugDetails);
-        $('#ai_wbr_memory_prompt').text(getCurrentMemoryLastPrompt() || '尚无后置记忆 Prompt');
-        $('#ai_wbr_memory_raw').text(getCurrentMemoryLastRaw() || '尚无后置记忆返回');
-        $('#ai_wbr_memory_error').text(getCurrentMemoryLastError() || '尚无错误');
+        $('#ai_wbr_memory_prompt').text(getCurrentMemoryLastPrompt(context) || '尚无后置记忆 Prompt');
+        $('#ai_wbr_memory_raw').text(getCurrentMemoryLastRaw(context) || '尚无后置记忆返回');
+        $('#ai_wbr_memory_error').text(getCurrentMemoryLastError(context) || '尚无错误');
         renderMemoryDashboard(graph);
         renderMemoryReviewQueue();
         if ($('#ai_wbr_memory_history_preview_box').length) {
-            buildHistoryImportPreview(getHistoryImportRangeFromUi(), getContext());
+            buildHistoryImportPreview(getHistoryImportRangeFromUi(context), context);
         }
     }
     renderMemoryGraphSvg(graph);

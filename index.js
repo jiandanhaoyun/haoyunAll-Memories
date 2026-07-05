@@ -6,7 +6,7 @@
     'use strict';
 
     const NAMESPACE = 'AIWorldbookRouter';
-const VERSION = '0.5.9';
+const VERSION = '0.5.10';
     const LOG_PREFIX = '[AI Worldbook Router Bootstrap]';
     const ENTRY_ID = 'ai_wbr_extension_entry';
     const ROW_ID = 'ai_wbr_extension_row';
@@ -274,7 +274,7 @@ const VERSION = '0.5.9';
         retry.type = 'button';
         retry.textContent = '\u518d\u6b21\u6253\u5f00';
         retry.style.cssText = buttonStyle(true);
-        retry.addEventListener('click', () => openConsole({ forcePanel: true }));
+        retry.addEventListener('click', () => openConsole({ forcePanel: true, source: '诊断层重试' }));
         actions.appendChild(retry);
 
         const reload = document.createElement('button');
@@ -343,7 +343,7 @@ const VERSION = '0.5.9';
             '<pre style="white-space:pre-wrap;margin:10px 0 0;padding:8px;border-radius:8px;background:rgba(255,255,255,.08);color:#d7f5ff;font-size:12px">' + getDiagnostics().replace(/[&<>]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[char])) + '</pre>',
         ].join('');
 
-        document.getElementById('ai_wbr_panel_retry')?.addEventListener('click', () => openConsole({ forcePanel: true }));
+        document.getElementById('ai_wbr_panel_retry')?.addEventListener('click', () => openConsole({ forcePanel: true, source: '诊断层重试' }));
         document.getElementById('ai_wbr_panel_close')?.addEventListener('click', closeDiagnosticPanel);
         document.getElementById('ai_wbr_panel_close_top')?.addEventListener('click', closeDiagnosticPanel);
         return panel;
@@ -447,10 +447,11 @@ const VERSION = '0.5.9';
         lastOpenAt = now;
 
         const forcePanel = !!options.forcePanel;
-        keepPanelUntil = Date.now() + (forcePanel ? 1600 : 0);
+        const diagnosticsEnabled = isEntryDiagnosticsEnabled();
+        keepPanelUntil = Date.now() + ((forcePanel || diagnosticsEnabled) ? 1600 : 0);
         closeHostMenusBeforeOpen();
-        const panel = forcePanel
-            ? (document.getElementById(PANEL_ID) || showPanel(options.message))
+        const panel = (forcePanel || diagnosticsEnabled)
+            ? (document.getElementById(PANEL_ID) || showInstantClickPanel(options.source || '入口', { force: forcePanel }))
             : document.getElementById(PANEL_ID);
 
         try {
@@ -458,8 +459,10 @@ const VERSION = '0.5.9';
             await waitForCoreUi();
         } catch (error) {
             coreLoadError = error;
-            showInstantClickPanel('核心模块加载失败', { force: true });
-            showPanel('\u6838\u5fc3\u6a21\u5757\u52a0\u8f7d\u5931\u8d25\uff1a' + (error?.message || error));
+            if (diagnosticsEnabled || forcePanel) {
+                showInstantClickPanel('核心模块加载失败', { force: true });
+                showPanel('\u6838\u5fc3\u6a21\u5757\u52a0\u8f7d\u5931\u8d25\uff1a' + (error?.message || error));
+            }
             return;
         }
 
@@ -472,18 +475,22 @@ const VERSION = '0.5.9';
                 window.setTimeout(() => callOpenConsole('overview'), 180);
             } catch (error) {
                 coreLoadError = error;
-                showInstantClickPanel('控制台打开失败', { force: true });
-                showPanel('\u5b8c\u6574\u63a7\u5236\u53f0\u6253\u5f00\u65f6\u62a5\u9519\uff1a' + (error?.message || error));
+                if (diagnosticsEnabled || forcePanel) {
+                    showInstantClickPanel('控制台打开失败', { force: true });
+                    showPanel('\u5b8c\u6574\u63a7\u5236\u53f0\u6253\u5f00\u65f6\u62a5\u9519\uff1a' + (error?.message || error));
+                }
                 return;
             }
 
             window.setTimeout(() => {
                 const isVisible = forceConsoleVisible();
-                if (isVisible && Date.now() > keepPanelUntil) {
+                if (isVisible && Date.now() > keepPanelUntil && !diagnosticsEnabled) {
                     panel?.remove();
                 } else if (!isVisible) {
-                    showInstantClickPanel('控制台未显示', { force: true });
-                    showPanel('\u5165\u53e3\u70b9\u51fb\u5df2\u6536\u5230\uff0c\u4f46\u5b8c\u6574\u63a7\u5236\u53f0\u4ecd\u672a\u8fdb\u5165\u6253\u5f00\u72b6\u6001\u3002\u8bf7\u628a\u4e0b\u9762\u72b6\u6001\u53d1\u7ed9\u6211\u3002');
+                    if (diagnosticsEnabled || forcePanel) {
+                        showInstantClickPanel('控制台未显示', { force: true });
+                        showPanel('\u5165\u53e3\u70b9\u51fb\u5df2\u6536\u5230\uff0c\u4f46\u5b8c\u6574\u63a7\u5236\u53f0\u4ecd\u672a\u8fdb\u5165\u6253\u5f00\u72b6\u6001\u3002\u8bf7\u628a\u4e0b\u9762\u72b6\u6001\u53d1\u7ed9\u6211\u3002');
+                    }
                 }
             }, 300);
         }, 100);
@@ -494,7 +501,7 @@ const VERSION = '0.5.9';
         event?.stopPropagation?.();
         event?.stopImmediatePropagation?.();
         showInstantClickPanel(event?.type || '入口');
-        const openNow = () => openConsole();
+        const openNow = () => openConsole({ source: event?.type || '入口' });
         window.setTimeout(openNow, 20);
         window.setTimeout(openNow, 90);
     }
@@ -508,8 +515,8 @@ const VERSION = '0.5.9';
             // no-op
         }
         showInstantClickPanel(event?.type || '悬浮按钮');
-        window.setTimeout(() => openConsole(), 20);
-        window.setTimeout(() => openConsole(), 220);
+        window.setTimeout(() => openConsole({ source: event?.type || '悬浮按钮' }), 20);
+        window.setTimeout(() => openConsole({ source: event?.type || '悬浮按钮' }), 220);
         return false;
     }
 
@@ -613,56 +620,7 @@ const VERSION = '0.5.9';
     }
 
     function createFallbackButton() {
-        if (document.getElementById(FALLBACK_BUTTON_ID)) return;
-
-        const button = document.createElement('button');
-        button.id = FALLBACK_BUTTON_ID;
-        button.type = 'button';
-        button.textContent = '\u8bb0\u5fc6';
-        button.title = '\u6253\u5f00\u4e16\u754c\u4e66\u8bfb\u53d6\u63a7\u5236\u53f0';
-        button.setAttribute('aria-label', '\u6253\u5f00\u4e16\u754c\u4e66\u8bfb\u53d6\u63a7\u5236\u53f0');
-        button.style.cssText = [
-            'position:fixed',
-            'right:10px',
-            'top:48vh',
-            'z-index:2147483647',
-            'min-width:46px',
-            'height:46px',
-            'padding:0 9px',
-            'border-radius:999px',
-            'border:1px solid rgba(176,225,255,.72)',
-            'background:rgba(20,24,34,.96)',
-            'color:#d7f5ff',
-            'font-size:13px',
-            'font-weight:700',
-            'line-height:1',
-            'box-shadow:0 10px 24px rgba(0,0,0,.35),0 0 18px rgba(125,212,255,.28)',
-            'backdrop-filter:blur(8px)',
-            'cursor:pointer',
-            'touch-action:none',
-            'pointer-events:auto',
-            'display:flex',
-            'align-items:center',
-            'justify-content:center',
-            'user-select:none',
-            '-webkit-user-select:none',
-            '-webkit-tap-highlight-color:transparent',
-        ].join(';');
-        button.onclick = hardOpenFromButton;
-        button.ontouchend = hardOpenFromButton;
-        button.onpointerup = hardOpenFromButton;
-        button.addEventListener('pointerdown', (event) => {
-            event.preventDefault?.();
-            event.stopPropagation?.();
-        }, true);
-        button.addEventListener('touchstart', (event) => {
-            event.preventDefault?.();
-            event.stopPropagation?.();
-        }, { capture: true, passive: false });
-        button.addEventListener('click', hardOpenFromButton, true);
-        button.addEventListener('pointerup', hardOpenFromButton, true);
-        button.addEventListener('touchend', hardOpenFromButton, { capture: true, passive: false });
-        (document.body || document.documentElement).appendChild(button);
+        document.getElementById(FALLBACK_BUTTON_ID)?.remove();
     }
 
     function watchExtensionMenuButton() {
