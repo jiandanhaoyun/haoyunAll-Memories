@@ -1123,10 +1123,41 @@
     pointer-events: stroke;
 }
 
+.ai-wbr-memory-arrow {
+    fill: currentColor;
+    color: rgba(110, 208, 255, 0.92);
+}
+
+.ai-wbr-memory-edge-involves,
+.ai-wbr-memory-edge-mentions,
+.ai-wbr-memory-edge-related {
+    stroke: rgba(110, 208, 255, 0.88);
+    color: rgba(110, 208, 255, 0.88);
+}
+
+.ai-wbr-memory-edge-happens_at,
+.ai-wbr-memory-edge-follows,
+.ai-wbr-memory-edge-updates {
+    stroke: rgba(120, 165, 255, 0.9);
+    color: rgba(120, 165, 255, 0.9);
+}
+
+.ai-wbr-memory-edge-part_of,
+.ai-wbr-memory-edge-allied_with {
+    stroke: rgba(84, 226, 166, 0.9);
+    color: rgba(84, 226, 166, 0.9);
+}
+
+.ai-wbr-memory-edge-causes,
+.ai-wbr-memory-edge-opposes {
+    stroke: rgba(255, 158, 116, 0.94);
+    color: rgba(255, 158, 116, 0.94);
+}
+
 .ai-wbr-memory-edge-hit {
     fill: none;
     stroke: transparent;
-    stroke-width: 18;
+    stroke-width: 24;
     cursor: pointer;
     pointer-events: stroke;
 }

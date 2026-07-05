@@ -32,6 +32,8 @@ const MEMORY_GRAPH_NODE_WIDTH = 172;
 const MEMORY_GRAPH_NODE_HEIGHT = 82;
 const MEMORY_GRAPH_SAFE_PADDING = 12;
 const MEMORY_GRAPH_TOP_SAFE_PADDING = 56;
+const MEMORY_GRAPH_LAYOUT_PADDING = 96;
+const MEMORY_GRAPH_TOUCH_TAP_THRESHOLD = 8;
 const MEMORY_NODE_TYPE_OPTIONS = [
     { value: 'event', label: '事件' },
     { value: 'character', label: '角色' },
@@ -177,6 +179,7 @@ let lastObservedChatScopedUiSignature = '';
 let memoryGraphView = { x: 0, y: 0, width: MEMORY_GRAPH_CANVAS_WIDTH, height: MEMORY_GRAPH_CANVAS_HEIGHT };
 let memoryGraphDrag = null;
 let memoryGraphPan = null;
+let memoryGraphTouch = null;
 let memoryGraphLinkSourceId = '';
 let memoryGraphSelectedNodeId = '';
 let memoryGraphSelectedLinkId = '';
@@ -4555,38 +4558,15 @@ function renderMemoryGraphSvg(graph) {
     }
 
     const viewport = getMemoryGraphViewportMetrics(container[0]);
-    const width = MEMORY_GRAPH_CANVAS_WIDTH;
-    const height = viewport.baseHeight;
-    const centerX = width / 2;
-    const centerY = height / 2;
-    const radius = Math.min(134, 50 + nodes.length * 9);
+    const width = viewport.layoutWidth;
+    const height = viewport.layoutHeight;
     const positions = new Map();
-    let layoutChanged = false;
-    nodes.forEach((node, index) => {
-        if (Number.isFinite(Number(node.x)) && Number.isFinite(Number(node.y))) {
-            node.x = Number(node.x);
-            node.y = Number(node.y);
-            positions.set(node.id, {
-                x: node.x,
-                y: node.y,
-            });
-            return;
-        }
-
-        const angle = (Math.PI * 2 * index / nodes.length) - Math.PI / 2;
-        const clamped = clampMemoryNodePosition(
-            centerX + Math.cos(angle) * radius - (MEMORY_GRAPH_NODE_WIDTH / 2),
-            centerY + Math.sin(angle) * radius - (MEMORY_GRAPH_NODE_HEIGHT / 2),
-            width,
-            height,
-        );
-        node.x = clamped.x;
-        node.y = clamped.y;
+    let layoutChanged = normalizeMemoryGraphLayout(nodes, graph.links, width, height);
+    nodes.forEach((node) => {
         positions.set(node.id, {
-            x: node.x,
-            y: node.y,
+            x: Number(node.x || 0),
+            y: Number(node.y || 0),
         });
-        layoutChanged = true;
     });
 
     if (layoutChanged) {
@@ -4603,6 +4583,13 @@ function renderMemoryGraphSvg(graph) {
         }
         pairBuckets.get(pairKey).push(link);
     });
+    const markerDefs = `
+        <defs>
+            <marker id="ai-wbr-memory-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
+                <path d="M 0 0 L 8 4 L 0 8 z" class="ai-wbr-memory-arrow"></path>
+            </marker>
+        </defs>
+    `;
     const lines = edges.map(link => {
         const source = positions.get(link.source);
         const target = positions.get(link.target);
@@ -4611,16 +4598,17 @@ function renderMemoryGraphSvg(graph) {
         }
         const opacity = Math.max(0.22, Math.min(0.85, Number(link.weight || 0.5)));
         const selectedClass = String(link.id) === String(memoryGraphSelectedLinkId) ? ' ai-wbr-memory-edge-selected' : '';
+        const typeClass = ` ai-wbr-memory-edge-${escapeHtml(String(link.type || 'RELATED').toLowerCase().replace(/[^a-z0-9_-]/g, '-'))}`;
         const pairKey = [String(link.source || ''), String(link.target || '')].sort().join('||');
         const siblings = (pairBuckets.get(pairKey) || []).slice().sort((a, b) => String(a.id || '').localeCompare(String(b.id || '')));
         const siblingIndex = siblings.findIndex(item => String(item.id || '') === String(link.id || ''));
         const offsetIndex = siblingIndex - ((siblings.length - 1) / 2);
-        const laneOffset = siblings.length > 1 ? offsetIndex * 18 : 0;
+        const laneOffset = siblings.length > 1 ? offsetIndex * 26 : 0;
         const path = buildMemoryEdgePath(source, target, laneOffset);
         const linkId = escapeHtml(String(link.id || ''));
         return `
             <path d="${path}" class="ai-wbr-memory-edge-hit" data-memory-link-id="${linkId}" data-source-id="${escapeHtml(link.source)}" data-target-id="${escapeHtml(link.target)}"></path>
-            <path d="${path}" class="ai-wbr-memory-edge${selectedClass}" data-memory-link-id="${linkId}" data-source-id="${escapeHtml(link.source)}" data-target-id="${escapeHtml(link.target)}" style="opacity:${opacity}"><title>${escapeHtml(link.type || 'RELATED')}</title></path>
+            <path d="${path}" class="ai-wbr-memory-edge${typeClass}${selectedClass}" data-memory-link-id="${linkId}" data-source-id="${escapeHtml(link.source)}" data-target-id="${escapeHtml(link.target)}" style="opacity:${opacity}" marker-end="url(#ai-wbr-memory-arrow)"><title>${escapeHtml(getOptionLabel(MEMORY_LINK_TYPE_OPTIONS, link.type, link.type || 'RELATED'))}</title></path>
         `;
     }).join('');
 
@@ -4653,7 +4641,7 @@ function renderMemoryGraphSvg(graph) {
         || !Number.isFinite(memoryGraphView.height)
         || memoryGraphView.width < 120
         || memoryGraphView.height < 80) {
-        memoryGraphView = { x: 0, y: 0, width, height };
+        fitMemoryGraphToNodes(nodes, container[0]);
     }
     syncMemoryGraphViewToContainerAspect(container[0]);
 
@@ -4664,7 +4652,7 @@ function renderMemoryGraphSvg(graph) {
             <button class="menu_button ai-wbr-memory-zoom-reset" type="button">适配视图</button>
             <span class="ai-wbr-memory-link-hint">${memoryGraphLinkSourceId ? `连线起点：${escapeHtml(graph.nodes.find(node => node.id === memoryGraphLinkSourceId)?.title || memoryGraphLinkSourceId)}` : ''}</span>
         </div>
-        <svg viewBox="${memoryGraphView.x} ${memoryGraphView.y} ${memoryGraphView.width} ${memoryGraphView.height}" preserveAspectRatio="none" role="img" aria-label="记忆图谱">${lines}${cards}</svg>
+        <svg viewBox="${memoryGraphView.x} ${memoryGraphView.y} ${memoryGraphView.width} ${memoryGraphView.height}" preserveAspectRatio="none" role="img" aria-label="记忆图谱">${markerDefs}${lines}${cards}</svg>
     `);
     bindMemoryGraphSvgInteractions();
 }
@@ -4770,20 +4758,166 @@ function getMemoryGraphViewportMetrics(containerEl) {
     const pixelWidth = Math.max(320, Number(rect?.width || parentRect?.width || fallbackWidth));
     const pixelHeight = Math.max(260, Number(rect?.height || parentRect?.height || fallbackHeight));
     const aspect = pixelWidth / pixelHeight;
+    const baseWidth = MEMORY_GRAPH_CANVAS_WIDTH;
+    const baseHeight = Math.max(MEMORY_GRAPH_CANVAS_HEIGHT, Math.min(980, MEMORY_GRAPH_CANVAS_WIDTH / aspect));
     return {
         aspect,
-        baseWidth: MEMORY_GRAPH_CANVAS_WIDTH,
-        baseHeight: Math.max(220, MEMORY_GRAPH_CANVAS_WIDTH / aspect),
+        baseWidth,
+        baseHeight,
+        layoutWidth: baseWidth,
+        layoutHeight: baseHeight,
     };
 }
 
-function fitMemoryGraphToContainer() {
+function getMemoryGraphNodesBounds(nodes) {
+    const valid = (Array.isArray(nodes) ? nodes : [])
+        .map(node => ({
+            x: Number(node?.x),
+            y: Number(node?.y),
+        }))
+        .filter(point => Number.isFinite(point.x) && Number.isFinite(point.y));
+    if (!valid.length) {
+        return null;
+    }
+
+    const minX = Math.min(...valid.map(point => point.x));
+    const minY = Math.min(...valid.map(point => point.y));
+    const maxX = Math.max(...valid.map(point => point.x + MEMORY_GRAPH_NODE_WIDTH));
+    const maxY = Math.max(...valid.map(point => point.y + MEMORY_GRAPH_NODE_HEIGHT));
+    return {
+        x: minX,
+        y: minY,
+        width: Math.max(1, maxX - minX),
+        height: Math.max(1, maxY - minY),
+    };
+}
+
+function fitMemoryGraphToNodes(nodes, containerEl) {
+    const viewport = getMemoryGraphViewportMetrics(containerEl);
+    const bounds = getMemoryGraphNodesBounds(nodes);
+    if (!bounds) {
+        memoryGraphView = { x: 0, y: 0, width: viewport.baseWidth, height: viewport.baseHeight };
+        return;
+    }
+
+    const padding = MEMORY_GRAPH_LAYOUT_PADDING;
+    let viewWidth = Math.max(320, bounds.width + padding * 2);
+    let viewHeight = Math.max(220, bounds.height + padding * 2);
+    const currentAspect = viewWidth / viewHeight;
+    if (currentAspect < viewport.aspect) {
+        viewWidth = viewHeight * viewport.aspect;
+    } else {
+        viewHeight = viewWidth / viewport.aspect;
+    }
+
+    const centerX = bounds.x + bounds.width / 2;
+    const centerY = bounds.y + bounds.height / 2;
+    memoryGraphView = {
+        x: centerX - viewWidth / 2,
+        y: centerY - viewHeight / 2,
+        width: Math.min(1600, Math.max(260, viewWidth)),
+        height: Math.min(1400, Math.max(180, viewHeight)),
+    };
+}
+
+function fitMemoryGraphToContainer(graph = getMemoryGraph()) {
     const container = $('#ai_wbr_memory_graph');
     if (!container.length) {
         return;
     }
-    const viewport = getMemoryGraphViewportMetrics(container[0]);
-    memoryGraphView = { x: 0, y: 0, width: viewport.baseWidth, height: viewport.baseHeight };
+    const nodes = Array.isArray(graph?.nodes) ? graph.nodes.slice(0, 18) : [];
+    fitMemoryGraphToNodes(nodes, container[0]);
+}
+
+function normalizeMemoryGraphLayout(nodes, links = [], canvasWidth = MEMORY_GRAPH_CANVAS_WIDTH, canvasHeight = MEMORY_GRAPH_CANVAS_HEIGHT) {
+    if (!Array.isArray(nodes) || nodes.length === 0) {
+        return false;
+    }
+
+    const nodeIds = new Set(nodes.map(node => node.id));
+    const degree = new Map(nodes.map(node => [node.id, 0]));
+    for (const link of Array.isArray(links) ? links : []) {
+        if (!nodeIds.has(link?.source) || !nodeIds.has(link?.target)) {
+            continue;
+        }
+        const weight = clampNumber(link.weight, 0.7, 0, 1);
+        degree.set(link.source, (degree.get(link.source) || 0) + weight);
+        degree.set(link.target, (degree.get(link.target) || 0) + weight);
+    }
+
+    const isValidPosition = node => {
+        const x = Number(node?.x);
+        const y = Number(node?.y);
+        return Number.isFinite(x)
+            && Number.isFinite(y)
+            && x > -canvasWidth * 0.35
+            && y > -canvasHeight * 0.35
+            && x < canvasWidth * 1.35
+            && y < canvasHeight * 1.35;
+    };
+
+    const bounds = getMemoryGraphNodesBounds(nodes);
+    const invalidLayout = nodes.some(node => !isValidPosition(node));
+    const overextendedLayout = bounds
+        ? bounds.width > canvasWidth * 1.35
+            || bounds.height > canvasHeight * 1.35
+            || bounds.x < -canvasWidth * 0.25
+            || bounds.y < -canvasHeight * 0.25
+        : true;
+    const verticalStack = bounds && nodes.length > 3
+        && bounds.width < MEMORY_GRAPH_NODE_WIDTH * 1.85
+        && bounds.height > MEMORY_GRAPH_NODE_HEIGHT * 3.2;
+    const positions = new Map(nodes
+        .filter(node => Number.isFinite(Number(node.x)) && Number.isFinite(Number(node.y)))
+        .map(node => [node.id, { x: Number(node.x), y: Number(node.y) }]));
+    const visibleLinks = (Array.isArray(links) ? links : [])
+        .filter(link => positions.has(link?.source) && positions.has(link?.target));
+    const longVerticalLinks = visibleLinks.filter((link) => {
+        const source = positions.get(link.source);
+        const target = positions.get(link.target);
+        const dx = Math.abs((target.x + MEMORY_GRAPH_NODE_WIDTH / 2) - (source.x + MEMORY_GRAPH_NODE_WIDTH / 2));
+        const dy = Math.abs((target.y + MEMORY_GRAPH_NODE_HEIGHT / 2) - (source.y + MEMORY_GRAPH_NODE_HEIGHT / 2));
+        return dy > MEMORY_GRAPH_NODE_HEIGHT * 2.4 && dx < MEMORY_GRAPH_NODE_WIDTH * 0.72;
+    });
+    const awkwardConnections = visibleLinks.length >= 2
+        && longVerticalLinks.length / visibleLinks.length >= 0.45;
+
+    if (!invalidLayout && !overextendedLayout && !verticalStack && !awkwardConnections) {
+        return false;
+    }
+
+    const ranked = nodes.map((node, index) => ({
+        node,
+        index,
+        score: (degree.get(node.id) || 0) + clampNumber(node.importance, 0.5, 0, 1) + ((nodes.length - index) / 1000),
+    })).sort((a, b) => b.score - a.score);
+    const centerX = canvasWidth / 2;
+    const centerY = canvasHeight / 2;
+    const maxPerRing = 8;
+
+    ranked.forEach((item, index) => {
+        let x;
+        let y;
+        if (index === 0) {
+            x = centerX - MEMORY_GRAPH_NODE_WIDTH / 2;
+            y = centerY - MEMORY_GRAPH_NODE_HEIGHT / 2;
+        } else {
+            const ringIndex = Math.floor((index - 1) / maxPerRing);
+            const ringStart = 1 + ringIndex * maxPerRing;
+            const ringCount = Math.min(maxPerRing, ranked.length - ringStart);
+            const indexInRing = index - ringStart;
+            const angle = (-Math.PI / 2) + (Math.PI * 2 * indexInRing / Math.max(1, ringCount)) + (ringIndex * 0.28);
+            const radiusX = Math.min(canvasWidth * 0.38, 190 + ringIndex * 130);
+            const radiusY = Math.min(canvasHeight * 0.34, 150 + ringIndex * 110);
+            x = centerX + Math.cos(angle) * radiusX - MEMORY_GRAPH_NODE_WIDTH / 2;
+            y = centerY + Math.sin(angle) * radiusY - MEMORY_GRAPH_NODE_HEIGHT / 2;
+        }
+
+        const clamped = clampMemoryNodePosition(x, y, canvasWidth, canvasHeight, MEMORY_GRAPH_SAFE_PADDING);
+        item.node.x = clamped.x;
+        item.node.y = clamped.y;
+    });
+    return true;
 }
 
 function syncMemoryGraphViewToContainerAspect(containerEl) {
@@ -5044,9 +5178,10 @@ function bindMemoryGraphSvgInteractions() {
         updateMemoryGraphViewBox(svg);
     });
 
-    container.on('mousedown.memoryGraphSvg', '.ai-wbr-memory-node', function (event) {
+    container.on('pointerdown.memoryGraphSvg', '.ai-wbr-memory-node', function (event) {
         const nodeId = String($(this).data('memoryNodeId'));
-        const start = getMemoryGraphSvgPoint(svg, event.clientX, event.clientY);
+        const original = event.originalEvent || event;
+        const start = getMemoryGraphSvgPoint(svg, original.clientX, original.clientY);
         const graph = getMemoryGraph();
         const node = graph.nodes.find(item => item.id === nodeId);
         const transform = parseMemoryNodeTransform($(this).attr('transform'));
@@ -5092,8 +5227,10 @@ function bindMemoryGraphSvgInteractions() {
             moved: false,
             nodePositions,
             linkOffsets,
-            links: edges.filter(link => link.source === nodeId || link.target === nodeId)
+            links: edges.filter(link => link.source === nodeId || link.target === nodeId),
+            pointerId: original.pointerId,
         };
+        this.setPointerCapture?.(original.pointerId);
         event.preventDefault();
         event.stopPropagation();
     });
@@ -5107,47 +5244,58 @@ function bindMemoryGraphSvgInteractions() {
         renderMemoryPanel('graph');
     });
 
-    container.on('mousedown.memoryGraphSvg', '.ai-wbr-memory-edge, .ai-wbr-memory-edge-hit', function (event) {
+    container.on('pointerdown.memoryGraphSvg', '.ai-wbr-memory-edge, .ai-wbr-memory-edge-hit', function (event) {
         event.preventDefault();
         event.stopPropagation();
     });
 
-    container.on('mousedown.memoryGraphSvg', 'svg', function (event) {
+    container.on('pointerdown.memoryGraphSvg', 'svg', function (event) {
         if ($(event.target).closest('.ai-wbr-memory-node').length) {
             return;
         }
+        const original = event.originalEvent || event;
 
         memoryGraphPan = {
-            startClientX: event.clientX,
-            startClientY: event.clientY,
+            startClientX: original.clientX,
+            startClientY: original.clientY,
             viewX: memoryGraphView.x,
             viewY: memoryGraphView.y,
             moved: false,
+            pointerId: original.pointerId,
         };
+        svg.setPointerCapture?.(original.pointerId);
         $('#ai_wbr_memory_node_popover').hide();
         $(svg).addClass('ai-wbr-memory-panning');
         event.preventDefault();
     });
 
-    $(document).on('mousemove.memoryGraphSvg', (event) => {
+    $(document).on('pointermove.memoryGraphSvg', (event) => {
+        const original = event.originalEvent || event;
         if (!memoryGraphDrag) {
             if (memoryGraphPan) {
+                if (memoryGraphPan.pointerId !== undefined && original.pointerId !== undefined && memoryGraphPan.pointerId !== original.pointerId) {
+                    return;
+                }
                 const rect = svg.getBoundingClientRect();
-                const dx = (event.clientX - memoryGraphPan.startClientX) * (memoryGraphView.width / Math.max(1, rect.width));
-                const dy = (event.clientY - memoryGraphPan.startClientY) * (memoryGraphView.height / Math.max(1, rect.height));
-                if (Math.abs(dx) + Math.abs(dy) > 1.5) {
+                const dx = (original.clientX - memoryGraphPan.startClientX) * (memoryGraphView.width / Math.max(1, rect.width));
+                const dy = (original.clientY - memoryGraphPan.startClientY) * (memoryGraphView.height / Math.max(1, rect.height));
+                if (Math.abs(dx) + Math.abs(dy) > MEMORY_GRAPH_TOUCH_TAP_THRESHOLD) {
                     memoryGraphPan.moved = true;
                 }
                 memoryGraphView.x = memoryGraphPan.viewX - dx;
                 memoryGraphView.y = memoryGraphPan.viewY - dy;
                 updateMemoryGraphViewBox(svg);
+                event.preventDefault();
             }
             return;
         }
-        const point = getMemoryGraphSvgPoint(svg, event.clientX, event.clientY);
+        if (memoryGraphDrag.pointerId !== undefined && original.pointerId !== undefined && memoryGraphDrag.pointerId !== original.pointerId) {
+            return;
+        }
+        const point = getMemoryGraphSvgPoint(svg, original.clientX, original.clientY);
         const dx = point.x - memoryGraphDrag.startX;
         const dy = point.y - memoryGraphDrag.startY;
-        if (Math.abs(dx) + Math.abs(dy) > 1.5) {
+        if (Math.abs(dx) + Math.abs(dy) > MEMORY_GRAPH_TOUCH_TAP_THRESHOLD) {
             memoryGraphDrag.moved = true;
         }
         
@@ -5166,10 +5314,15 @@ function bindMemoryGraphSvgInteractions() {
                 line.attr('d', buildMemoryEdgePath(source, target, laneOffset));
             }
         });
+        event.preventDefault();
     });
 
-    $(document).on('mouseup.memoryGraphSvg', (event) => {
+    $(document).on('pointerup.memoryGraphSvg pointercancel.memoryGraphSvg', (event) => {
+        const original = event.originalEvent || event;
         if (memoryGraphPan) {
+            if (memoryGraphPan.pointerId !== undefined && original.pointerId !== undefined && memoryGraphPan.pointerId !== original.pointerId) {
+                return;
+            }
             memoryGraphPan = null;
             $(svg).removeClass('ai-wbr-memory-panning');
             lastObservedChatScopedUiSignature = getChatScopedUiSignature();
@@ -5179,12 +5332,15 @@ function bindMemoryGraphSvgInteractions() {
         if (!memoryGraphDrag) {
             return;
         }
+        if (memoryGraphDrag.pointerId !== undefined && original.pointerId !== undefined && memoryGraphDrag.pointerId !== original.pointerId) {
+            return;
+        }
         const drag = memoryGraphDrag;
         memoryGraphDrag = null;
         const graph = getMemoryGraph();
         const node = graph.nodes.find(item => item.id === drag.nodeId);
         if (node) {
-            const point = getMemoryGraphSvgPoint(svg, event.clientX, event.clientY);
+            const point = getMemoryGraphSvgPoint(svg, original.clientX, original.clientY);
             const dx = point.x - drag.startX;
             const dy = point.y - drag.startY;
             const clamped = clampMemoryNodePositionToView(drag.nodeX + dx, drag.nodeY + dy);
@@ -5636,10 +5792,9 @@ function bindMemoryPanelActions() {
         .off('.aiWbrGraphWorkspace')
         .on('click.aiWbrGraphWorkspace', '#ai_wbr_memory_graph_fit', (event) => {
             event.preventDefault();
-            const container = $('#ai_wbr_memory_graph');
-            const viewport = getMemoryGraphViewportMetrics(container[0]);
-            memoryGraphView = { x: 0, y: 0, width: viewport.baseWidth, height: viewport.baseHeight };
-            renderMemoryGraphSvg(getMemoryGraph());
+            const graph = getMemoryGraph();
+            fitMemoryGraphToContainer(graph);
+            renderMemoryGraphSvg(graph);
         })
         .on('click.aiWbrGraphWorkspace', '#ai_wbr_memory_graph_close_detail, .ai-wbr-memory-detail-close', (event) => {
             event.preventDefault();
