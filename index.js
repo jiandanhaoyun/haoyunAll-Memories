@@ -6,7 +6,7 @@
     'use strict';
 
     const NAMESPACE = 'AIWorldbookRouter';
-const VERSION = '0.5.16';
+const VERSION = '0.5.17';
     const LOG_PREFIX = '[AI Worldbook Router Bootstrap]';
     const ENTRY_ID = 'ai_wbr_extension_entry';
     const ROW_ID = 'ai_wbr_extension_row';
@@ -179,12 +179,23 @@ const VERSION = '0.5.16';
 
     function closeHostMenusBeforeOpen() {
         document.getElementById('extensionsMenu')?.classList?.remove?.('open');
-        document.querySelectorAll('.drawer-content.openDrawer, .drawer-content.open, .popup, .menu, .list-group')
+        document.querySelectorAll('.drawer-content.openDrawer, .drawer-content.open, .popup, .menu, .list-group, .openDrawer, .open')
             .forEach((node) => {
                 if (node.id !== 'ai_wbr_floating_window' && !node.closest?.('#ai_wbr_floating_window')) {
+                    node.classList?.remove?.('openDrawer');
+                    node.classList?.remove?.('open');
+                    node.classList?.remove?.('active');
+                    node.style?.removeProperty?.('pointer-events');
                     node.blur?.();
                 }
             });
+        try {
+            document.activeElement?.blur?.();
+            document.body?.dispatchEvent?.(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+            document.dispatchEvent?.(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        } catch (_) {
+            // Some mobile WebViews restrict synthetic keyboard events.
+        }
     }
 
     function buttonStyle(primary) {
@@ -200,6 +211,26 @@ const VERSION = '0.5.16';
 
     function closeDiagnosticPanel() {
         document.getElementById(PANEL_ID)?.remove();
+    }
+
+    function confirmConsoleVisible(panel, options = {}) {
+        const diagnosticsEnabled = !!options.diagnosticsEnabled;
+        const forcePanel = !!options.forcePanel;
+        const directUserOpen = !!options.directUserOpen;
+        closeHostMenusBeforeOpen();
+        const isVisible = forceConsoleVisible();
+        if (isVisible) {
+            if (!diagnosticsEnabled) {
+                closeDiagnosticPanel();
+                panel?.remove?.();
+            }
+            return true;
+        }
+        if (diagnosticsEnabled || forcePanel || directUserOpen) {
+            showInstantClickPanel('控制台未显示', { force: true });
+            showPanel('\u5165\u53e3\u70b9\u51fb\u5df2\u6536\u5230\uff0c\u4f46\u5b8c\u6574\u63a7\u5236\u53f0\u4ecd\u672a\u8fdb\u5165\u6253\u5f00\u72b6\u6001\u3002\u8bf7\u628a\u4e0b\u9762\u72b6\u6001\u53d1\u7ed9\u6211\u3002');
+        }
+        return false;
     }
 
     function appendPanelCloseButton(panel) {
@@ -480,6 +511,7 @@ const VERSION = '0.5.16';
         window.setTimeout(() => {
             try {
                 openCoreConsoleRepeatedly('overview');
+                closeHostMenusBeforeOpen();
             } catch (error) {
                 coreLoadError = error;
                 if (diagnosticsEnabled || forcePanel) {
@@ -489,17 +521,11 @@ const VERSION = '0.5.16';
                 return;
             }
 
-            window.setTimeout(() => {
-                const isVisible = forceConsoleVisible();
-                if (isVisible && Date.now() > keepPanelUntil && !diagnosticsEnabled) {
-                    panel?.remove();
-                } else if (!isVisible) {
-                    if (diagnosticsEnabled || forcePanel || directUserOpen) {
-                        showInstantClickPanel('控制台未显示', { force: true });
-                        showPanel('\u5165\u53e3\u70b9\u51fb\u5df2\u6536\u5230\uff0c\u4f46\u5b8c\u6574\u63a7\u5236\u53f0\u4ecd\u672a\u8fdb\u5165\u6253\u5f00\u72b6\u6001\u3002\u8bf7\u628a\u4e0b\u9762\u72b6\u6001\u53d1\u7ed9\u6211\u3002');
-                    }
-                }
-            }, 300);
+            [260, 520, 920, 1400].forEach((delay) => {
+                window.setTimeout(() => {
+                    confirmConsoleVisible(panel, { diagnosticsEnabled, forcePanel, directUserOpen });
+                }, delay);
+            });
         }, 100);
     }
 
