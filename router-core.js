@@ -6940,6 +6940,7 @@ function bindTitleBlocklistEditor() {
 function createFloatingMemoryWindow() {
     if ($('#ai_wbr_fab').length && $('#ai_wbr_floating_window').length) {
         updateFloatingButtonVisibility();
+        clampFloatingFabToViewport();
         globalThis.aiWbrOpenConsole = (tabId = 'overview') => {
             const existingWin = $('#ai_wbr_floating_window');
             if (!existingWin.length) {
@@ -6985,6 +6986,7 @@ function createFloatingMemoryWindow() {
     $('body').append(fab).append(win);
     parkStandalonePanels();
     updateFloatingButtonVisibility();
+    clampFloatingFabToViewport();
 
     // 切换悬浮窗显隐
     function clearForcedWindowStyles() {
@@ -7096,6 +7098,7 @@ function createFloatingMemoryWindow() {
     $(document).on('pointerup.fabDrag pointercancel.fabDrag', () => {
         if (fabDragging) {
             fabDragging = false;
+            clampFloatingFabToViewport();
             $('body').css('user-select', '');
         }
     });
@@ -7191,6 +7194,12 @@ function createFloatingMemoryWindow() {
         }
     });
 
+    $(window).off('resize.aiWbrFabSafeArea orientationchange.aiWbrFabSafeArea')
+        .on('resize.aiWbrFabSafeArea orientationchange.aiWbrFabSafeArea', () => {
+            setTimeout(clampFloatingFabToViewport, 80);
+            setTimeout(clampFloatingFabToViewport, 360);
+        });
+
     renderStandaloneConsole('overview');
 }
 
@@ -7198,6 +7207,40 @@ function updateFloatingButtonVisibility() {
     const visible = settings.floatingButtonEnabled !== false;
     $('#ai_wbr_emergency_fab').remove();
     $('#ai_wbr_fab').toggle(visible);
+    if (visible) {
+        clampFloatingFabToViewport();
+    }
+}
+
+function clampFloatingFabToViewport() {
+    const fab = $('#ai_wbr_fab');
+    if (!fab.length || settings.floatingButtonEnabled === false || fab.css('display') === 'none') {
+        return;
+    }
+
+    const node = fab[0];
+    const rect = node.getBoundingClientRect();
+    const width = Math.max(44, rect.width || node.offsetWidth || 52);
+    const height = Math.max(44, rect.height || node.offsetHeight || 52);
+    const viewportWidth = Math.max(1, globalThis.visualViewport?.width || window.innerWidth || document.documentElement.clientWidth || 1);
+    const viewportHeight = Math.max(1, globalThis.visualViewport?.height || window.innerHeight || document.documentElement.clientHeight || 1);
+    const margin = Math.max(8, Math.min(16, Math.round(Math.min(viewportWidth, viewportHeight) * 0.025)));
+    const maxLeft = Math.max(margin, viewportWidth - width - margin);
+    const maxTop = Math.max(margin, viewportHeight - height - margin);
+    const hasInlinePosition = node.style.left || node.style.top;
+    const defaultLeft = Math.max(margin, viewportWidth - width - margin);
+    const defaultTop = Math.max(margin, viewportHeight - height - Math.max(margin, Math.min(88, viewportHeight * 0.12)));
+    const currentLeft = Number.isFinite(rect.left) && rect.width > 0 ? rect.left : defaultLeft;
+    const currentTop = Number.isFinite(rect.top) && rect.height > 0 ? rect.top : defaultTop;
+    const nextLeft = Math.max(margin, Math.min(hasInlinePosition ? currentLeft : defaultLeft, maxLeft));
+    const nextTop = Math.max(margin, Math.min(hasInlinePosition ? currentTop : defaultTop, maxTop));
+
+    fab.css({
+        left: `${nextLeft}px`,
+        top: `${nextTop}px`,
+        right: 'auto',
+        bottom: 'auto',
+    });
 }
 
 async function loadSettingsHtml() {
