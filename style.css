@@ -818,6 +818,11 @@
     margin-top: 0.45rem;
 }
 
+.ai-wbr-memory-review-card-stale {
+    opacity: 0.72;
+    border-color: rgba(255, 196, 87, 0.35);
+}
+
 .ai-wbr-memory-review-head {
     display: flex;
     align-items: flex-start;

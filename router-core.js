@@ -113,6 +113,8 @@ const defaultSettings = {
     memoryGraphsByChat: {},
     memoryStatusesByChat: {},
     memoryLastTurnSignaturesByChat: {},
+    memoryLastSourceByChat: {},
+    memoryInvalidatedSourcesByChat: {},
     memoryLastPromptsByChat: {},
     memoryLastRawByChat: {},
     memoryLastErrorsByChat: {},
@@ -386,7 +388,22 @@ function handleChatScopedUiMaybeChanged() {
 function handleMessageDeletedOrSwiped() {
     try {
         const context = getContext();
+        const chatKey = getCurrentChatMemoryKey(context);
+        const lastSource = settings.memoryLastSourceByChat?.[chatKey];
+        if (lastSource?.id) {
+            settings.memoryInvalidatedSourcesByChat[chatKey] = uniqueStrings([
+                ...(Array.isArray(settings.memoryInvalidatedSourcesByChat?.[chatKey]) ? settings.memoryInvalidatedSourcesByChat[chatKey] : []),
+                String(lastSource.id),
+            ]).slice(-40);
+        }
         const container = getChatMemoryContainer(context);
+        if (Array.isArray(container.reviewQueue) && container.reviewQueue.length) {
+            container.reviewQueue = container.reviewQueue.map(item => ({
+                ...item,
+                status: item.status === 'pending' ? 'stale' : item.status,
+                staleReason: item.staleReason || 'message_changed',
+            }));
+        }
         if (container.graphBackup) {
             memoryScopeDebugLog('Restoring memory graph from backup due to message deletion/swipe');
             container.graph = cloneMemoryGraph(container.graphBackup);
@@ -402,6 +419,10 @@ function handleMessageDeletedOrSwiped() {
             if (!memoryGraphDrag && !memoryGraphPan) {
                 scheduleChatScopedUiRefresh();
             }
+        } else {
+            persistChatMemoryContainer(container, context);
+            setCurrentMemoryLastTurnSignature('', context);
+            scheduleChatScopedUiRefresh();
         }
     } catch (error) {
         console.warn(`${LOG_PREFIX} Failed to restore memory graph backup`, error);
@@ -649,6 +670,8 @@ function ensureSettings() {
     settings.memoryGraphsByChat = settings.memoryGraphsByChat && typeof settings.memoryGraphsByChat === 'object' ? settings.memoryGraphsByChat : {};
     settings.memoryStatusesByChat = settings.memoryStatusesByChat && typeof settings.memoryStatusesByChat === 'object' ? settings.memoryStatusesByChat : {};
     settings.memoryLastTurnSignaturesByChat = settings.memoryLastTurnSignaturesByChat && typeof settings.memoryLastTurnSignaturesByChat === 'object' ? settings.memoryLastTurnSignaturesByChat : {};
+    settings.memoryLastSourceByChat = settings.memoryLastSourceByChat && typeof settings.memoryLastSourceByChat === 'object' ? settings.memoryLastSourceByChat : {};
+    settings.memoryInvalidatedSourcesByChat = settings.memoryInvalidatedSourcesByChat && typeof settings.memoryInvalidatedSourcesByChat === 'object' ? settings.memoryInvalidatedSourcesByChat : {};
     settings.memoryLastPromptsByChat = settings.memoryLastPromptsByChat && typeof settings.memoryLastPromptsByChat === 'object' ? settings.memoryLastPromptsByChat : {};
     settings.memoryLastRawByChat = settings.memoryLastRawByChat && typeof settings.memoryLastRawByChat === 'object' ? settings.memoryLastRawByChat : {};
     settings.memoryLastErrorsByChat = settings.memoryLastErrorsByChat && typeof settings.memoryLastErrorsByChat === 'object' ? settings.memoryLastErrorsByChat : {};
@@ -1533,17 +1556,37 @@ function hashString(value) {
     return Math.abs(hash).toString(36);
 }
 
-function getCurrentChatMemoryKey(context = getContext()) {
-    const stableChatParts = [];
-    const stableChatCandidates = [
+function getStableChatScopeParts(context = getContext()) {
+    const cleanParts = (values) => {
+        const parts = [];
+        for (const candidate of values) {
+            const value = String(candidate ?? '').trim();
+            if (value && !parts.includes(value)) {
+                parts.push(value);
+            }
+        }
+        return parts;
+    };
+
+    const charaFile = String(getCharaFilename?.() || '').trim();
+    const scopeParts = cleanParts([
+        context?.groupId,
+        context?.group_id,
+        context?.characterId,
+        context?.character_id,
+        context?.name2,
+        context?.character?.avatar,
+        context?.character?.name,
+        charaFile,
+    ]);
+
+    const stableChatParts = cleanParts([
         context?.chatId,
         context?.chat_id,
         context?.conversationId,
         context?.sessionId,
         context?.chatFileName,
         context?.chat_filename,
-        context?.chatName,
-        context?.chat_name,
         lastKnownChatFileName,
         context?.chatMetadata?.chat_id,
         context?.chatMetadata?.session_id,
@@ -1553,50 +1596,49 @@ function getCurrentChatMemoryKey(context = getContext()) {
         context?.chatMetadata?.mainChat,
         context?.chatMetadata?.chat_name,
         context?.chatMetadata?.name,
-    ];
-    for (const candidate of stableChatCandidates) {
-        const value = String(candidate ?? '').trim();
-        if (value && !stableChatParts.includes(value)) {
-            stableChatParts.push(value);
-        }
-    }
+        context?.chatName,
+        context?.chat_name,
+    ]);
 
-    const scopeParts = [];
-    const scopeCandidates = [
-        context?.groupId,
-        context?.group_id,
-        context?.characterId,
-        context?.character_id,
-    ];
-    for (const candidate of scopeCandidates) {
-        const value = String(candidate ?? '').trim();
-        if (value && !scopeParts.includes(value)) {
-            scopeParts.push(value);
-        }
-    }
+    return { scopeParts, stableChatParts };
+}
 
-    const charaFile = String(getCharaFilename?.() || '').trim();
-    if (charaFile && !scopeParts.includes(charaFile)) {
-        scopeParts.push(charaFile);
-    }
-
+function getCurrentChatMemoryKey(context = getContext()) {
+    const { scopeParts, stableChatParts } = getStableChatScopeParts(context);
     if (stableChatParts.length) {
-        return `chat:${[...scopeParts, ...stableChatParts].join('|')}`;
+        return `chat:v2:${[...scopeParts, ...stableChatParts].join('|')}`;
     }
 
-    const weakNameCandidates = [
-        context?.chatMetadata?.chat_name,
-        context?.chatMetadata?.name,
-    ];
+    if (scopeParts.length) {
+        return `chat:v2:scope-only:${scopeParts.join('|')}`;
+    }
+
+    return 'chat:v2:default';
+}
+
+function getLegacyChatMemoryKeys(context = getContext()) {
+    const keys = [];
+    const add = (key) => {
+        const value = String(key || '').trim();
+        if (value && !keys.includes(value)) {
+            keys.push(value);
+        }
+    };
+
+    const { scopeParts, stableChatParts } = getStableChatScopeParts(context);
+    if (stableChatParts.length) {
+        add(`chat:${[...scopeParts, ...stableChatParts].join('|')}`);
+    }
+
     const weakParts = [];
-    for (const candidate of weakNameCandidates) {
+    for (const candidate of [context?.chatMetadata?.chat_name, context?.chatMetadata?.name]) {
         const value = String(candidate ?? '').trim();
         if (value && !weakParts.includes(value)) {
             weakParts.push(value);
         }
     }
     if (weakParts.length) {
-        return `chat:weak:${[...scopeParts, ...weakParts].join('|')}`;
+        add(`chat:weak:${[...scopeParts, ...weakParts].join('|')}`);
     }
 
     const chat = Array.isArray(context?.chat) ? context.chat : [];
@@ -1606,11 +1648,37 @@ function getCurrentChatMemoryKey(context = getContext()) {
             .map(item => `${item?.is_user ? 'u' : 'a'}:${item?.name || ''}:${item?.mes || item?.text || ''}`)
             .join('\n');
         if (fingerprint.trim()) {
-            return `chat:fallback:${hashString(`${scopeParts.join('|')}|${fingerprint}`)}`;
+            add(`chat:fallback:${hashString(`${scopeParts.join('|')}|${fingerprint}`)}`);
         }
     }
 
-    return 'chat:default';
+    add('chat:default');
+    return keys;
+}
+
+function hasUsefulMemoryContainer(container) {
+    if (!container || typeof container !== 'object' || Array.isArray(container)) {
+        return false;
+    }
+    const normalized = normalizeChatMemoryContainer(container);
+    return !!(
+        normalized.graph?.nodes?.length
+        || normalized.graph?.links?.length
+        || hasMemoryState(normalized.graph)
+        || normalized.reviewQueue?.length
+        || normalized.lastPrompt
+        || normalized.lastRaw
+        || normalized.lastError
+        || normalized.status
+    );
+}
+
+function cloneMemoryContainerForScope(container, chatKey) {
+    const normalized = normalizeChatMemoryContainer(container);
+    normalized.chatKey = chatKey;
+    normalized.migratedAt = normalized.migratedAt || new Date().toISOString();
+    normalized.migratedFrom = normalized.migratedFrom || String(container?.chatKey || 'legacy');
+    return normalized;
 }
 
 function cloneMemoryGraph(graph) {
@@ -1689,6 +1757,23 @@ function getChatMemoryContainer(context = getContext()) {
         return normalizedStored;
     }
 
+    for (const legacyKey of getLegacyChatMemoryKeys(context)) {
+        const legacyContainer = settings.memoryContainersByChat?.[legacyKey];
+        if (!hasUsefulMemoryContainer(legacyContainer)) {
+            continue;
+        }
+        const migrated = cloneMemoryContainerForScope(legacyContainer, currentChatKey);
+        settings.memoryContainersByChat[currentChatKey] = migrated;
+        Object.assign(extension_settings[MODULE_NAME], settings);
+        saveSettingsDebounced();
+        memoryScopeDebugLog('getChatMemoryContainer migrated from legacy settings key', {
+            legacyKey,
+            currentChatKey,
+            graph: getMemoryGraphSummary(migrated.graph),
+        }, context);
+        return migrated;
+    }
+
     const first = getChatMemoryFirstMessage(context);
     if (!first) {
         memoryScopeDebugLog('getChatMemoryContainer no first message', {}, context);
@@ -1711,27 +1796,21 @@ function getChatMemoryContainer(context = getContext()) {
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
         const normalized = normalizeChatMemoryContainer(parsed);
         if (normalized.chatKey && normalized.chatKey !== currentChatKey) {
-            memoryScopeDebugLog('getChatMemoryContainer ignored mismatched chatKey', {
+            memoryScopeDebugLog('getChatMemoryContainer migrated mismatched chat[0] key', {
                 storedChatKey: normalized.chatKey,
                 currentChatKey,
                 graph: getMemoryGraphSummary(normalized.graph),
             }, context);
-            const empty = normalizeChatMemoryContainer(null);
-            empty.chatKey = currentChatKey;
-            return empty;
         }
         if (!normalized.chatKey && (normalized.graph?.nodes?.length || normalized.graph?.links?.length || hasMemoryState(normalized.graph))) {
             const legacySignature = hashString(JSON.stringify(getMemoryGraphSummary(normalized.graph)));
             const legacyOwnerKey = settings.memoryLegacyGraphChatKeys?.[legacySignature];
             if (legacyOwnerKey && legacyOwnerKey !== currentChatKey) {
-                memoryScopeDebugLog('getChatMemoryContainer ignored legacy graph claimed by another chat', {
+                memoryScopeDebugLog('getChatMemoryContainer reusing legacy graph for stable scope', {
                     legacyOwnerKey,
                     currentChatKey,
                     graph: getMemoryGraphSummary(normalized.graph),
                 }, context);
-                const empty = normalizeChatMemoryContainer(null);
-                empty.chatKey = currentChatKey;
-                return empty;
             }
             settings.memoryLegacyGraphChatKeys[legacySignature] = currentChatKey;
         }
@@ -1922,11 +2001,13 @@ function enqueueMemoryReview(update, meta = {}, context = getContext()) {
     const container = getChatMemoryContainer(context);
     const now = new Date().toISOString();
     const summary = summarizeMemoryUpdateProposal(update);
+    const source = meta.source && typeof meta.source === 'object' ? meta.source : null;
     const item = {
         id: `review_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`,
         status: 'pending',
         reason: String(meta.reason || 'auto'),
         signature: String(meta.signature || ''),
+        source,
         createdAt: now,
         title: summary.title,
         summary,
@@ -1948,6 +2029,15 @@ function removeMemoryReviewItem(id, context = getContext()) {
 function acceptMemoryReviewItem(id, context = getContext()) {
     const item = getMemoryReviewQueue(context).find(entry => String(entry.id) === String(id));
     if (!item) return null;
+    if (item.status === 'stale' || !isMemorySourceCurrent(item.source, context)) {
+        const container = getChatMemoryContainer(context);
+        container.reviewQueue = getMemoryReviewQueue(context).map(entry => String(entry.id) === String(id)
+            ? { ...entry, status: 'stale', staleReason: entry.staleReason || 'source_changed' }
+            : entry);
+        persistChatMemoryContainer(container, context);
+        setMemoryStatus('记忆来源楼层已变化，本条待确认已失效', context);
+        return null;
+    }
     const container = getChatMemoryContainer(context);
     container.graphBackup = cloneMemoryGraph(getMemoryGraph(context));
     persistChatMemoryContainer(container, context);
@@ -1963,10 +2053,15 @@ function rejectMemoryReviewItem(id, context = getContext()) {
 function acceptAllMemoryReviews(context = getContext()) {
     const queue = [...getMemoryReviewQueue(context)];
     let lastResult = null;
+    let acceptedCount = 0;
     for (const item of queue) {
-        lastResult = acceptMemoryReviewItem(item.id, context) || lastResult;
+        const result = acceptMemoryReviewItem(item.id, context);
+        if (result) {
+            acceptedCount += 1;
+            lastResult = result;
+        }
     }
-    return { count: queue.length, result: lastResult };
+    return { count: acceptedCount, result: lastResult };
 }
 
 function clearMemoryReviewQueue(context = getContext()) {
@@ -2037,9 +2132,13 @@ function normalizeMemoryLink(rawLink, nodeIds, fallbackIndex = 0) {
 function getRecentMessagesByCount(chat, count) {
     const limit = clampNumber(count, 6, 2, 40);
     return chat
-        .filter(message => message && !message.is_system && message.mes)
+        .map((message, index) => ({ message, index }))
+        .filter(({ message }) => message && !message.is_system && message.mes)
         .slice(-limit)
-        .map(message => ({
+        .map(({ message, index }) => ({
+            index,
+            messageId: String(message.id || message.messageId || message.extra?.id || message.send_date || ''),
+            swipeId: String(message.swipe_id ?? message.swipeId ?? message.extra?.swipe_id ?? message.extra?.swipeId ?? ''),
             name: message.name || '',
             text: message.is_user ? extractActualUserInput(message.mes) : String(message.mes || ''),
             isUser: !!message.is_user,
@@ -2075,8 +2174,97 @@ function getMemoryAutoRunMessageCount(context = getContext()) {
 function getMemoryTurnSignature(recentMessages) {
     return recentMessages
         .slice(-4)
-        .map(message => `${message.isUser ? 'U' : 'A'}:${message.name}:${truncateText(message.text, 240)}`)
+        .map(message => `${message.index ?? '?'}:${message.isUser ? 'U' : 'A'}:${message.name}:${message.messageId || ''}:${message.swipeId || ''}:${truncateText(message.text, 240)}`)
         .join('\n---\n');
+}
+
+function getMemorySourceSignature(recentMessages) {
+    return recentMessages
+        .slice(-4)
+        .map(message => [
+            message.index ?? '?',
+            message.isUser ? 'U' : 'A',
+            message.name || '',
+            message.messageId || '',
+            message.swipeId || '',
+            hashString(message.text || ''),
+        ].join(':'))
+        .join('|');
+}
+
+function getMemorySourceSnapshot(context = getContext(), recentMessages = null) {
+    const messages = Array.isArray(recentMessages)
+        ? recentMessages
+        : getMemoryRelevantMessages(Array.isArray(context?.chat) ? context.chat : [], settings.memoryScanMessages);
+    const last = messages[messages.length - 1] || {};
+    const chatKey = getCurrentChatMemoryKey(context);
+    const sourceSignature = getMemorySourceSignature(messages);
+    const messageCount = getMemoryAutoRunMessageCount(context);
+    return {
+        id: `src_${hashString(`${chatKey}|${messageCount}|${sourceSignature}`)}`,
+        chatKey,
+        messageCount,
+        indices: messages.map(message => message.index).filter(index => Number.isFinite(index)),
+        lastIndex: Number.isFinite(last.index) ? last.index : -1,
+        lastRole: last.isUser ? 'user' : 'assistant',
+        lastName: String(last.name || ''),
+        lastHash: hashString(last.text || ''),
+        sourceSignature,
+        createdAt: new Date().toISOString(),
+    };
+}
+
+function getInvalidatedMemorySourceIds(chatKey = getCurrentChatMemoryKey()) {
+    return Array.isArray(settings.memoryInvalidatedSourcesByChat?.[chatKey])
+        ? settings.memoryInvalidatedSourcesByChat[chatKey].map(value => String(value))
+        : [];
+}
+
+function setCurrentMemorySource(source, context = getContext()) {
+    if (!source?.id) {
+        return;
+    }
+    const chatKey = source.chatKey || getCurrentChatMemoryKey(context);
+    settings.memoryLastSourceByChat[chatKey] = source;
+    Object.assign(extension_settings[MODULE_NAME], settings);
+    saveSettingsDebounced();
+}
+
+function isMemorySourceCurrent(source, context = getContext()) {
+    if (!source?.id) {
+        return true;
+    }
+    const chatKey = getCurrentChatMemoryKey(context);
+    if (source.chatKey && source.chatKey !== chatKey) {
+        return false;
+    }
+    if (getInvalidatedMemorySourceIds(chatKey).includes(String(source.id))) {
+        return false;
+    }
+    const chat = Array.isArray(context?.chat) ? context.chat : [];
+    const currentMessages = getMemoryRelevantMessages(chat, settings.memoryScanMessages);
+    const current = getMemorySourceSnapshot(context, currentMessages);
+    return current.messageCount === Number(source.messageCount || 0)
+        && current.sourceSignature === String(source.sourceSignature || '')
+        && current.lastIndex === Number(source.lastIndex ?? -1)
+        && current.lastHash === String(source.lastHash || '');
+}
+
+function getMemorySourceLabel(source) {
+    if (!source) {
+        return '';
+    }
+    const indices = Array.isArray(source.indices) ? source.indices : [];
+    if (!indices.length) {
+        return '';
+    }
+    const floors = indices.map(index => Number(index) + 1).filter(index => Number.isFinite(index));
+    if (!floors.length) {
+        return '';
+    }
+    const first = floors[0];
+    const last = floors[floors.length - 1];
+    return first === last ? `Floor ${first}` : `Floor ${first}-${last}`;
 }
 
 function buildMemoryRouterSummary() {
@@ -2655,6 +2843,7 @@ async function runMemoryGraphUpdate(reason = 'auto') {
     }
 
     const signature = getMemoryTurnSignature(recentMessages);
+    const source = getMemorySourceSnapshot(context, recentMessages);
     if (reason === 'auto' && signature && signature === getCurrentMemoryLastTurnSignature(context)) {
         return false;
     }
@@ -2718,6 +2907,16 @@ async function runMemoryGraphUpdate(reason = 'auto') {
                     });
                     return false;
                 }
+                if (!isMemorySourceCurrent(source, context)) {
+                    debugLog('Discarded memory update because source floor changed before completion', {
+                        source,
+                        current: getMemorySourceSnapshot(context),
+                    });
+                    setCurrentMemoryLastTurnSignature('', context);
+                    setMemoryStatus('记忆整理已跳过：检测到 roll / swipe / 楼层变化', context);
+                    stopMemoryAnimation(false);
+                    return false;
+                }
                 
                 // Backup graph before applying update
                 const container = getChatMemoryContainer(context);
@@ -2729,9 +2928,11 @@ async function runMemoryGraphUpdate(reason = 'auto') {
                     const review = enqueueMemoryReview(update, {
                         reason,
                         signature,
+                        source,
                         prompt: promptLog,
                         raw: summarizeRouterResponse(raw),
                     }, context);
+                    setCurrentMemorySource(source, context);
                     setCurrentMemoryLastTurnSignature(signature, context);
                     const updatedContainer = getChatMemoryContainer(context);
                     updatedContainer.lastAutoMessageCount = getMemoryAutoRunMessageCount(context);
@@ -2744,6 +2945,7 @@ async function runMemoryGraphUpdate(reason = 'auto') {
                 }
 
                 memoryResult = applyMemoryGraphUpdate(update, context);
+                setCurrentMemorySource(source, context);
                 setCurrentMemoryLastTurnSignature(signature, context);
                 const updatedContainer = getChatMemoryContainer(context);
                 updatedContainer.lastAutoMessageCount = getMemoryAutoRunMessageCount(context);
@@ -4328,23 +4530,28 @@ function renderMemoryReviewQueue() {
 
     for (const item of queue) {
         const summary = item.summary || summarizeMemoryUpdateProposal(item.update);
+        const sourceLabel = getMemorySourceLabel(item.source);
+        const isStale = item.status === 'stale' || !isMemorySourceCurrent(item.source);
         const chips = [
             `新增 ${summary.nodes || 0}`,
             `修改 ${summary.updates || 0}`,
             `关系 ${summary.links || 0}`,
             `状态 ${summary.stateChanges || 0}`,
+            sourceLabel ? `来源 ${sourceLabel}` : '',
+            isStale ? '已失效' : '',
             summary.removes ? `删除 ${summary.removes}` : '',
         ].filter(Boolean);
 
         container.append(
             $('<div class="ai-wbr-memory-review-card"></div>')
+                .toggleClass('ai-wbr-memory-review-card-stale', isStale)
                 .attr('data-memory-review-id', item.id)
                 .append($('<div class="ai-wbr-memory-review-head"></div>')
                     .append($('<div></div>')
                         .append($('<b></b>').text(item.title || '待确认记忆更新'))
-                        .append($('<small></small>').text(` ${item.reason || 'auto'} · ${item.createdAt ? new Date(item.createdAt).toLocaleString() : ''}`)))
+                        .append($('<small></small>').text(` ${item.reason || 'auto'} · ${item.createdAt ? new Date(item.createdAt).toLocaleString() : ''}${sourceLabel ? ` · ${sourceLabel}` : ''}${isStale ? ' · roll/swipe 后已失效' : ''}`)))
                     .append($('<div class="ai-wbr-memory-review-actions"></div>')
-                        .append('<button class="menu_button ai-wbr-memory-review-accept" type="button">确认写入</button>')
+                        .append($('<button class="menu_button ai-wbr-memory-review-accept" type="button">确认写入</button>').prop('disabled', isStale))
                         .append('<button class="menu_button ai-wbr-memory-review-reject" type="button">忽略</button>')))
                 .append($('<div class="ai-wbr-memory-review-chips"></div>').append(chips.map(chip => $('<span></span>').text(chip))))
                 .append($('<div class="ai-wbr-memory-review-summary"></div>').text(item.update?.summary || '无摘要')),
