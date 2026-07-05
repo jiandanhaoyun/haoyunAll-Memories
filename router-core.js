@@ -1839,12 +1839,13 @@ function isBookshelfBookBound(book, type, key) {
 
 function isBookshelfBookAvailable(book, context = getContext()) {
     if (!book || book.enabled === false) return false;
+    if (String(book.status || '') !== 'ready' && Number(book.vectorizedCount || 0) <= 0) return false;
     const scope = getBookshelfScope(context);
     const bindings = normalizeBookshelfBindings(book);
     if (bindings.some(item => item.type === 'chat' && item.key === scope.chatKey)) return true;
     if (bindings.some(item => item.type === 'character' && item.key === scope.characterKey)) return true;
     if (settings.bookshelfAllowGlobal && bindings.some(item => item.type === 'global')) return true;
-    return !settings.bookshelfOnlyBound && bindings.length === 0;
+    return false;
 }
 
 function setBookshelfStatus(text) {
@@ -2491,10 +2492,7 @@ async function importBookshelfFiles(files) {
         const now = new Date().toISOString();
         const bookId = `book_${Date.now().toString(36)}_${hashString(`${file.name}:${file.size}:${text.slice(0, 200)}`)}`;
         const chunks = splitTextIntoBookshelfChunks(text, { chunkSize: 700, overlap: 100 });
-        const bindings = [
-            { type: 'character', key: scope.characterKey, label: scope.characterName, createdAt: now },
-            { type: 'chat', key: scope.chatKey, label: scope.chatName, createdAt: now },
-        ].filter(item => item.key);
+        const bindings = [];
 
         const book = {
             id: bookId,
@@ -2539,7 +2537,7 @@ async function importBookshelfFiles(files) {
         totalChunks += records.length;
     }
 
-    setBookshelfStatus(`已导入 ${imported} 本书，共 ${totalChunks} 个片段。状态：待向量化，请点击“开始向量化”。`);
+    setBookshelfStatus(`已导入 ${imported} 本书，共 ${totalChunks} 个片段。请先向量化，再手动绑定召回范围。`);
     toastr?.success?.(`已导入 ${imported} 本 TXT，待向量化`, '书架补充');
     await renderBookshelfPanel();
 }
@@ -2577,6 +2575,12 @@ async function removeBookshelfBinding(bookId, type) {
     await updateBookshelfBook(bookId, (book) => ({
         bindings: normalizeBookshelfBindings(book).filter(item => !(item.type === type && item.key === key)),
     }));
+    renderBookshelfPanel();
+}
+
+async function clearBookshelfBindings(bookId) {
+    if (!bookId) return;
+    await updateBookshelfBook(bookId, { bindings: [] });
     renderBookshelfPanel();
 }
 
@@ -5689,8 +5693,8 @@ function createBookshelfStandaloneFold() {
                                 <option value="rule">规则设定</option>
                                 <option value="other">其他资料</option>
                             </select>
-                            <label>绑定逻辑</label>
-                            <div class="ai-wbr-bookshelf-bind-note">导入后自动绑定当前角色卡和当前聊天；切聊天时仍可按角色卡召回。</div>
+                            <label>\u7ed1\u5b9a\u903b\u8f91</label>
+                            <div class="ai-wbr-bookshelf-bind-note">\u5bfc\u5165 TXT \u53ea\u5165\u5e93\uff1b\u5b8c\u6210\u5206\u5272\u5411\u91cf\u5316\u540e\uff0c\u5728\u4e66\u7c4d\u8be6\u60c5\u91cc\u624b\u52a8\u7ed1\u5b9a\u89d2\u8272\u5361\u3001\u804a\u5929\u6216\u5168\u5c40\uff0c\u4e5f\u53ef\u4ee5\u968f\u65f6\u53d6\u6d88\u6216\u66f4\u6362\u7ed1\u5b9a\u3002</div>
                         </div>
                         <div class="ai-wbr-bookshelf-switches">
                             <label class="checkbox_label" for="ai_wbr_bookshelf_enabled"><input id="ai_wbr_bookshelf_enabled" type="checkbox" />启用向量召回</label>
@@ -6457,11 +6461,14 @@ async function renderBookshelfPanel() {
                     .append($('<span></span>').text(`${getBookshelfTypeLabel(selectedBook.type)} · ${getBookshelfStatusLabel(selectedBook)} · ${selectedBook.vectorizedCount || 0}/${selectedBook.chunkCount || 0}`)),
                 $('<div class="ai-wbr-bookshelf-tags"></div>').append(getBookshelfBindingLabels(selectedBook).map(label => $('<span></span>').text(label))),
                 $('<div class="ai-wbr-bookshelf-actions"></div>')
-                    .append(`<button class="menu_button ai-wbr-bookshelf-rebuild" type="button">${Number(selectedBook.vectorizedCount || 0) ? '重新向量化' : '开始向量化'}</button>`)
-                    .append(`<button class="menu_button ai-wbr-bookshelf-toggle" type="button">${selectedBook.enabled === false ? '启用召回' : '停用召回'}</button>`)
-                    .append(`<button class="menu_button ai-wbr-bookshelf-bind-global" type="button">${isGlobalBound ? '取消全局' : '设为全局'}</button>`)
-                    .append('<button class="menu_button ai-wbr-bookshelf-clear-vector" type="button">重置向量</button>')
-                    .append('<button class="menu_button ai-wbr-bookshelf-delete" type="button">删除</button>'),
+                    .append($('<button class="menu_button ai-wbr-bookshelf-rebuild" type="button"></button>').attr('data-bookshelf-book-id', selectedBook.id).text(Number(selectedBook.vectorizedCount || 0) ? '\u91cd\u65b0\u5411\u91cf\u5316' : '\u5f00\u59cb\u5411\u91cf\u5316'))
+                    .append($('<button class="menu_button ai-wbr-bookshelf-toggle" type="button"></button>').attr('data-bookshelf-book-id', selectedBook.id).text(selectedBook.enabled === false ? '\u542f\u7528\u53ec\u56de' : '\u505c\u7528\u53ec\u56de'))
+                    .append($('<button class="menu_button ai-wbr-bookshelf-bind-character" type="button"></button>').attr('data-bookshelf-book-id', selectedBook.id).text(isCharBound ? '\u53d6\u6d88\u89d2\u8272\u5361\u7ed1\u5b9a' : '\u7ed1\u5b9a\u5f53\u524d\u89d2\u8272\u5361'))
+                    .append($('<button class="menu_button ai-wbr-bookshelf-bind-chat" type="button"></button>').attr('data-bookshelf-book-id', selectedBook.id).text(isChatBound ? '\u53d6\u6d88\u804a\u5929\u7ed1\u5b9a' : '\u7ed1\u5b9a\u5f53\u524d\u804a\u5929'))
+                    .append($('<button class="menu_button ai-wbr-bookshelf-bind-global" type="button"></button>').attr('data-bookshelf-book-id', selectedBook.id).text(isGlobalBound ? '\u53d6\u6d88\u5168\u5c40' : '\u8bbe\u4e3a\u5168\u5c40'))
+                    .append($('<button class="menu_button ai-wbr-bookshelf-clear-bindings" type="button"></button>').attr('data-bookshelf-book-id', selectedBook.id).text('\u6e05\u7a7a\u7ed1\u5b9a'))
+                    .append($('<button class="menu_button ai-wbr-bookshelf-clear-vector" type="button"></button>').attr('data-bookshelf-book-id', selectedBook.id).text('\u91cd\u7f6e\u5411\u91cf'))
+                    .append($('<button class="menu_button ai-wbr-bookshelf-delete" type="button"></button>').attr('data-bookshelf-book-id', selectedBook.id).text('\u5220\u9664')),
                 $('<div class="ai-wbr-bookshelf-chunk-list"></div>').append(
                     selectedChunks.slice(0, 24).map(chunk => (
                         $('<div class="ai-wbr-bookshelf-chunk"></div>')
@@ -7779,6 +7786,14 @@ function bindMemoryPanelActions() {
             toastr?.error?.(error?.message || String(error), '书架向量库');
         }
     });
+    function getBookshelfActionBookId(button) {
+        return String(
+            $(button).data('bookshelfBookId')
+            || $(button).closest('[data-bookshelf-book-id]').data('bookshelfBookId')
+            || selectedBookshelfBookId
+            || ''
+        );
+    }
 
     $(document)
         .off('.aiWbrBookshelf')
@@ -7795,7 +7810,7 @@ function bindMemoryPanelActions() {
         })
         .on('click.aiWbrBookshelf', '.ai-wbr-bookshelf-toggle', async function (event) {
             event.preventDefault();
-            const bookId = String($(this).closest('[data-bookshelf-book-id]').data('bookshelfBookId') || '');
+            const bookId = getBookshelfActionBookId(this);
             const book = await bookshelfGet('books', bookId);
             if (!book) return;
             await updateBookshelfBook(bookId, { enabled: book.enabled === false });
@@ -7803,7 +7818,7 @@ function bindMemoryPanelActions() {
         })
         .on('click.aiWbrBookshelf', '.ai-wbr-bookshelf-rebuild', async function (event) {
             event.preventDefault();
-            const bookId = String($(this).closest('[data-bookshelf-book-id]').data('bookshelfBookId') || selectedBookshelfBookId || '');
+            const bookId = getBookshelfActionBookId(this);
             try {
                 await rebuildBookshelfBookVectors(bookId);
             } catch (error) {
@@ -7812,24 +7827,25 @@ function bindMemoryPanelActions() {
         })
         .on('click.aiWbrBookshelf', '.ai-wbr-bookshelf-clear-vector', async function (event) {
             event.preventDefault();
-            const bookId = String($(this).closest('[data-bookshelf-book-id]').data('bookshelfBookId') || selectedBookshelfBookId || '');
+            const bookId = getBookshelfActionBookId(this);
             if (!bookId || !confirm('确定重置这本书的所有向量并回到待向量化？')) return;
             await clearBookshelfBookVectors(bookId);
         })
         .on('click.aiWbrBookshelf', '.ai-wbr-bookshelf-delete', async function (event) {
             event.preventDefault();
             event.stopPropagation();
-            const bookId = String($(this).closest('[data-bookshelf-book-id]').data('bookshelfBookId') || selectedBookshelfBookId || '');
-            if (!bookId || !confirm('确定删除这本书和所有向量片段？')) return;
+            const bookId = getBookshelfActionBookId(this);
+            if (!bookId) return;
+            setBookshelfStatus('\u6b63\u5728\u5220\u9664\u4e66\u7c4d...');
             await bookshelfDeleteBook(bookId);
             if (selectedBookshelfBookId === bookId) selectedBookshelfBookId = '';
             bookshelfLastTestResults = [];
-            setBookshelfStatus('书籍已删除。');
+            setBookshelfStatus('\u4e66\u7c4d\u5df2\u5220\u9664\u3002');
             renderBookshelfPanel();
         })
         .on('click.aiWbrBookshelf', '.ai-wbr-bookshelf-bind-character', async function (event) {
             event.preventDefault();
-            const bookId = selectedBookshelfBookId;
+            const bookId = getBookshelfActionBookId(this);
             const book = await bookshelfGet('books', bookId);
             const scope = getBookshelfScope();
             if (isBookshelfBookBound(book, 'character', scope.characterKey)) {
@@ -7840,7 +7856,7 @@ function bindMemoryPanelActions() {
         })
         .on('click.aiWbrBookshelf', '.ai-wbr-bookshelf-bind-chat', async function (event) {
             event.preventDefault();
-            const bookId = selectedBookshelfBookId;
+            const bookId = getBookshelfActionBookId(this);
             const book = await bookshelfGet('books', bookId);
             const scope = getBookshelfScope();
             if (isBookshelfBookBound(book, 'chat', scope.chatKey)) {
@@ -7851,13 +7867,18 @@ function bindMemoryPanelActions() {
         })
         .on('click.aiWbrBookshelf', '.ai-wbr-bookshelf-bind-global', async function (event) {
             event.preventDefault();
-            const bookId = selectedBookshelfBookId;
+            const bookId = getBookshelfActionBookId(this);
             const book = await bookshelfGet('books', bookId);
             if (isBookshelfBookBound(book, 'global', 'global')) {
                 await removeBookshelfBinding(bookId, 'global');
-            } else if (confirm('设为全局后，这本书会在允许全局召回时参与所有角色聊天。确定开启吗？')) {
+            } else {
                 await setBookshelfBinding(bookId, 'global');
             }
+        })
+        .on('click.aiWbrBookshelf', '.ai-wbr-bookshelf-clear-bindings', async function (event) {
+            event.preventDefault();
+            const bookId = getBookshelfActionBookId(this);
+            await clearBookshelfBindings(bookId);
         });
 
     $(document)
