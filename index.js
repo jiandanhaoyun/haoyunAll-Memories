@@ -6,7 +6,7 @@
     'use strict';
 
     const NAMESPACE = 'AIWorldbookRouter';
-const VERSION = '0.5.21';
+const VERSION = '0.5.22';
     const LOG_PREFIX = '[AI Worldbook Router Bootstrap]';
     const ENTRY_ID = 'ai_wbr_extension_entry';
     const ROW_ID = 'ai_wbr_extension_row';
@@ -36,6 +36,7 @@ const VERSION = '0.5.21';
     let observer = null;
     let lastOpenAt = 0;
     let keepPanelUntil = 0;
+    let directMenuBindTimer = null;
 
     window[NAMESPACE] = Object.assign(window[NAMESPACE] || {}, {
         loaded: true,
@@ -615,6 +616,61 @@ const VERSION = '0.5.21';
         return hasWorldbookEntryMeta(labelledParent) || hasWorldbookEntryText(labelledParent);
     }
 
+    function getPotentialMenuEntries() {
+        return Array.from(document.querySelectorAll([
+            '#' + ENTRY_ID,
+            '#' + ROW_ID,
+            '[data-ai-wbr-entry="true"]',
+            '[data-extension-id="ai_worldbook_router"]',
+            '[data-extension="ai_worldbook_router"]',
+            '[data-id="ai_worldbook_router"]',
+            '[title]',
+            '[aria-label]',
+            '.extension_container',
+            '.list-group-item',
+            '[role="menuitem"]',
+            '[role="button"]',
+            'button',
+            'a',
+        ].join(','))).filter((node) => {
+            if (!node?.closest) return false;
+            if (!node.closest('#extensionsMenu, #top-settings-holder, .drawer-content, .popup, .menu, .list-group')) return false;
+            if (node.closest('#' + PANEL_ID + ', #ai_wbr_fab, #' + FALLBACK_BUTTON_ID + ', #ai_wbr_floating_window')) return false;
+            return hasWorldbookEntryMeta(node) || hasWorldbookEntryText(node);
+        });
+    }
+
+    function bindDirectMenuEntry(node) {
+        if (!node || node.dataset?.aiWbrDirectBound === VERSION) return;
+        node.dataset.aiWbrDirectBound = VERSION;
+        node.dataset.aiWbrEntry = 'true';
+        node.dataset.extensionId = node.dataset.extensionId || 'ai_worldbook_router';
+        node.setAttribute?.('role', node.getAttribute?.('role') || 'button');
+        node.setAttribute?.('tabindex', node.getAttribute?.('tabindex') || '0');
+        node.setAttribute?.('aria-label', node.getAttribute?.('aria-label') || DISPLAY_NAME);
+        const directOpen = (event) => handleOpen(event);
+        node.addEventListener('pointerdown', directOpen, true);
+        node.addEventListener('touchstart', directOpen, { capture: true, passive: false });
+        node.addEventListener('click', directOpen, true);
+        node.addEventListener('touchend', directOpen, { capture: true, passive: false });
+        node.addEventListener('pointerup', directOpen, true);
+        node.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' || event.key === ' ') directOpen(event);
+        }, true);
+    }
+
+    function bindVisibleWorldbookMenuEntries() {
+        getPotentialMenuEntries().forEach(bindDirectMenuEntry);
+    }
+
+    function scheduleDirectMenuBinding() {
+        window.clearTimeout(directMenuBindTimer);
+        bindVisibleWorldbookMenuEntries();
+        [60, 180, 420, 900].forEach((delay) => {
+            directMenuBindTimer = window.setTimeout(bindVisibleWorldbookMenuEntries, delay);
+        });
+    }
+
     function bindGlobalEntryDelegates() {
         if (window[NAMESPACE]?.entryDelegatesBound) return;
         window[NAMESPACE].entryDelegatesBound = true;
@@ -630,6 +686,9 @@ const VERSION = '0.5.21';
         document.addEventListener('touchend', delegateOpen, { capture: true, passive: false });
         document.addEventListener('pointerdown', preloadCoreForEntry, true);
         document.addEventListener('touchstart', preloadCoreForEntry, { capture: true, passive: true });
+        document.addEventListener('pointerdown', scheduleDirectMenuBinding, true);
+        document.addEventListener('touchstart', scheduleDirectMenuBinding, { capture: true, passive: true });
+        document.addEventListener('click', scheduleDirectMenuBinding, true);
     }
 
     function createExtensionMenuEntry() {
@@ -704,6 +763,9 @@ const VERSION = '0.5.21';
             window.setTimeout(mountExtensionMenuEntry, 0);
             window.setTimeout(mountExtensionMenuEntry, 100);
             window.setTimeout(mountExtensionMenuEntry, 300);
+            window.setTimeout(scheduleDirectMenuBinding, 0);
+            window.setTimeout(scheduleDirectMenuBinding, 120);
+            window.setTimeout(scheduleDirectMenuBinding, 360);
         });
     }
 
@@ -712,6 +774,7 @@ const VERSION = '0.5.21';
         observer = new MutationObserver(() => {
             mountExtensionMenuEntry();
             watchExtensionMenuButton();
+            scheduleDirectMenuBinding();
         });
         observer.observe(document.documentElement, { childList: true, subtree: true });
     }
@@ -723,6 +786,7 @@ const VERSION = '0.5.21';
             attempts += 1;
             mountExtensionMenuEntry();
             watchExtensionMenuButton();
+            bindVisibleWorldbookMenuEntries();
             if (attempts >= MENU_RETRY_LIMIT) {
                 window.clearInterval(mountTimer);
                 mountTimer = null;
@@ -735,6 +799,7 @@ const VERSION = '0.5.21';
         mountExtensionMenuEntry();
         watchExtensionMenuButton();
         bindGlobalEntryDelegates();
+        scheduleDirectMenuBinding();
         startDomObserver();
         startRetryMounting();
         console.warn(LOG_PREFIX + ' v' + VERSION + ' mounted - bootstrap is executing', { baseUrl });
