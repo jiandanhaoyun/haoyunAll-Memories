@@ -7067,10 +7067,12 @@ function createFloatingMemoryWindow() {
     let fabPointerId = null;
     let fabSuppressNextClick = false;
     let fabLastToggleAt = 0;
+    let fabLastTouchAt = 0;
 
-    function openFromFab(event) {
+    function openFromFab(event, options = {}) {
         const now = Date.now();
-        if (now - fabLastToggleAt < 260) {
+        const minInterval = options.force ? 80 : 260;
+        if (now - fabLastToggleAt < minInterval) {
             event?.preventDefault?.();
             event?.stopPropagation?.();
             return;
@@ -7091,6 +7093,15 @@ function createFloatingMemoryWindow() {
         }, 260);
     }
 
+    function openFromFabTouch(event) {
+        fabLastTouchAt = Date.now();
+        fabMoved = false;
+        fabDragging = false;
+        fabPointerId = null;
+        $('body').css('user-select', '');
+        openFromFab(event, { force: true });
+    }
+
     function finishFabPointer(e) {
         if (!fabDragging) {
             return;
@@ -7105,7 +7116,7 @@ function createFloatingMemoryWindow() {
         $('body').css('user-select', '');
         if (wasTap) {
             fabSuppressNextClick = true;
-            openFromFab(e);
+            openFromFab(e, { force: true });
             setTimeout(() => {
                 fabSuppressNextClick = false;
             }, 360);
@@ -7147,6 +7158,11 @@ function createFloatingMemoryWindow() {
     $(document).on('pointerup.fabDrag pointercancel.fabDrag', finishFabPointer);
 
     fab.on('click', (e) => {
+        if (Date.now() - fabLastTouchAt < 420) {
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+        }
         if (fabSuppressNextClick) {
             e.preventDefault();
             e.stopPropagation();
@@ -7168,11 +7184,18 @@ function createFloatingMemoryWindow() {
             e.stopPropagation();
             return;
         }
-        openFromFab(e);
+        openFromFabTouch(e);
     });
 
-    fab[0]?.addEventListener('touchend', openFromFab, { capture: true, passive: false });
-    fab[0]?.addEventListener('click', openFromFab, true);
+    fab[0]?.addEventListener('touchend', openFromFabTouch, { capture: true, passive: false });
+    fab[0]?.addEventListener('click', (event) => {
+        if (Date.now() - fabLastTouchAt < 420) {
+            event.preventDefault();
+            event.stopPropagation();
+            return;
+        }
+        openFromFab(event);
+    }, true);
 
     $('#ai_wbr_floating_close').on('click touchend pointerup', (event) => {
         event.preventDefault();

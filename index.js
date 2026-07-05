@@ -6,7 +6,7 @@
     'use strict';
 
     const NAMESPACE = 'AIWorldbookRouter';
-const VERSION = '0.5.15';
+const VERSION = '0.5.16';
     const LOG_PREFIX = '[AI Worldbook Router Bootstrap]';
     const ENTRY_ID = 'ai_wbr_extension_entry';
     const ROW_ID = 'ai_wbr_extension_row';
@@ -349,12 +349,24 @@ const VERSION = '0.5.15';
 
     function loadScriptOnce(src) {
         return new Promise((resolve, reject) => {
+            if (HTMLScriptElement.supports && !HTMLScriptElement.supports('module')) {
+                reject(new Error('当前浏览器/WebView 不支持 module 脚本，无法加载 router-core.js'));
+                return;
+            }
             const script = document.createElement('script');
+            const timeout = window.setTimeout(() => {
+                script.remove();
+                reject(new Error('router-core.js load timed out: ' + src));
+            }, 7000);
             script.type = 'module';
             script.src = src;
             script.dataset.aiWbrCoreCandidate = 'true';
-            script.onload = () => resolve(src);
+            script.onload = () => {
+                window.clearTimeout(timeout);
+                resolve(src);
+            };
             script.onerror = () => {
+                window.clearTimeout(timeout);
                 script.remove();
                 reject(new Error('router-core.js load failed: ' + src));
             };
@@ -441,15 +453,16 @@ const VERSION = '0.5.15';
 
     async function openConsole(options = {}) {
         const now = Date.now();
-        if (now - lastOpenAt < 120) return;
+        const forcePanel = !!options.forcePanel;
+        const directUserOpen = !!options.source;
+        const diagnosticsEnabled = isEntryDiagnosticsEnabled();
+        if (now - lastOpenAt < 120 && !directUserOpen && !forcePanel) return;
         lastOpenAt = now;
 
-        const forcePanel = !!options.forcePanel;
-        const diagnosticsEnabled = isEntryDiagnosticsEnabled();
         keepPanelUntil = Date.now() + ((forcePanel || diagnosticsEnabled) ? 1600 : 0);
         closeHostMenusBeforeOpen();
-        const panel = (forcePanel || diagnosticsEnabled)
-            ? (document.getElementById(PANEL_ID) || showInstantClickPanel(options.source || '入口', { force: forcePanel }))
+        const panel = (forcePanel || diagnosticsEnabled || directUserOpen)
+            ? (document.getElementById(PANEL_ID) || showInstantClickPanel(options.source || '入口', { force: forcePanel || directUserOpen }))
             : document.getElementById(PANEL_ID);
 
         try {
@@ -457,7 +470,7 @@ const VERSION = '0.5.15';
             await waitForCoreUi();
         } catch (error) {
             coreLoadError = error;
-            if (diagnosticsEnabled || forcePanel) {
+            if (diagnosticsEnabled || forcePanel || directUserOpen) {
                 showInstantClickPanel('核心模块加载失败', { force: true });
                 showPanel('\u6838\u5fc3\u6a21\u5757\u52a0\u8f7d\u5931\u8d25\uff1a' + (error?.message || error));
             }
@@ -481,7 +494,7 @@ const VERSION = '0.5.15';
                 if (isVisible && Date.now() > keepPanelUntil && !diagnosticsEnabled) {
                     panel?.remove();
                 } else if (!isVisible) {
-                    if (diagnosticsEnabled || forcePanel) {
+                    if (diagnosticsEnabled || forcePanel || directUserOpen) {
                         showInstantClickPanel('控制台未显示', { force: true });
                         showPanel('\u5165\u53e3\u70b9\u51fb\u5df2\u6536\u5230\uff0c\u4f46\u5b8c\u6574\u63a7\u5236\u53f0\u4ecd\u672a\u8fdb\u5165\u6253\u5f00\u72b6\u6001\u3002\u8bf7\u628a\u4e0b\u9762\u72b6\u6001\u53d1\u7ed9\u6211\u3002');
                     }
@@ -494,10 +507,18 @@ const VERSION = '0.5.15';
         event?.preventDefault?.();
         event?.stopPropagation?.();
         event?.stopImmediatePropagation?.();
-        showInstantClickPanel(event?.type || '入口');
+        showInstantClickPanel(event?.type || '入口', { force: true });
         const openNow = () => openConsole({ source: event?.type || '入口' });
         window.setTimeout(openNow, 20);
         window.setTimeout(openNow, 90);
+        window.setTimeout(openNow, 240);
+    }
+
+    function preloadCoreForEntry(event) {
+        if (!isWorldbookMenuTarget(event.target)) return;
+        loadCore().catch((error) => {
+            coreLoadError = error;
+        });
     }
 
     function hardOpenFromButton(event) {
@@ -508,9 +529,10 @@ const VERSION = '0.5.15';
         } catch (_) {
             // no-op
         }
-        showInstantClickPanel(event?.type || '悬浮按钮');
+        showInstantClickPanel(event?.type || '悬浮按钮', { force: true });
         window.setTimeout(() => openConsole({ source: event?.type || '悬浮按钮' }), 20);
         window.setTimeout(() => openConsole({ source: event?.type || '悬浮按钮' }), 220);
+        window.setTimeout(() => openConsole({ source: event?.type || '悬浮按钮' }), 520);
         return false;
     }
 
@@ -548,10 +570,10 @@ const VERSION = '0.5.15';
             handleOpen(event);
         };
 
-        document.addEventListener('pointerdown', delegateOpen, true);
-        document.addEventListener('touchstart', delegateOpen, { capture: true, passive: false });
         document.addEventListener('click', delegateOpen, true);
-        document.addEventListener('pointerup', delegateOpen, true);
+        document.addEventListener('touchend', delegateOpen, { capture: true, passive: false });
+        document.addEventListener('pointerdown', preloadCoreForEntry, true);
+        document.addEventListener('touchstart', preloadCoreForEntry, { capture: true, passive: true });
     }
 
     function createExtensionMenuEntry() {
