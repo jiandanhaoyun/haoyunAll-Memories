@@ -215,6 +215,90 @@
                     </div>
                 </details>
 
+                <details class="ai-wbr-memory-fold ai-wbr-bookshelf-fold" open>
+                    <summary>
+                        <span>书架补充</span>
+                        <small>导入 TXT，绑定角色卡/聊天后作为向量补充召回。</small>
+                    </summary>
+                    <div id="ai_wbr_bookshelf_panel" class="ai-wbr-memory-fold-body ai-wbr-bookshelf-panel">
+                        <div class="ai-wbr-bookshelf-switches">
+                            <label class="checkbox_label" for="ai_wbr_bookshelf_enabled">
+                                <input id="ai_wbr_bookshelf_enabled" type="checkbox" />
+                                <span>启用书架补充召回</span>
+                            </label>
+                            <label class="checkbox_label" for="ai_wbr_bookshelf_auto_inject">
+                                <input id="ai_wbr_bookshelf_auto_inject" type="checkbox" />
+                                <span>生成前自动注入书架补充</span>
+                            </label>
+                            <label class="checkbox_label" for="ai_wbr_bookshelf_only_bound">
+                                <input id="ai_wbr_bookshelf_only_bound" type="checkbox" />
+                                <span>只使用已绑定书籍</span>
+                            </label>
+                            <label class="checkbox_label" for="ai_wbr_bookshelf_allow_global">
+                                <input id="ai_wbr_bookshelf_allow_global" type="checkbox" />
+                                <span>允许全局书籍参与召回</span>
+                            </label>
+                        </div>
+
+                        <div class="ai-wbr-bookshelf-import">
+                            <input id="ai_wbr_bookshelf_file" type="file" accept=".txt,text/plain" multiple hidden />
+                            <select id="ai_wbr_bookshelf_import_type" class="text_pole">
+                                <option value="character">人物档案</option>
+                                <option value="world">世界观</option>
+                                <option value="plot">剧情记录</option>
+                                <option value="rule">规则设定</option>
+                                <option value="other">其他资料</option>
+                            </select>
+                            <select id="ai_wbr_bookshelf_import_binding" class="text_pole">
+                                <option value="none">仅保存，不绑定</option>
+                                <option value="character">绑定当前角色卡</option>
+                                <option value="chat">绑定当前聊天</option>
+                                <option value="global">设为全局补充</option>
+                            </select>
+                            <button id="ai_wbr_bookshelf_import" class="menu_button" type="button">导入 TXT</button>
+                        </div>
+
+                        <div class="ai-wbr-grid ai-wbr-bookshelf-config">
+                            <label for="ai_wbr_bookshelf_embedding_mode">Embedding 模式</label>
+                            <select id="ai_wbr_bookshelf_embedding_mode" class="text_pole">
+                                <option value="hash">Hash 本地向量</option>
+                            </select>
+                            <label for="ai_wbr_bookshelf_max_chunks">每轮最多片段</label>
+                            <input id="ai_wbr_bookshelf_max_chunks" class="text_pole" type="number" min="1" max="12" step="1" />
+                            <label for="ai_wbr_bookshelf_max_chars">每段最大字数</label>
+                            <input id="ai_wbr_bookshelf_max_chars" class="text_pole" type="number" min="120" max="2000" step="20" />
+                            <label for="ai_wbr_bookshelf_min_score">最低相似度</label>
+                            <input id="ai_wbr_bookshelf_min_score" class="text_pole" type="number" min="0" max="1" step="0.05" />
+                        </div>
+
+                        <div id="ai_wbr_bookshelf_status" class="ai-wbr-memory-history-status">书架待命。导入 TXT 后，绑定角色卡才会参与补充召回。</div>
+
+                        <div class="ai-wbr-bookshelf-layout">
+                            <section>
+                                <div class="ai-wbr-memory-subtitle"><b>绑定范围</b></div>
+                                <div id="ai_wbr_bookshelf_scope" class="ai-wbr-bookshelf-scope"></div>
+                            </section>
+                            <section>
+                                <div class="ai-wbr-memory-subtitle"><b>书籍列表</b></div>
+                                <div id="ai_wbr_bookshelf_books" class="ai-wbr-bookshelf-books"></div>
+                            </section>
+                            <section>
+                                <div class="ai-wbr-memory-subtitle"><b>书籍详情</b></div>
+                                <div id="ai_wbr_bookshelf_detail" class="ai-wbr-bookshelf-detail"></div>
+                            </section>
+                        </div>
+
+                        <div class="ai-wbr-bookshelf-test">
+                            <div class="ai-wbr-memory-subtitle"><b>召回测试</b></div>
+                            <textarea id="ai_wbr_bookshelf_test_query" class="text_pole" rows="3" placeholder="输入一句当前剧情问题，测试绑定书籍会召回哪些片段。"></textarea>
+                            <div class="ai-wbr-bookshelf-actions">
+                                <button id="ai_wbr_bookshelf_test" class="menu_button" type="button">测试召回</button>
+                            </div>
+                            <div id="ai_wbr_bookshelf_results" class="ai-wbr-bookshelf-results"></div>
+                        </div>
+                    </div>
+                </details>
+
                 <details class="ai-wbr-memory-fold" open>
                     <summary>
                         <span>历史聊天补录</span>

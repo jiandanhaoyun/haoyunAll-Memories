@@ -2038,3 +2038,167 @@
 .ai-wbr-extension-label {
     color: var(--SmartThemeBodyColor, #fff);
 }
+
+.ai-wbr-bookshelf-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.ai-wbr-bookshelf-switches,
+.ai-wbr-bookshelf-import,
+.ai-wbr-bookshelf-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.ai-wbr-bookshelf-import .text_pole {
+    min-width: 9rem;
+    flex: 1 1 10rem;
+}
+
+.ai-wbr-bookshelf-layout {
+    display: grid;
+    grid-template-columns: minmax(10rem, 0.8fr) minmax(14rem, 1.1fr) minmax(16rem, 1.4fr);
+    gap: 0.75rem;
+    align-items: start;
+}
+
+.ai-wbr-bookshelf-layout section,
+.ai-wbr-bookshelf-test {
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor, #4b5563) 70%, transparent 30%);
+    border-radius: 10px;
+    padding: 0.75rem;
+    background: color-mix(in srgb, var(--SmartThemeBlurTintColor, #111827) 78%, transparent 22%);
+}
+
+.ai-wbr-bookshelf-scope,
+.ai-wbr-bookshelf-books,
+.ai-wbr-bookshelf-detail,
+.ai-wbr-bookshelf-results {
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+}
+
+.ai-wbr-bookshelf-scope-card,
+.ai-wbr-bookshelf-book,
+.ai-wbr-bookshelf-result,
+.ai-wbr-bookshelf-chunk {
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor, #4b5563) 58%, transparent 42%);
+    border-radius: 8px;
+    padding: 0.65rem;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor, #ffffff) 7%, transparent 93%);
+}
+
+.ai-wbr-bookshelf-book.selected {
+    border-color: color-mix(in srgb, #7dd3fc 70%, var(--SmartThemeBorderColor, #4b5563) 30%);
+    box-shadow: 0 0 0 1px color-mix(in srgb, #7dd3fc 35%, transparent 65%);
+}
+
+.ai-wbr-bookshelf-scope-card b,
+.ai-wbr-bookshelf-scope-card span {
+    display: block;
+}
+
+.ai-wbr-bookshelf-scope-card span,
+.ai-wbr-bookshelf-book-meta,
+.ai-wbr-bookshelf-result small {
+    color: color-mix(in srgb, var(--SmartThemeBodyColor, #fff) 68%, transparent 32%);
+    font-size: 0.86rem;
+}
+
+.ai-wbr-bookshelf-book-head,
+.ai-wbr-bookshelf-detail-head,
+.ai-wbr-bookshelf-result-head,
+.ai-wbr-bookshelf-chunk-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.ai-wbr-bookshelf-book-head span,
+.ai-wbr-bookshelf-detail-head span,
+.ai-wbr-bookshelf-result-head span,
+.ai-wbr-bookshelf-chunk-head span {
+    font-size: 0.78rem;
+    border-radius: 999px;
+    padding: 0.15rem 0.45rem;
+    background: color-mix(in srgb, #7dd3fc 18%, transparent 82%);
+    color: color-mix(in srgb, var(--SmartThemeBodyColor, #fff) 88%, #7dd3fc 12%);
+    white-space: nowrap;
+}
+
+.ai-wbr-bookshelf-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin-top: 0.45rem;
+}
+
+.ai-wbr-bookshelf-tags span {
+    border-radius: 999px;
+    padding: 0.12rem 0.45rem;
+    font-size: 0.76rem;
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor, #6b7280) 22%, transparent 78%);
+}
+
+.ai-wbr-bookshelf-book .ai-wbr-bookshelf-actions,
+.ai-wbr-bookshelf-detail .ai-wbr-bookshelf-actions {
+    margin-top: 0.55rem;
+}
+
+.ai-wbr-bookshelf-chunk-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+    max-height: 24rem;
+    overflow: auto;
+}
+
+.ai-wbr-bookshelf-chunk.disabled {
+    opacity: 0.58;
+}
+
+.ai-wbr-bookshelf-chunk p,
+.ai-wbr-bookshelf-result p {
+    margin: 0.35rem 0 0;
+    white-space: pre-wrap;
+    line-height: 1.45;
+}
+
+.ai-wbr-bookshelf-test textarea {
+    width: 100%;
+    resize: vertical;
+}
+
+@media (max-width: 760px) {
+    .ai-wbr-bookshelf-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .ai-wbr-bookshelf-switches,
+    .ai-wbr-bookshelf-import,
+    .ai-wbr-bookshelf-actions {
+        align-items: stretch;
+    }
+
+    .ai-wbr-bookshelf-import .text_pole,
+    .ai-wbr-bookshelf-import .menu_button,
+    .ai-wbr-bookshelf-actions .menu_button {
+        width: 100%;
+        flex-basis: 100%;
+    }
+
+    .ai-wbr-bookshelf-book-head,
+    .ai-wbr-bookshelf-detail-head,
+    .ai-wbr-bookshelf-result-head,
+    .ai-wbr-bookshelf-chunk-head {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+}
