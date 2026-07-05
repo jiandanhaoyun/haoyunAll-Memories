@@ -86,6 +86,7 @@ const defaultSettings = {
     enabled: false,
     debug: false,
     entryDiagnostics: false,
+    floatingButtonEnabled: true,
     routerUseSeparateModel: false,
     routerApiUrl: '',
     routerApiKey: '',
@@ -717,6 +718,9 @@ function saveSetting(key, value) {
         } catch (_) {
             // localStorage may be unavailable in some embedded webviews.
         }
+    }
+    if (key === 'floatingButtonEnabled') {
+        updateFloatingButtonVisibility();
     }
     saveSettingsDebounced();
 }
@@ -4716,8 +4720,6 @@ function renderStandaloneConsole(tabId = getStandaloneTabId()) {
                 renderMemoryPanel('graph');
             }
         });
-    } else if (tabId === 'model') {
-        renderStandaloneModel(body);
     } else if (tabId === 'debug') {
         renderStandaloneDebug(body);
     } else if (tabId === 'settings') {
@@ -5549,6 +5551,20 @@ function bindMemoryGraphSvgInteractions() {
         this.setPointerCapture?.(original.pointerId);
         event.preventDefault();
         event.stopPropagation();
+    });
+
+    container.on('click.memoryGraphSvg', '.ai-wbr-memory-node', function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        const nodeId = String($(this).data('memoryNodeId') || '');
+        if (!nodeId) {
+            return;
+        }
+        memoryGraphSelectedNodeId = nodeId;
+        memoryGraphSelectedLinkId = '';
+        memoryGraphDetailMode = 'node';
+        renderMemoryPanel('graph');
+        $('#ai_wbr_memory_node_popover').hide();
     });
 
     container.on('click.memoryGraphSvg', '.ai-wbr-memory-edge, .ai-wbr-memory-edge-hit', function (event) {
@@ -6917,6 +6933,7 @@ function bindTitleBlocklistEditor() {
 
 function createFloatingMemoryWindow() {
     if ($('#ai_wbr_fab').length && $('#ai_wbr_floating_window').length) {
+        updateFloatingButtonVisibility();
         globalThis.aiWbrOpenConsole = (tabId = 'overview') => {
             const existingWin = $('#ai_wbr_floating_window');
             if (!existingWin.length) {
@@ -6930,19 +6947,6 @@ function createFloatingMemoryWindow() {
             node.style.setProperty('z-index', '2147483646', 'important');
             node.style.setProperty('display', 'flex', 'important');
             node.style.setProperty('transform', 'none', 'important');
-            if (globalThis.matchMedia?.('(max-width: 720px)').matches) {
-                node.style.setProperty('position', 'fixed', 'important');
-                node.style.setProperty('inset', '0', 'important');
-                node.style.setProperty('left', '0', 'important');
-                node.style.setProperty('top', '0', 'important');
-                node.style.setProperty('right', '0', 'important');
-                node.style.setProperty('bottom', '0', 'important');
-                node.style.setProperty('width', '100vw', 'important');
-                node.style.setProperty('height', '100dvh', 'important');
-                node.style.setProperty('max-width', '100vw', 'important');
-                node.style.setProperty('max-height', '100dvh', 'important');
-                node.style.setProperty('border-radius', '0', 'important');
-            }
             renderStandaloneConsole(tabId || 'overview');
             setTimeout(() => renderStandaloneConsole(tabId || getStandaloneTabId()), 340);
         };
@@ -6951,12 +6955,13 @@ function createFloatingMemoryWindow() {
 
     $('#ai_wbr_fab').remove();
     $('#ai_wbr_floating_window').remove();
+    $('#ai_wbr_emergency_fab').remove();
 
-    const fab = $('<div id="ai_wbr_fab" class="ai-wbr-fab" title="打开世界书读取控制台"><i class="fa-solid fa-network-wired"></i></div>');
+    const fab = $('<div id="ai_wbr_fab" class="ai-wbr-fab" title="打开记忆图谱"><i class="fa-solid fa-diagram-project"></i></div>');
     // 注意：局部变量命名为 win，避免遮蔽全局 window 对象（拖拽时需要用 window.innerWidth/innerHeight 取视口尺寸）
     const win = $('<div id="ai_wbr_floating_window" class="ai-wbr-floating-window">' +
         '<div class="ai-wbr-floating-header" id="ai_wbr_floating_header">' +
-            '<div class="ai-wbr-floating-title"><i class="fa-solid fa-network-wired"></i> 世界书读取 <span id="ai_wbr_console_status" class="ai-wbr-console-status">等待生成</span></div>' +
+            '<div class="ai-wbr-floating-title"><i class="fa-solid fa-diagram-project"></i> 记忆图谱 <span id="ai_wbr_console_status" class="ai-wbr-console-status">等待生成</span></div>' +
             '<div class="ai-wbr-floating-close" id="ai_wbr_floating_close"><i class="fa-solid fa-times"></i></div>' +
         '</div>' +
         '<div class="ai-wbr-console-tabs" id="ai_wbr_console_tabs">' +
@@ -6965,7 +6970,6 @@ function createFloatingMemoryWindow() {
             '<button class="ai-wbr-console-tab" type="button" data-tab="injection">注入</button>' +
             '<button class="ai-wbr-console-tab" type="button" data-tab="memory">记忆</button>' +
             '<button class="ai-wbr-console-tab" type="button" data-tab="graph">图谱</button>' +
-            '<button class="ai-wbr-console-tab" type="button" data-tab="model">模型</button>' +
             '<button class="ai-wbr-console-tab" type="button" data-tab="debug">调试</button>' +
             '<button class="ai-wbr-console-tab" type="button" data-tab="settings">设置</button>' +
         '</div>' +
@@ -6974,6 +6978,7 @@ function createFloatingMemoryWindow() {
 
     $('body').append(fab).append(win);
     parkStandalonePanels();
+    updateFloatingButtonVisibility();
 
     // 切换悬浮窗显隐
     function clearForcedWindowStyles() {
@@ -7010,19 +7015,6 @@ function createFloatingMemoryWindow() {
         node.style.setProperty('z-index', '2147483646', 'important');
         node.style.setProperty('display', 'flex', 'important');
         node.style.setProperty('transform', 'none', 'important');
-        if (globalThis.matchMedia?.('(max-width: 720px)').matches) {
-            node.style.setProperty('position', 'fixed', 'important');
-            node.style.setProperty('inset', '0', 'important');
-            node.style.setProperty('left', '0', 'important');
-            node.style.setProperty('top', '0', 'important');
-            node.style.setProperty('right', '0', 'important');
-            node.style.setProperty('bottom', '0', 'important');
-            node.style.setProperty('width', '100vw', 'important');
-            node.style.setProperty('height', '100dvh', 'important');
-            node.style.setProperty('max-width', '100vw', 'important');
-            node.style.setProperty('max-height', '100dvh', 'important');
-            node.style.setProperty('border-radius', '0', 'important');
-        }
         renderStandaloneConsole(tabId || 'overview');
         // 动画结束后再渲染一次，确保记忆 SVG 取到动画终态的准确尺寸
         setTimeout(() => renderStandaloneConsole(tabId || getStandaloneTabId()), 340);
@@ -7046,12 +7038,12 @@ function createFloatingMemoryWindow() {
         }, 220); // 与 CSS 关闭动画时长一致
     }
 
-    function toggleWindow() {
+    function toggleWindow(defaultTab = getStandaloneTabId()) {
         const isOpen = win.hasClass('open');
         if (isOpen) {
             closeWindow();
         } else {
-            openWindow();
+            openWindow(defaultTab || 'overview');
         }
     }
 
@@ -7065,8 +7057,8 @@ function createFloatingMemoryWindow() {
     let fabMoved = false;
     let fabStartX = 0, fabStartY = 0, fabInitialLeft = 0, fabInitialTop = 0;
 
-    fab.on('mousedown', (e) => {
-        if (e.button !== 0) return; // 仅左键
+    fab.on('pointerdown', (e) => {
+        if (e.button !== undefined && e.button !== 0) return; // 仅左键
         fabDragging = true;
         fabMoved = false;
         fabStartX = e.clientX;
@@ -7076,10 +7068,11 @@ function createFloatingMemoryWindow() {
         fabInitialLeft = rect.left;
         fabInitialTop = rect.top;
         fab.css({ right: 'auto', bottom: 'auto', left: fabInitialLeft + 'px', top: fabInitialTop + 'px' });
+        fab[0].setPointerCapture?.(e.pointerId);
         $('body').css('user-select', 'none');
     });
 
-    $(document).on('mousemove.fabDrag', (e) => {
+    $(document).on('pointermove.fabDrag', (e) => {
         if (!fabDragging) return;
         const dx = e.clientX - fabStartX;
         const dy = e.clientY - fabStartY;
@@ -7091,9 +7084,10 @@ function createFloatingMemoryWindow() {
         const newLeft = Math.max(0, Math.min(fabInitialLeft + dx, maxLeft));
         const newTop = Math.max(0, Math.min(fabInitialTop + dy, maxTop));
         fab.css({ left: newLeft + 'px', top: newTop + 'px' });
+        e.preventDefault();
     });
 
-    $(document).on('mouseup.fabDrag', () => {
+    $(document).on('pointerup.fabDrag pointercancel.fabDrag', () => {
         if (fabDragging) {
             fabDragging = false;
             $('body').css('user-select', '');
@@ -7108,7 +7102,7 @@ function createFloatingMemoryWindow() {
             e.stopPropagation();
             return;
         }
-        toggleWindow();
+        toggleWindow('graph');
     });
 
     $('#ai_wbr_floating_close').on('click touchend pointerup', (event) => {
@@ -7133,8 +7127,9 @@ function createFloatingMemoryWindow() {
 
     const header = $('#ai_wbr_floating_header');
 
-    header.on('mousedown', (e) => {
+    header.on('pointerdown', (e) => {
         if ($(e.target).closest('#ai_wbr_floating_close').length) return; // 排除关闭按钮
+        if (e.button !== undefined && e.button !== 0) return;
         isDragging = true;
         startX = e.clientX;
         startY = e.clientY;
@@ -7151,10 +7146,15 @@ function createFloatingMemoryWindow() {
             top: initialTop + 'px'
         });
 
+        win[0].style.removeProperty('inset');
+        win[0].style.removeProperty('right');
+        win[0].style.removeProperty('bottom');
+        header[0].setPointerCapture?.(e.pointerId);
         $('body').css('user-select', 'none'); // 拖拽时禁止选中文本
+        e.preventDefault();
     });
 
-    $(document).on('mousemove', (e) => {
+    $(document).on('pointermove.aiWbrWindowDrag', (e) => {
         if (!isDragging) return;
 
         const dx = e.clientX - startX;
@@ -7175,9 +7175,10 @@ function createFloatingMemoryWindow() {
             left: newLeft + 'px',
             top: newTop + 'px'
         });
+        e.preventDefault();
     });
 
-    $(document).on('mouseup', () => {
+    $(document).on('pointerup.aiWbrWindowDrag pointercancel.aiWbrWindowDrag', () => {
         if (isDragging) {
             isDragging = false;
             $('body').css('user-select', '');
@@ -7185,6 +7186,12 @@ function createFloatingMemoryWindow() {
     });
 
     renderStandaloneConsole('overview');
+}
+
+function updateFloatingButtonVisibility() {
+    const visible = settings.floatingButtonEnabled !== false;
+    $('#ai_wbr_emergency_fab').remove();
+    $('#ai_wbr_fab').toggle(visible);
 }
 
 async function loadSettingsHtml() {
@@ -7227,6 +7234,7 @@ async function addSettingsUi() {
     bindCheckbox('#ai_wbr_enabled', 'enabled');
     bindCheckbox('#ai_wbr_debug', 'debug');
     bindCheckbox('#ai_wbr_entry_diagnostics', 'entryDiagnostics');
+    bindCheckbox('#ai_wbr_floating_button_enabled', 'floatingButtonEnabled');
     bindCheckbox('#ai_wbr_router_use_separate_model', 'routerUseSeparateModel');
     bindCheckbox('#ai_wbr_keyword_recall', 'keywordRecall');
     bindCheckbox('#ai_wbr_use_mvu', 'useMvu');
@@ -7272,53 +7280,7 @@ globalThis.ai_worldbook_router_intercept = interceptGeneration;
 installFetchFallbackHook();
 
 function createEmergencyEntryNative() {
-    if (document.getElementById('ai_wbr_emergency_fab') || document.getElementById('ai_wbr_fab')) {
-        return;
-    }
-
-    const button = document.createElement('button');
-    button.id = 'ai_wbr_emergency_fab';
-    button.type = 'button';
-    button.title = '打开世界书读取控制台';
-    button.textContent = '世界书';
-    button.style.cssText = [
-        'position:fixed',
-        'right:14px',
-        'bottom:calc(82px + env(safe-area-inset-bottom, 0px))',
-        'z-index:2147483647',
-        'min-width:58px',
-        'height:42px',
-        'padding:0 10px',
-        'border-radius:999px',
-        'border:1px solid rgba(176,225,255,.72)',
-        'background:rgba(20,24,34,.96)',
-        'color:#d7f5ff',
-        'font-size:13px',
-        'font-weight:700',
-        'box-shadow:0 10px 24px rgba(0,0,0,.35),0 0 18px rgba(125,212,255,.28)',
-        'backdrop-filter:blur(8px)',
-        'cursor:pointer'
-    ].join(';');
-
-    button.addEventListener('click', () => {
-        const jq = globalThis.jQuery || globalThis.$;
-        if (typeof jq !== 'function') {
-            alert('世界书读取已加载，但 jQuery 尚未就绪。请稍等几秒或刷新页面。');
-            return;
-        }
-
-        try {
-            createFloatingMemoryWindow();
-            button.remove();
-            const fullButton = document.getElementById('ai_wbr_fab');
-            fullButton?.click();
-        } catch (error) {
-            console.error(`${LOG_PREFIX} Failed to open standalone console from emergency entry`, error);
-            alert(`世界书读取入口创建失败：${error?.message || error}`);
-        }
-    });
-
-    (document.body || document.documentElement).appendChild(button);
+    document.getElementById('ai_wbr_emergency_fab')?.remove();
 }
 
 createEmergencyEntryNative();

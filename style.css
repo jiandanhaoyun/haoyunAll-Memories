@@ -95,15 +95,8 @@
 }
 
 .ai-wbr-floating-window.ai-wbr-floating-window-graph {
-    inset: 0 !important;
-    right: 0 !important;
-    bottom: 0 !important;
-    width: 100vw !important;
-    height: 100dvh !important;
-    max-width: 100vw !important;
-    max-height: 100dvh !important;
-    border-radius: 0 !important;
-    border: none;
+    width: min(96vw, 72rem);
+    height: min(90dvh, 48rem);
 }
 
 .ai-wbr-floating-window.open {
@@ -485,12 +478,11 @@
     }
 
     .ai-wbr-floating-window {
-        width: 100vw;
-        height: 100vh;
-        bottom: 0;
-        right: 0;
-        border-radius: 0;
-        border: none;
+        width: calc(100vw - 1rem);
+        height: min(82dvh, 40rem);
+        right: 0.5rem;
+        bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px));
+        border-radius: 12px;
     }
 }
 
@@ -1799,8 +1791,8 @@
     }
 
     .ai-wbr-floating-window.ai-wbr-floating-window-graph {
-        height: 100dvh !important;
-        max-height: 100dvh !important;
+        height: min(82dvh, 40rem);
+        max-height: 82dvh;
     }
 
     .ai-wbr-floating-window-graph .ai-wbr-floating-header,
