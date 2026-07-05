@@ -6,7 +6,7 @@
     'use strict';
 
     const NAMESPACE = 'AIWorldbookRouter';
-const VERSION = '0.5.22';
+const VERSION = '0.5.23';
     const LOG_PREFIX = '[AI Worldbook Router Bootstrap]';
     const ENTRY_ID = 'ai_wbr_extension_entry';
     const ROW_ID = 'ai_wbr_extension_row';
@@ -37,6 +37,7 @@ const VERSION = '0.5.22';
     let lastOpenAt = 0;
     let keepPanelUntil = 0;
     let directMenuBindTimer = null;
+    let lastEntryGestureAt = 0;
 
     window[NAMESPACE] = Object.assign(window[NAMESPACE] || {}, {
         loaded: true,
@@ -154,10 +155,10 @@ const VERSION = '0.5.22';
         return true;
     }
 
-    function callOpenConsole(tab = 'overview') {
+    function callOpenConsole(tab = 'overview', options = {}) {
         let opened = false;
         if (typeof window.aiWbrOpenConsole === 'function') {
-            window.aiWbrOpenConsole(tab);
+            window.aiWbrOpenConsole(tab, options);
             opened = true;
         }
         if (forceConsoleVisible()) {
@@ -166,11 +167,11 @@ const VERSION = '0.5.22';
         return opened;
     }
 
-    function openCoreConsoleRepeatedly(tab = 'overview') {
-        [0, 80, 180, 360, 700].forEach((delay) => {
+    function openCoreConsoleRepeatedly(tab = 'overview', options = {}) {
+        [0, 160].forEach((delay) => {
             window.setTimeout(() => {
                 try {
-                    callOpenConsole(tab);
+                    callOpenConsole(tab, options);
                 } catch (error) {
                     coreLoadError = error;
                 }
@@ -483,6 +484,8 @@ const VERSION = '0.5.22';
         const forcePanel = !!options.forcePanel;
         const directUserOpen = !!options.source;
         const diagnosticsEnabled = isEntryDiagnosticsEnabled();
+        const tab = options.tab || 'overview';
+        const mode = options.mode || 'full';
         if (now - lastOpenAt < 180 && !forcePanel) return;
         lastOpenAt = now;
 
@@ -506,7 +509,7 @@ const VERSION = '0.5.22';
 
         window.setTimeout(() => {
             try {
-                openCoreConsoleRepeatedly('overview');
+                openCoreConsoleRepeatedly(tab, { mode });
                 closeHostMenusBeforeOpen();
             } catch (error) {
                 coreLoadError = error;
@@ -529,11 +532,11 @@ const VERSION = '0.5.22';
         event?.preventDefault?.();
         event?.stopPropagation?.();
         event?.stopImmediatePropagation?.();
-        const openNow = () => openConsole({ source: event?.type || '入口' });
-        openNow();
-        window.setTimeout(openNow, 20);
-        window.setTimeout(openNow, 90);
-        window.setTimeout(openNow, 240);
+        const now = Date.now();
+        if (now - lastEntryGestureAt < 650) return false;
+        lastEntryGestureAt = now;
+        openConsole({ source: event?.type || '入口', tab: 'overview', mode: 'full' });
+        return false;
     }
 
     function preloadCoreForEntry(event) {
@@ -551,11 +554,7 @@ const VERSION = '0.5.22';
         } catch (_) {
             // no-op
         }
-        const openNow = () => openConsole({ source: event?.type || '悬浮按钮' });
-        openNow();
-        window.setTimeout(openNow, 20);
-        window.setTimeout(openNow, 220);
-        window.setTimeout(openNow, 520);
+        openConsole({ source: event?.type || '悬浮按钮', tab: 'graph', mode: 'floating' });
         return false;
     }
 

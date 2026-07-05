@@ -6941,21 +6941,33 @@ function createFloatingMemoryWindow() {
     if ($('#ai_wbr_fab').length && $('#ai_wbr_floating_window').length) {
         updateFloatingButtonVisibility();
         clampFloatingFabToViewport();
-        globalThis.aiWbrOpenConsole = (tabId = 'overview') => {
+        globalThis.aiWbrOpenConsole = (tabId = 'overview', options = {}) => {
             const existingWin = $('#ai_wbr_floating_window');
             if (!existingWin.length) {
                 return;
             }
             existingWin.removeClass('closing').addClass('open');
+            const mode = options?.mode || 'floating';
             const node = existingWin[0];
+            node.hidden = false;
+            node.removeAttribute('aria-hidden');
+            node.dataset.aiWbrDisplayMode = mode;
             node.style.setProperty('visibility', 'visible', 'important');
             node.style.setProperty('opacity', '1', 'important');
             node.style.setProperty('pointer-events', 'auto', 'important');
             node.style.setProperty('z-index', '2147483646', 'important');
             node.style.setProperty('display', 'flex', 'important');
             node.style.setProperty('transform', 'none', 'important');
+            applyWindowDisplayMode(existingWin, mode);
             renderStandaloneConsole(tabId || 'overview');
-            setTimeout(() => renderStandaloneConsole(tabId || getStandaloneTabId()), 340);
+            setTimeout(() => {
+                applyWindowDisplayMode(existingWin, node.dataset.aiWbrDisplayMode || mode);
+                renderStandaloneConsole(tabId || getStandaloneTabId());
+            }, 120);
+            setTimeout(() => {
+                applyWindowDisplayMode(existingWin, node.dataset.aiWbrDisplayMode || mode);
+                renderStandaloneConsole(tabId || getStandaloneTabId());
+            }, 340);
         };
         return;
     }
@@ -7013,13 +7025,14 @@ function createFloatingMemoryWindow() {
         ].forEach((property) => node.style.removeProperty(property));
     }
 
-    function clampWindowToViewport() {
-        const node = win?.[0];
+    function applyWindowDisplayMode(targetWin, mode = 'floating') {
+        const node = targetWin?.[0];
         if (!node) return;
         const viewportWidth = Math.max(1, globalThis.visualViewport?.width || window.innerWidth || document.documentElement.clientWidth || 1);
         const viewportHeight = Math.max(1, globalThis.visualViewport?.height || window.innerHeight || document.documentElement.clientHeight || 1);
+        const fullMode = mode === 'full';
         const mobile = viewportWidth <= 640 || viewportHeight <= 520;
-        if (mobile) {
+        if (fullMode) {
             node.style.setProperty('position', 'fixed', 'important');
             node.style.setProperty('inset', '0', 'important');
             node.style.setProperty('left', '0', 'important');
@@ -7031,6 +7044,25 @@ function createFloatingMemoryWindow() {
             node.style.setProperty('max-width', '100vw', 'important');
             node.style.setProperty('max-height', '100dvh', 'important');
             node.style.setProperty('border-radius', '0', 'important');
+            return;
+        }
+
+        if (mobile) {
+            const margin = 8;
+            const width = Math.max(280, viewportWidth - margin * 2);
+            const height = Math.max(320, Math.min(viewportHeight * 0.82, viewportHeight - margin * 2));
+            const top = Math.max(margin, viewportHeight - height - margin);
+            node.style.setProperty('position', 'fixed', 'important');
+            node.style.setProperty('inset', 'auto', 'important');
+            node.style.setProperty('left', `${margin}px`, 'important');
+            node.style.setProperty('top', `${top}px`, 'important');
+            node.style.setProperty('right', 'auto', 'important');
+            node.style.setProperty('bottom', 'auto', 'important');
+            node.style.setProperty('width', `${width}px`, 'important');
+            node.style.setProperty('height', `${height}px`, 'important');
+            node.style.setProperty('max-width', `calc(100vw - ${margin * 2}px)`, 'important');
+            node.style.setProperty('max-height', `calc(100dvh - ${margin * 2}px)`, 'important');
+            node.style.setProperty('border-radius', '14px', 'important');
             return;
         }
 
@@ -7050,33 +7082,39 @@ function createFloatingMemoryWindow() {
         node.style.setProperty('max-height', 'calc(100dvh - 16px)', 'important');
     }
 
-    function forceWindowVisible(tabId = getStandaloneTabId()) {
+    function clampWindowToViewport(mode = 'floating') {
+        applyWindowDisplayMode(win, mode);
+    }
+
+    function forceWindowVisible(tabId = getStandaloneTabId(), options = {}) {
         const node = win?.[0];
         if (!node) return;
+        const mode = options?.mode || 'floating';
         win.removeClass('closing').addClass('open');
         node.hidden = false;
         node.removeAttribute('aria-hidden');
+        node.dataset.aiWbrDisplayMode = mode;
         node.style.setProperty('visibility', 'visible', 'important');
         node.style.setProperty('opacity', '1', 'important');
         node.style.setProperty('pointer-events', 'auto', 'important');
         node.style.setProperty('z-index', '2147483646', 'important');
         node.style.setProperty('display', 'flex', 'important');
         node.style.setProperty('transform', 'none', 'important');
-        clampWindowToViewport();
+        clampWindowToViewport(mode);
         renderStandaloneConsole(tabId || 'overview');
         // 动画结束后再渲染一次，确保记忆 SVG 取到动画终态的准确尺寸
         setTimeout(() => {
-            clampWindowToViewport();
+            clampWindowToViewport(node.dataset.aiWbrDisplayMode || mode);
             renderStandaloneConsole(tabId || getStandaloneTabId());
         }, 120);
         setTimeout(() => {
-            clampWindowToViewport();
+            clampWindowToViewport(node.dataset.aiWbrDisplayMode || mode);
             renderStandaloneConsole(tabId || getStandaloneTabId());
         }, 340);
     }
 
-    function openWindow(tabId = getStandaloneTabId()) {
-        forceWindowVisible(tabId || 'overview');
+    function openWindow(tabId = getStandaloneTabId(), options = {}) {
+        forceWindowVisible(tabId || 'overview', options);
     }
 
     function closeWindow() {
@@ -7102,8 +7140,8 @@ function createFloatingMemoryWindow() {
         }
     }
 
-    globalThis.aiWbrOpenConsole = (tabId = 'overview') => {
-        openWindow(tabId);
+    globalThis.aiWbrOpenConsole = (tabId = 'overview', options = {}) => {
+        openWindow(tabId, options);
     };
     globalThis.aiWbrCloseConsole = closeWindow;
 
@@ -7127,15 +7165,15 @@ function createFloatingMemoryWindow() {
         fabLastToggleAt = now;
         event?.preventDefault?.();
         event?.stopPropagation?.();
-        openWindow('graph');
+        openWindow('graph', { mode: 'floating' });
         setTimeout(() => {
             if (!win.hasClass('open') || getStandaloneTabId() !== 'graph') {
-                openWindow('graph');
+                openWindow('graph', { mode: 'floating' });
             }
         }, 80);
         setTimeout(() => {
             if (!win.hasClass('open') || !$('#ai_wbr_memory_graph').is(':visible')) {
-                openWindow('graph');
+                openWindow('graph', { mode: 'floating' });
             }
         }, 260);
     }
@@ -7329,18 +7367,18 @@ function createFloatingMemoryWindow() {
             setTimeout(clampFloatingFabToViewport, 80);
             setTimeout(clampFloatingFabToViewport, 360);
             if (win.hasClass('open')) {
-                setTimeout(clampWindowToViewport, 80);
-                setTimeout(clampWindowToViewport, 360);
+                setTimeout(() => clampWindowToViewport(win[0]?.dataset.aiWbrDisplayMode || 'floating'), 80);
+                setTimeout(() => clampWindowToViewport(win[0]?.dataset.aiWbrDisplayMode || 'floating'), 360);
             }
         });
 
     globalThis.visualViewport?.addEventListener?.('resize', () => {
         clampFloatingFabToViewport();
-        if (win.hasClass('open')) clampWindowToViewport();
+        if (win.hasClass('open')) clampWindowToViewport(win[0]?.dataset.aiWbrDisplayMode || 'floating');
     }, { passive: true });
     globalThis.visualViewport?.addEventListener?.('scroll', () => {
         clampFloatingFabToViewport();
-        if (win.hasClass('open')) clampWindowToViewport();
+        if (win.hasClass('open')) clampWindowToViewport(win[0]?.dataset.aiWbrDisplayMode || 'floating');
     }, { passive: true });
 
     renderStandaloneConsole('overview');
