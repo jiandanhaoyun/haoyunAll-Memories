@@ -217,8 +217,8 @@
 
                 <details class="ai-wbr-memory-fold ai-wbr-bookshelf-fold" open>
                     <summary>
-                        <span>书架补充</span>
-                        <small>导入 TXT，绑定角色卡/聊天后作为向量补充召回。</small>
+                        <span>书架向量库</span>
+                        <small>导入 TXT 后需手动调用 API 或浏览器本地模型向量化。</small>
                     </summary>
                     <div id="ai_wbr_bookshelf_panel" class="ai-wbr-memory-fold-body ai-wbr-bookshelf-panel">
                         <div class="ai-wbr-bookshelf-switches">
@@ -261,8 +261,17 @@
                         <div class="ai-wbr-grid ai-wbr-bookshelf-config">
                             <label for="ai_wbr_bookshelf_embedding_mode">Embedding 模式</label>
                             <select id="ai_wbr_bookshelf_embedding_mode" class="text_pole">
-                                <option value="hash">Hash 本地向量</option>
+                                <option value="api">API 向量模型</option>
+                                <option value="browser-local">浏览器本地模型</option>
                             </select>
+                            <label for="ai_wbr_bookshelf_api_url">API 地址</label>
+                            <input id="ai_wbr_bookshelf_api_url" class="text_pole" type="text" placeholder="https://example.com/v1 或 /v1/embeddings" />
+                            <label for="ai_wbr_bookshelf_api_key">API Key</label>
+                            <input id="ai_wbr_bookshelf_api_key" class="text_pole" type="password" placeholder="sk-..." />
+                            <label for="ai_wbr_bookshelf_api_model">API 模型名</label>
+                            <input id="ai_wbr_bookshelf_api_model" class="text_pole" type="text" placeholder="text-embedding-3-small" />
+                            <label for="ai_wbr_bookshelf_local_model">本地模型 ID</label>
+                            <input id="ai_wbr_bookshelf_local_model" class="text_pole" type="text" placeholder="Xenova/paraphrase-multilingual-MiniLM-L12-v2" />
                             <label for="ai_wbr_bookshelf_max_chunks">每轮最多片段</label>
                             <input id="ai_wbr_bookshelf_max_chunks" class="text_pole" type="number" min="1" max="12" step="1" />
                             <label for="ai_wbr_bookshelf_max_chars">每段最大字数</label>
@@ -270,8 +279,13 @@
                             <label for="ai_wbr_bookshelf_min_score">最低相似度</label>
                             <input id="ai_wbr_bookshelf_min_score" class="text_pole" type="number" min="0" max="1" step="0.05" />
                         </div>
+                        <div class="ai-wbr-bookshelf-actions">
+                            <button id="ai_wbr_bookshelf_test_provider" class="menu_button" type="button">测试向量模型</button>
+                            <button id="ai_wbr_bookshelf_load_local" class="menu_button" type="button">下载/加载本地模型</button>
+                            <span id="ai_wbr_bookshelf_model_status" class="ai-wbr-status">未测试</span>
+                        </div>
 
-                        <div id="ai_wbr_bookshelf_status" class="ai-wbr-memory-history-status">书架待命。导入 TXT 后，绑定角色卡才会参与补充召回。</div>
+                        <div id="ai_wbr_bookshelf_status" class="ai-wbr-memory-history-status">书架待命。导入 TXT 后会进入待向量化，需要点击“开始向量化”。</div>
 
                         <div class="ai-wbr-bookshelf-layout">
                             <section>

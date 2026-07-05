@@ -141,7 +141,14 @@ const defaultSettings = {
     bookshelfMaxChunks: 3,
     bookshelfMaxChunkChars: 500,
     bookshelfMinScore: 0.35,
-    bookshelfEmbeddingMode: 'hash',
+    bookshelfEmbeddingMode: 'api',
+    bookshelfApiUrl: '',
+    bookshelfApiKey: '',
+    bookshelfApiModel: '',
+    bookshelfApiBatchSize: 8,
+    bookshelfLocalModelId: 'Xenova/paraphrase-multilingual-MiniLM-L12-v2',
+    bookshelfLocalModelStatus: 'not_loaded',
+    bookshelfLocalBatchSize: 2,
     bookshelfLastTestQuery: '',
     keywordRecall: true,
     useMvu: false,
@@ -202,10 +209,12 @@ let bookshelfDbPromise = null;
 let selectedBookshelfBookId = '';
 let bookshelfLastTestResults = [];
 let bookshelfLastStatus = '';
+let bookshelfLocalPipelinePromise = null;
+let bookshelfVectorAbortRequested = false;
 const BOOKSHELF_DB_NAME = 'AIWBR_VectorBookshelf';
 const BOOKSHELF_DB_VERSION = 1;
-const BOOKSHELF_VECTOR_DIM = 96;
 const BOOKSHELF_MAX_IMPORT_CHUNKS = 2000;
+const BOOKSHELF_LOCAL_TRANSFORMERS_CDN = 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2';
 let lastKnownChatFileName = '';
 
 function beginRouterBusy() {
@@ -1812,7 +1821,28 @@ function isBookshelfBookAvailable(book, context = getContext()) {
 
 function setBookshelfStatus(text) {
     bookshelfLastStatus = String(text || '');
-    $('#ai_wbr_bookshelf_status').text(bookshelfLastStatus || '书架待命。导入 TXT 后，绑定角色卡才会参与补充召回。');
+    $('#ai_wbr_bookshelf_status').text(bookshelfLastStatus || '书架待命。导入 TXT 后会进入待向量化，需要点击“开始向量化”。');
+}
+
+function setBookshelfModelStatus(text) {
+    $('#ai_wbr_bookshelf_model_status').text(String(text || '未测试'));
+}
+
+function syncBookshelfProviderVisibility() {
+    const mode = getBookshelfEmbeddingMode();
+    const toggleField = (id, visible) => {
+        const field = $(id);
+        field.toggle(visible);
+        $(`label[for="${id.replace(/^#/, '')}"]`).toggle(visible);
+    };
+    toggleField('#ai_wbr_bookshelf_api_url', mode === 'api');
+    toggleField('#ai_wbr_bookshelf_api_key', mode === 'api');
+    toggleField('#ai_wbr_bookshelf_api_model', mode === 'api');
+    toggleField('#ai_wbr_bookshelf_local_model', mode === 'browser-local');
+    $('#ai_wbr_bookshelf_load_local').toggle(mode === 'browser-local');
+    setBookshelfModelStatus(mode === 'browser-local'
+        ? `本地模型状态：${settings.bookshelfLocalModelStatus || 'not_loaded'}`
+        : (settings.bookshelfApiModel ? `API 模型：${settings.bookshelfApiModel}` : 'API 未配置'));
 }
 
 function readBookshelfTextFile(file) {
@@ -1905,17 +1935,112 @@ function tokenizeBookshelfText(text) {
     return uniqueStrings([...terms, ...grams]).slice(0, 900);
 }
 
-function buildBookshelfHashVector(text) {
-    const vector = Array.from({ length: BOOKSHELF_VECTOR_DIM }, () => 0);
-    const tokens = tokenizeBookshelfText(text);
-    for (const token of tokens) {
-        const hash = Number.parseInt(hashString(token), 36) || 0;
-        const index = hash % BOOKSHELF_VECTOR_DIM;
-        const sign = (Number.parseInt(hashString(`${token}:sign`), 36) || 0) % 2 === 0 ? 1 : -1;
-        vector[index] += sign * (1 + Math.min(token.length / 8, 2));
+function getBookshelfEmbeddingMode() {
+    const mode = String(settings.bookshelfEmbeddingMode || 'api').trim();
+    return mode === 'browser-local' ? 'browser-local' : 'api';
+}
+
+function getBookshelfEmbeddingProviderMeta() {
+    const mode = getBookshelfEmbeddingMode();
+    if (mode === 'browser-local') {
+        return {
+            mode,
+            model: String(settings.bookshelfLocalModelId || defaultSettings.bookshelfLocalModelId).trim(),
+            label: '浏览器本地模型',
+        };
     }
-    const norm = Math.sqrt(vector.reduce((sum, value) => sum + (value * value), 0)) || 1;
-    return vector.map(value => Number((value / norm).toFixed(6)));
+    return {
+        mode,
+        model: String(settings.bookshelfApiModel || '').trim(),
+        label: 'API 向量模型',
+    };
+}
+
+function normalizeBookshelfVector(vector) {
+    const values = Array.from(vector || []).map(value => Number(value)).filter(value => Number.isFinite(value));
+    if (!values.length) {
+        throw new Error('向量模型返回为空，无法写入书架。');
+    }
+    const norm = Math.sqrt(values.reduce((sum, value) => sum + (value * value), 0)) || 1;
+    return values.map(value => Number((value / norm).toFixed(8)));
+}
+
+function parseBookshelfEmbeddingResponse(json) {
+    const first = Array.isArray(json?.data) ? json.data[0] : null;
+    const vector = first?.embedding || json?.embedding || json?.vector;
+    return normalizeBookshelfVector(vector);
+}
+
+function getBookshelfEmbeddingApiUrl() {
+    const base = normalizeUrl(settings.bookshelfApiUrl || '');
+    if (!base) {
+        throw new Error('请先填写书架 API 地址。');
+    }
+    if (/\/embeddings$/i.test(base)) return base;
+    if (/\/v1$/i.test(base)) return `${base}/embeddings`;
+    return `${base.replace(/\/$/, '')}/v1/embeddings`;
+}
+
+async function embedBookshelfTextByApi(text) {
+    const model = String(settings.bookshelfApiModel || '').trim();
+    if (!model) {
+        throw new Error('请先填写书架 API 模型名。');
+    }
+    const apiUrl = getBookshelfEmbeddingApiUrl();
+    const apiKey = String(settings.bookshelfApiKey || '').trim();
+    const headers = { 'Content-Type': 'application/json' };
+    if (apiKey) {
+        headers.Authorization = `Bearer ${apiKey}`;
+    }
+    const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ model, input: String(text || '') }),
+    });
+    if (!response.ok) {
+        const body = await response.text().catch(() => '');
+        throw new Error(`书架 API 向量化失败：HTTP ${response.status}${body ? ` - ${truncateText(body, 180)}` : ''}`);
+    }
+    return parseBookshelfEmbeddingResponse(await response.json());
+}
+
+async function getBookshelfLocalEmbeddingPipeline() {
+    if (!bookshelfLocalPipelinePromise) {
+        saveSetting('bookshelfLocalModelStatus', 'loading');
+        bookshelfLocalPipelinePromise = import(`${BOOKSHELF_LOCAL_TRANSFORMERS_CDN}/dist/transformers.min.js`)
+            .then(async ({ pipeline, env }) => {
+                if (env?.allowLocalModels !== undefined) env.allowLocalModels = false;
+                if (env?.useBrowserCache !== undefined) env.useBrowserCache = true;
+                const modelId = String(settings.bookshelfLocalModelId || defaultSettings.bookshelfLocalModelId).trim();
+                if (!modelId) {
+                    throw new Error('请先填写浏览器本地模型 ID。');
+                }
+                const pipe = await pipeline('feature-extraction', modelId, { quantized: true });
+                saveSetting('bookshelfLocalModelStatus', 'ready');
+                return pipe;
+            })
+            .catch((error) => {
+                bookshelfLocalPipelinePromise = null;
+                saveSetting('bookshelfLocalModelStatus', 'failed');
+                throw new Error(`浏览器本地模型加载失败：${error?.message || error}`);
+            });
+    }
+    return bookshelfLocalPipelinePromise;
+}
+
+async function embedBookshelfTextByBrowserLocal(text) {
+    const pipe = await getBookshelfLocalEmbeddingPipeline();
+    const output = await pipe(String(text || ''), { pooling: 'mean', normalize: true });
+    const values = output?.data || output?.tolist?.()?.[0] || output?.[0];
+    return normalizeBookshelfVector(values);
+}
+
+async function embedBookshelfText(text) {
+    const mode = getBookshelfEmbeddingMode();
+    if (mode === 'browser-local') {
+        return await embedBookshelfTextByBrowserLocal(text);
+    }
+    return await embedBookshelfTextByApi(text);
 }
 
 function cosineSimilarity(a, b) {
@@ -1972,13 +2097,13 @@ async function recallBookshelfChunks(query, context = getContext(), options = {}
         .map(book => [book.id, book]));
     if (!availableBooks.size) return { candidates: [], selected: [] };
 
-    const queryVector = buildBookshelfHashVector(queryText);
+    const queryVector = await embedBookshelfText(queryText);
     const queryTerms = tokenizeBookshelfText(queryText).slice(0, 40);
     const minScore = clampNumber(settings.bookshelfMinScore, defaultSettings.bookshelfMinScore, 0, 1);
     const maxChunks = clampNumber(settings.bookshelfMaxChunks, defaultSettings.bookshelfMaxChunks, 1, 12);
 
     const candidates = (chunks || [])
-        .filter(chunk => chunk?.enabled !== false && availableBooks.has(chunk.bookId) && Array.isArray(chunk.vector))
+        .filter(chunk => chunk?.enabled !== false && availableBooks.has(chunk.bookId) && chunk.vectorStatus === 'ready' && Array.isArray(chunk.vector))
         .map(chunk => {
             const book = availableBooks.get(chunk.bookId);
             const semanticScore = Math.max(0, cosineSimilarity(queryVector, chunk.vector));
@@ -2038,10 +2163,12 @@ async function importBookshelfFiles(files) {
             type,
             enabled: true,
             bindings,
-            status: chunks.length ? 'ready' : 'empty',
-            embeddingMode: 'hash',
+            status: chunks.length ? 'pending_vectorization' : 'empty',
+            embeddingMode: '',
+            embeddingModel: '',
+            embeddingDim: 0,
             chunkCount: chunks.length,
-            vectorizedCount: chunks.length,
+            vectorizedCount: 0,
             createdAt: now,
             updatedAt: now,
         };
@@ -2054,8 +2181,11 @@ async function importBookshelfFiles(files) {
                 title: chunk.title || `片段 ${index + 1}`,
                 text: chunk.text,
                 textHash,
-                vector: buildBookshelfHashVector(chunk.text),
-                vectorStatus: 'ready',
+                vector: [],
+                vectorStatus: 'pending',
+                embeddingMode: '',
+                embeddingModel: '',
+                embeddingDim: 0,
                 enabled: true,
                 weight: 1,
                 createdAt: now,
@@ -2069,8 +2199,8 @@ async function importBookshelfFiles(files) {
         totalChunks += records.length;
     }
 
-    setBookshelfStatus(`已导入 ${imported} 本书，共 ${totalChunks} 个片段。默认仅绑定范围内参与召回。`);
-    toastr?.success?.(`已导入 ${imported} 本 TXT`, '书架补充');
+    setBookshelfStatus(`已导入 ${imported} 本书，共 ${totalChunks} 个片段。状态：待向量化，请点击“开始向量化”。`);
+    toastr?.success?.(`已导入 ${imported} 本 TXT，待向量化`, '书架补充');
     renderBookshelfPanel();
 }
 
@@ -2117,28 +2247,119 @@ async function rebuildBookshelfBookVectors(bookId) {
     ]);
     if (!book) return;
     const targets = (chunks || []).filter(chunk => chunk.bookId === bookId);
-    setBookshelfStatus(`正在重建《${book.title || book.fileName}》向量：0 / ${targets.length}`);
+    if (!targets.length) {
+        await updateBookshelfBook(bookId, { status: 'empty', vectorizedCount: 0, chunkCount: 0 });
+        setBookshelfStatus('这本书没有可向量化片段。');
+        renderBookshelfPanel();
+        return;
+    }
+    const provider = getBookshelfEmbeddingProviderMeta();
+    if (!provider.model) {
+        throw new Error(provider.mode === 'api' ? '请先填写 API 向量模型名。' : '请先填写浏览器本地模型 ID。');
+    }
+    bookshelfVectorAbortRequested = false;
+    await updateBookshelfBook(bookId, {
+        status: 'vectorizing',
+        embeddingMode: provider.mode,
+        embeddingModel: provider.model,
+        vectorizedCount: targets.filter(chunk => chunk.vectorStatus === 'ready' && Array.isArray(chunk.vector) && chunk.vector.length).length,
+        chunkCount: targets.length,
+    });
+    setBookshelfStatus(`正在向量化《${book.title || book.fileName}》：0 / ${targets.length}（${provider.label}）`);
     const now = new Date().toISOString();
-    const rebuilt = targets.map((chunk, index) => {
-        if (index % 20 === 0) {
-            setBookshelfStatus(`正在重建《${book.title || book.fileName}》向量：${index} / ${targets.length}`);
+    let done = 0;
+    let failed = 0;
+    let dim = 0;
+    const batch = [];
+    for (let index = 0; index < targets.length; index += 1) {
+        if (bookshelfVectorAbortRequested) {
+            break;
         }
-        return {
+        const chunk = targets[index];
+        try {
+            const vector = await embedBookshelfText(chunk.text);
+            dim = vector.length || dim;
+            batch.push({
+                ...chunk,
+                textHash: hashString(chunk.text),
+                vector,
+                vectorStatus: 'ready',
+                embeddingMode: provider.mode,
+                embeddingModel: provider.model,
+                embeddingDim: vector.length,
+                error: '',
+                updatedAt: new Date().toISOString(),
+            });
+            done += 1;
+        } catch (error) {
+            failed += 1;
+            batch.push({
+                ...chunk,
+                vector: [],
+                vectorStatus: 'failed',
+                embeddingMode: provider.mode,
+                embeddingModel: provider.model,
+                embeddingDim: 0,
+                error: error?.message || String(error),
+                updatedAt: new Date().toISOString(),
+            });
+        }
+        if (batch.length >= 8 || index === targets.length - 1) {
+            await bookshelfPutMany('chunks', batch.splice(0, batch.length));
+            await updateBookshelfBook(bookId, {
+                status: failed ? 'partial_failed' : 'vectorizing',
+                embeddingMode: provider.mode,
+                embeddingModel: provider.model,
+                embeddingDim: dim,
+                vectorizedCount: done,
+                chunkCount: targets.length,
+            });
+            setBookshelfStatus(`正在向量化《${book.title || book.fileName}》：${done} / ${targets.length}${failed ? `，失败 ${failed}` : ''}`);
+            renderBookshelfPanel();
+            await new Promise(resolve => setTimeout(resolve, 0));
+        }
+    }
+    const finalStatus = done === targets.length ? 'ready' : done > 0 ? 'partial_failed' : 'failed';
+    await updateBookshelfBook(bookId, {
+        status: finalStatus,
+        embeddingMode: provider.mode,
+        embeddingModel: provider.model,
+        embeddingDim: dim,
+        chunkCount: targets.length,
+        vectorizedCount: done,
+    });
+    setBookshelfStatus(`《${book.title || book.fileName}》向量化完成：${done} / ${targets.length}${failed ? `，失败 ${failed}` : ''}。`);
+    renderBookshelfPanel();
+}
+
+async function clearBookshelfBookVectors(bookId) {
+    const [book, chunks] = await Promise.all([
+        bookshelfGet('books', bookId),
+        bookshelfGetAll('chunks'),
+    ]);
+    if (!book) return;
+    const now = new Date().toISOString();
+    const cleared = (chunks || []).filter(chunk => chunk.bookId === bookId).map(chunk => ({
             ...chunk,
             textHash: hashString(chunk.text),
-            vector: buildBookshelfHashVector(chunk.text),
-            vectorStatus: 'ready',
+            vector: [],
+            vectorStatus: 'pending',
+            embeddingMode: '',
+            embeddingModel: '',
+            embeddingDim: 0,
+            error: '',
             updatedAt: now,
-        };
-    });
-    await bookshelfPutMany('chunks', rebuilt);
+    }));
+    await bookshelfPutMany('chunks', cleared);
     await updateBookshelfBook(bookId, {
-        status: 'ready',
-        embeddingMode: 'hash',
-        chunkCount: rebuilt.length,
-        vectorizedCount: rebuilt.length,
+        status: cleared.length ? 'pending_vectorization' : 'empty',
+        embeddingMode: '',
+        embeddingModel: '',
+        embeddingDim: 0,
+        chunkCount: cleared.length,
+        vectorizedCount: 0,
     });
-    setBookshelfStatus(`《${book.title || book.fileName}》已完成向量化，共 ${rebuilt.length} 个片段。`);
+    setBookshelfStatus(`《${book.title || book.fileName}》已重置为待向量化。`);
     renderBookshelfPanel();
 }
 
@@ -5076,13 +5297,26 @@ function getStandaloneTabId() {
     return String($('#ai_wbr_console_tabs .ai-wbr-console-tab.active').data('tab') || 'overview');
 }
 
+function ensureBookshelfStandaloneSection() {
+    let section = $('#ai_wbr_bookshelf_section');
+    if (!section.length) {
+        section = $('<div class="ai-wbr-section" id="ai_wbr_bookshelf_section"></div>');
+    }
+    const fold = $('.ai-wbr-bookshelf-fold');
+    if (fold.length && !section.find('.ai-wbr-bookshelf-fold').length) {
+        section.append(fold.detach());
+    }
+    return section;
+}
+
 function parkStandalonePanels() {
     let parking = $('#ai_wbr_console_parking');
     if (!parking.length) {
         parking = $('<div id="ai_wbr_console_parking" class="ai-wbr-console-parking"></div>');
         $('body').append(parking);
     }
-    $('#ai_wbr_memory_section, #ai_wbr_memory_graph_section, #ai_worldbook_router_settings').detach().appendTo(parking);
+    ensureBookshelfStandaloneSection();
+    $('#ai_wbr_memory_section, #ai_wbr_memory_graph_section, #ai_wbr_bookshelf_section, #ai_worldbook_router_settings').detach().appendTo(parking);
 }
 
 function renderStandaloneOverview(container) {
@@ -5242,6 +5476,10 @@ function renderStandaloneConsole(tabId = getStandaloneTabId()) {
                 renderMemoryPanel('graph');
             }
         });
+    } else if (tabId === 'bookshelf') {
+        body.append(ensureBookshelfStandaloneSection());
+        syncBookshelfProviderVisibility();
+        renderBookshelfPanel();
     } else if (tabId === 'debug') {
         renderStandaloneDebug(body);
     } else if (tabId === 'settings') {
@@ -5590,8 +5828,10 @@ function getBookshelfStatusLabel(book) {
     if (!book) return '未知';
     if (book.enabled === false) return '已禁用';
     if (book.status === 'empty') return '无片段';
-    if (book.status === 'failed') return '部分失败';
-    if (Number(book.vectorizedCount || 0) > 0) return '已向量化';
+    if (book.status === 'vectorizing') return `向量化中 ${book.vectorizedCount || 0}/${book.chunkCount || 0}`;
+    if (book.status === 'failed') return '向量化失败';
+    if (book.status === 'partial_failed') return `部分完成 ${book.vectorizedCount || 0}/${book.chunkCount || 0}`;
+    if (Number(book.vectorizedCount || 0) > 0 && Number(book.vectorizedCount || 0) >= Number(book.chunkCount || 0)) return '已向量化';
     return '待向量化';
 }
 
@@ -5606,6 +5846,9 @@ function getBookshelfBindingLabels(book) {
 }
 
 function createBookshelfBookCard(book, selected) {
+    const modeLabel = book.embeddingMode
+        ? `${book.embeddingMode}${book.embeddingModel ? ` / ${book.embeddingModel}` : ''}${book.embeddingDim ? ` / ${book.embeddingDim}维` : ''}`
+        : '待向量化';
     return $('<div class="ai-wbr-bookshelf-book"></div>')
         .toggleClass('selected', !!selected)
         .attr('data-bookshelf-book-id', book.id)
@@ -5613,12 +5856,13 @@ function createBookshelfBookCard(book, selected) {
             $('<div class="ai-wbr-bookshelf-book-head"></div>')
                 .append($('<b></b>').text(`《${book.title || book.fileName || '未命名'}》`))
                 .append($('<span></span>').text(getBookshelfStatusLabel(book))),
-            $('<div class="ai-wbr-bookshelf-book-meta"></div>').text(`${getBookshelfTypeLabel(book.type)} · ${book.chunkCount || 0} 个片段 · ${book.embeddingMode || 'hash'}`),
+            $('<div class="ai-wbr-bookshelf-book-meta"></div>').text(`${getBookshelfTypeLabel(book.type)} · ${book.vectorizedCount || 0}/${book.chunkCount || 0} 个片段 · ${modeLabel}`),
             $('<div class="ai-wbr-bookshelf-tags"></div>').append(getBookshelfBindingLabels(book).map(label => $('<span></span>').text(label))),
             $('<div class="ai-wbr-bookshelf-actions"></div>')
                 .append('<button class="menu_button ai-wbr-bookshelf-select" type="button">详情</button>')
                 .append(`<button class="menu_button ai-wbr-bookshelf-toggle" type="button">${book.enabled === false ? '启用' : '禁用'}</button>`)
-                .append('<button class="menu_button ai-wbr-bookshelf-rebuild" type="button">重建向量</button>')
+                .append(`<button class="menu_button ai-wbr-bookshelf-rebuild" type="button">${Number(book.vectorizedCount || 0) ? '重新向量化' : '开始向量化'}</button>`)
+                .append('<button class="menu_button ai-wbr-bookshelf-clear-vector" type="button">重置向量</button>')
                 .append('<button class="menu_button ai-wbr-bookshelf-delete" type="button">删除</button>'),
         );
 }
@@ -5653,6 +5897,7 @@ async function renderBookshelfPanel() {
         $('<div class="ai-wbr-bookshelf-scope-card"></div>').append($('<b></b>').text('当前角色卡'), $('<span></span>').text(scope.characterName || '当前角色')),
         $('<div class="ai-wbr-bookshelf-scope-card"></div>').append($('<b></b>').text('当前聊天'), $('<span></span>').text(scope.chatName || '当前聊天')),
         $('<div class="ai-wbr-bookshelf-scope-card"></div>').append($('<b></b>').text('自动补充'), $('<span></span>').text(settings.bookshelfEnabled && settings.bookshelfAutoInject ? '已开启' : '关闭')),
+        $('<div class="ai-wbr-bookshelf-scope-card"></div>').append($('<b></b>').text('向量模型'), $('<span></span>').text(getBookshelfEmbeddingProviderMeta().label)),
     );
 
     const booksBox = $('#ai_wbr_bookshelf_books').empty().append('<div class="ai-wbr-token-empty">正在读取书架...</div>');
@@ -5692,9 +5937,11 @@ async function renderBookshelfPanel() {
             detailBox.append(
                 $('<div class="ai-wbr-bookshelf-detail-head"></div>')
                     .append($('<b></b>').text(`《${selectedBook.title || selectedBook.fileName || '未命名'}》`))
-                    .append($('<span></span>').text(`${getBookshelfTypeLabel(selectedBook.type)} · ${getBookshelfStatusLabel(selectedBook)}`)),
+                    .append($('<span></span>').text(`${getBookshelfTypeLabel(selectedBook.type)} · ${getBookshelfStatusLabel(selectedBook)} · ${selectedBook.vectorizedCount || 0}/${selectedBook.chunkCount || 0}`)),
                 $('<div class="ai-wbr-bookshelf-tags"></div>').append(getBookshelfBindingLabels(selectedBook).map(label => $('<span></span>').text(label))),
                 $('<div class="ai-wbr-bookshelf-actions"></div>')
+                    .append(`<button class="menu_button ai-wbr-bookshelf-rebuild" type="button">${Number(selectedBook.vectorizedCount || 0) ? '重新向量化' : '开始向量化'}</button>`)
+                    .append('<button class="menu_button ai-wbr-bookshelf-clear-vector" type="button">重置向量</button>')
                     .append(`<button class="menu_button ai-wbr-bookshelf-bind-character" type="button">${isCharBound ? '取消角色绑定' : '绑定当前角色'}</button>`)
                     .append(`<button class="menu_button ai-wbr-bookshelf-bind-chat" type="button">${isChatBound ? '取消聊天绑定' : '绑定当前聊天'}</button>`)
                     .append(`<button class="menu_button ai-wbr-bookshelf-bind-global" type="button">${isGlobalBound ? '取消全局' : '设为全局'}</button>`),
@@ -5705,7 +5952,7 @@ async function renderBookshelfPanel() {
                             .attr('data-bookshelf-chunk-id', chunk.id)
                             .append($('<div class="ai-wbr-bookshelf-chunk-head"></div>')
                                 .append($('<b></b>').text(`${String(chunk.order || '').padStart(2, '0')} · ${chunk.title || '片段'}`))
-                                .append($('<span></span>').text(chunk.enabled === false ? '禁用' : '启用')))
+                                .append($('<span></span>').text(chunk.enabled === false ? '禁用' : chunk.vectorStatus === 'ready' ? '已向量化' : chunk.vectorStatus === 'failed' ? '失败' : '待向量化')))
                             .append($('<p></p>').text(truncateText(chunk.text || '', 260)))
                     )),
                 ),
@@ -5716,7 +5963,8 @@ async function renderBookshelfPanel() {
         }
 
         renderBookshelfResults(resultsBox, bookshelfLastTestResults);
-        setBookshelfStatus(bookshelfLastStatus || `书架共 ${allBooks.length} 本；当前绑定书籍只在对应角色/聊天中参与补充召回。`);
+        syncBookshelfProviderVisibility();
+        setBookshelfStatus(bookshelfLastStatus || `书架共 ${allBooks.length} 本；只有已向量化片段会参与召回。`);
     } catch (error) {
         booksBox.empty().append($('<div class="ai-wbr-console-alert error"></div>').text(error?.message || String(error)));
         setBookshelfStatus(`书架读取失败：${error?.message || error}`);
@@ -6740,15 +6988,25 @@ function bindMemoryPanelActions() {
     bindNumber('#ai_wbr_bookshelf_max_chars', 'bookshelfMaxChunkChars', 120, 2000);
     bindNumber('#ai_wbr_bookshelf_min_score', 'bookshelfMinScore', 0, 1);
 
+    bindText('#ai_wbr_bookshelf_api_url', 'bookshelfApiUrl', normalizeUrl);
+    bindText('#ai_wbr_bookshelf_api_key', 'bookshelfApiKey', (value) => String(value).trim());
+    bindText('#ai_wbr_bookshelf_api_model', 'bookshelfApiModel', (value) => String(value).trim());
+    bindText('#ai_wbr_bookshelf_local_model', 'bookshelfLocalModelId', (value) => String(value).trim());
+
     $('#ai_wbr_bookshelf_embedding_mode')
-        .val(settings.bookshelfEmbeddingMode || 'hash')
+        .val(getBookshelfEmbeddingMode())
         .on('change', function () {
-            saveSetting('bookshelfEmbeddingMode', String($(this).val() || 'hash'));
+            saveSetting('bookshelfEmbeddingMode', String($(this).val() || 'api') === 'browser-local' ? 'browser-local' : 'api');
+            syncBookshelfProviderVisibility();
             renderBookshelfPanel();
         });
 
-    $('#ai_wbr_bookshelf_enabled, #ai_wbr_bookshelf_auto_inject, #ai_wbr_bookshelf_only_bound, #ai_wbr_bookshelf_allow_global, #ai_wbr_bookshelf_max_chunks, #ai_wbr_bookshelf_max_chars, #ai_wbr_bookshelf_min_score')
-        .on('input change', () => renderBookshelfPanel());
+    $('#ai_wbr_bookshelf_enabled, #ai_wbr_bookshelf_auto_inject, #ai_wbr_bookshelf_only_bound, #ai_wbr_bookshelf_allow_global, #ai_wbr_bookshelf_max_chunks, #ai_wbr_bookshelf_max_chars, #ai_wbr_bookshelf_min_score, #ai_wbr_bookshelf_api_url, #ai_wbr_bookshelf_api_key, #ai_wbr_bookshelf_api_model, #ai_wbr_bookshelf_local_model')
+        .on('input change', () => {
+            syncBookshelfProviderVisibility();
+            renderBookshelfPanel();
+        });
+    syncBookshelfProviderVisibility();
 
     $('#ai_wbr_memory_history_mode')
         .val(settings.memoryHistoryMode || 'history')
@@ -6890,6 +7148,35 @@ function bindMemoryPanelActions() {
         }
     });
 
+    $('#ai_wbr_bookshelf_test_provider').on('click', async (event) => {
+        event.preventDefault();
+        try {
+            setBookshelfModelStatus('正在测试...');
+            const vector = await embedBookshelfText('测试书架向量模型连接。');
+            setBookshelfModelStatus(`可用，维度 ${vector.length}`);
+            toastr?.success?.(`向量模型可用，维度 ${vector.length}`, '书架向量库');
+        } catch (error) {
+            setBookshelfModelStatus(`失败：${error?.message || error}`);
+            toastr?.error?.(error?.message || String(error), '书架向量库');
+        }
+    });
+
+    $('#ai_wbr_bookshelf_load_local').on('click', async (event) => {
+        event.preventDefault();
+        try {
+            saveSetting('bookshelfEmbeddingMode', 'browser-local');
+            $('#ai_wbr_bookshelf_embedding_mode').val('browser-local');
+            syncBookshelfProviderVisibility();
+            setBookshelfModelStatus('正在下载/加载本地模型...');
+            await getBookshelfLocalEmbeddingPipeline();
+            setBookshelfModelStatus('本地模型已缓存并可用');
+            toastr?.success?.('本地向量模型已可用', '书架向量库');
+        } catch (error) {
+            setBookshelfModelStatus(`失败：${error?.message || error}`);
+            toastr?.error?.(error?.message || String(error), '书架向量库');
+        }
+    });
+
     $(document)
         .off('.aiWbrBookshelf')
         .on('click.aiWbrBookshelf', '.ai-wbr-bookshelf-select', function (event) {
@@ -6911,8 +7198,14 @@ function bindMemoryPanelActions() {
             try {
                 await rebuildBookshelfBookVectors(bookId);
             } catch (error) {
-                setBookshelfStatus(`重建失败：${error?.message || error}`);
+                setBookshelfStatus(`向量化失败：${error?.message || error}`);
             }
+        })
+        .on('click.aiWbrBookshelf', '.ai-wbr-bookshelf-clear-vector', async function (event) {
+            event.preventDefault();
+            const bookId = String($(this).closest('[data-bookshelf-book-id]').data('bookshelfBookId') || selectedBookshelfBookId || '');
+            if (!bookId || !confirm('确定重置这本书的所有向量并回到待向量化？')) return;
+            await clearBookshelfBookVectors(bookId);
         })
         .on('click.aiWbrBookshelf', '.ai-wbr-bookshelf-delete', async function (event) {
             event.preventDefault();
@@ -7812,6 +8105,7 @@ function createFloatingMemoryWindow() {
             '<button class="ai-wbr-console-tab" type="button" data-tab="injection">注入</button>' +
             '<button class="ai-wbr-console-tab" type="button" data-tab="memory">记忆</button>' +
             '<button class="ai-wbr-console-tab" type="button" data-tab="graph">图谱</button>' +
+            '<button class="ai-wbr-console-tab" type="button" data-tab="bookshelf">书架</button>' +
             '<button class="ai-wbr-console-tab" type="button" data-tab="debug">调试</button>' +
             '<button class="ai-wbr-console-tab" type="button" data-tab="settings">设置</button>' +
         '</div>' +
