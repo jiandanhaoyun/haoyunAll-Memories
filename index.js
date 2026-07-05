@@ -6,7 +6,7 @@
     'use strict';
 
     const NAMESPACE = 'AIWorldbookRouter';
-const VERSION = '0.5.20';
+const VERSION = '0.5.21';
     const LOG_PREFIX = '[AI Worldbook Router Bootstrap]';
     const ENTRY_ID = 'ai_wbr_extension_entry';
     const ROW_ID = 'ai_wbr_extension_row';
@@ -558,29 +558,61 @@ const VERSION = '0.5.20';
         return false;
     }
 
+    function asElement(target) {
+        if (!target) return null;
+        if (target.nodeType === Node.ELEMENT_NODE) return target;
+        return target.parentElement || null;
+    }
+
+    function hasWorldbookEntryText(node) {
+        const text = String(node?.innerText || node?.textContent || '').replace(/\s+/g, ' ').trim();
+        return text === DISPLAY_NAME
+            || text === `打开${DISPLAY_NAME}控制台`
+            || text.includes(DISPLAY_NAME)
+            || text.includes('ai_worldbook_router');
+    }
+
+    function hasWorldbookEntryMeta(node) {
+        if (!node) return false;
+        const values = [
+            node.id,
+            node.dataset?.aiWbrEntry,
+            node.dataset?.extensionId,
+            node.dataset?.extension,
+            node.dataset?.name,
+            node.dataset?.id,
+            node.getAttribute?.('title'),
+            node.getAttribute?.('aria-label'),
+            node.getAttribute?.('data-i18n'),
+        ].map(value => String(value || ''));
+        return values.some(value => value === 'true'
+            || value === ENTRY_ID
+            || value === ROW_ID
+            || value === 'ai_worldbook_router'
+            || value.includes(DISPLAY_NAME));
+    }
+
     function isWorldbookMenuTarget(target) {
-        if (!target?.closest) return false;
-        if (target.closest('#' + PANEL_ID + ', #ai_wbr_fab, #' + FALLBACK_BUTTON_ID + ', #ai_wbr_floating_window')) {
+        const element = asElement(target);
+        if (!element?.closest) return false;
+        if (element.closest('#' + PANEL_ID + ', #ai_wbr_fab, #' + FALLBACK_BUTTON_ID + ', #ai_wbr_floating_window')) {
             return false;
         }
-        if (target.closest('#' + ENTRY_ID + ', #' + ROW_ID + ', [data-ai-wbr-entry="true"]')) {
+        if (element.closest('#' + ENTRY_ID + ', #' + ROW_ID + ', [data-ai-wbr-entry="true"]')) {
             return true;
         }
 
-        const menuItem = target.closest('.extension_container, .list-group-item, [role="menuitem"], [role="button"], button, a');
+        const menuItem = element.closest('.extension_container, .list-group-item, [role="menuitem"], [role="button"], button, a, [title], [aria-label], [data-extension-id], [data-extension], [data-name], [data-id]');
         if (!menuItem) return false;
         if (!menuItem.closest('#extensionsMenu, #top-settings-holder, .drawer-content, .popup, .menu, .list-group')) {
             return false;
         }
-        if (menuItem.id === ENTRY_ID || menuItem.id === ROW_ID || menuItem.dataset?.aiWbrEntry === 'true') {
-            return true;
-        }
-        if (menuItem.dataset?.extensionId === 'ai_worldbook_router') {
+        if (hasWorldbookEntryMeta(menuItem) || hasWorldbookEntryText(menuItem)) {
             return true;
         }
 
-        const text = String(menuItem.innerText || menuItem.textContent || '').replace(/\s+/g, ' ').trim();
-        return text === DISPLAY_NAME || text === `打开${DISPLAY_NAME}控制台`;
+        const labelledParent = menuItem.closest('[title], [aria-label], [data-extension-id], [data-extension], [data-name], [data-id]');
+        return hasWorldbookEntryMeta(labelledParent) || hasWorldbookEntryText(labelledParent);
     }
 
     function bindGlobalEntryDelegates() {
