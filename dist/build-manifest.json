@@ -1,0 +1,33 @@
+{
+  "name": "世界书读取",
+  "id": "ai_worldbook_router",
+  "version": "0.5.32",
+  "generatedAt": "2026-07-05T21:52:14.752Z",
+  "files": [
+    {
+      "file": "manifest.json",
+      "bytes": 566,
+      "modifiedAt": "2026-07-05T21:52:14.646Z"
+    },
+    {
+      "file": "index.js",
+      "bytes": 33548,
+      "modifiedAt": "2026-07-05T20:41:57.222Z"
+    },
+    {
+      "file": "router-core.js",
+      "bytes": 399709,
+      "modifiedAt": "2026-07-05T21:49:38.253Z"
+    },
+    {
+      "file": "settings.html",
+      "bytes": 36365,
+      "modifiedAt": "2026-07-05T19:32:10.448Z"
+    },
+    {
+      "file": "style.css",
+      "bytes": 61065,
+      "modifiedAt": "2026-07-05T20:11:08.286Z"
+    }
+  ]
+}

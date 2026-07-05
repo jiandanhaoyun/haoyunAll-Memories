@@ -1,0 +1,13 @@
+﻿# Generated artifacts
+dist/*.user.js
+dist/*.tavern-helper.json
+
+# Temporary/debug dumps
+tmp/
+_tmp_*
+
+# Local editor/system files
+.DS_Store
+Thumbs.db
+.omo/
+

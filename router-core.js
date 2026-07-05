@@ -15,6 +15,17 @@ import {
     world_info,
 } from '../../../world-info.js';
 import { getCharaFilename } from '../../../utils.js';
+import {
+    clampNumber,
+    countTermHits,
+    matchesBlockRule,
+    normalizeText,
+    normalizeUrl,
+    parseBlockRules,
+    splitIntoSentences,
+    truncateText,
+    uniqueStrings,
+} from './core/text-utils.js';
 
 const MODULE_NAME = 'ai_worldbook_router';
 const PROMPT_KEY = 'ai_worldbook_router_prompt';
@@ -35,26 +46,26 @@ const MEMORY_GRAPH_TOP_SAFE_PADDING = 56;
 const MEMORY_GRAPH_LAYOUT_PADDING = 96;
 const MEMORY_GRAPH_TOUCH_TAP_THRESHOLD = 8;
 const MEMORY_NODE_TYPE_OPTIONS = [
-    { value: 'event', label: '事件' },
-    { value: 'character', label: '角色' },
-    { value: 'location', label: '地点' },
-    { value: 'faction', label: '势力' },
-    { value: 'item', label: '道具' },
-    { value: 'concept', label: '概念' },
-    { value: 'rule', label: '规则' },
-    { value: 'quest', label: '任务' },
+    { value: 'event', label: '\u4e8b\u4ef6' },
+    { value: 'character', label: '\u89d2\u8272' },
+    { value: 'location', label: '\u5730\u70b9' },
+    { value: 'faction', label: '\u52bf\u529b' },
+    { value: 'item', label: '\u9053\u5177' },
+    { value: 'concept', label: '\u6982\u5ff5' },
+    { value: 'rule', label: '\u89c4\u5219' },
+    { value: 'quest', label: '\u4efb\u52a1' },
 ];
 const MEMORY_LINK_TYPE_OPTIONS = [
-    { value: 'INVOLVES', label: '涉及' },
-    { value: 'PART_OF', label: '属于' },
-    { value: 'HAPPENS_AT', label: '发生于' },
-    { value: 'FOLLOWS', label: '后续于' },
-    { value: 'UPDATES', label: '更新' },
-    { value: 'OPPOSES', label: '对立' },
-    { value: 'ALLIED_WITH', label: '同盟' },
-    { value: 'CAUSES', label: '导致' },
-    { value: 'RELATED', label: '相关' },
-    { value: 'MENTIONS', label: '提及' },
+    { value: 'INVOLVES', label: '\u6d89\u53ca' },
+    { value: 'PART_OF', label: '\u5c5e\u4e8e' },
+    { value: 'HAPPENS_AT', label: '\u53d1\u751f\u4e8e' },
+    { value: 'FOLLOWS', label: '\u540e\u7eed\u4e8e' },
+    { value: 'UPDATES', label: '\u66f4\u65b0' },
+    { value: 'OPPOSES', label: '\u5bf9\u7acb' },
+    { value: 'ALLIED_WITH', label: '\u540c\u76df' },
+    { value: 'CAUSES', label: '\u5bfc\u81f4' },
+    { value: 'RELATED', label: '\u76f8\u5173' },
+    { value: 'MENTIONS', label: '\u63d0\u53ca' },
 ];
 const MEMORY_LINK_TYPES = new Set([
     'INVOLVES', 'PART_OF', 'HAPPENS_AT', 'FOLLOWS', 'UPDATES', 'OPPOSES',
@@ -68,20 +79,19 @@ const FETCH_FALLBACK_ENDPOINTS = [
     '/api/horde/generate-text',
 ];
 const COMMON_QUERY_TERMS = new Set([
-    '如果', '有人', '这个', '那个', '这里', '那里', '什么', '怎么', '为何', '为什么', '然后',
-    '可以', '是不是', '就是', '不是', '一下', '一下子', '这样', '那样', '会被', '会不会',
-    '到底', '真的', '已经', '现在', '之前', '之后', '而且', '因为', '所以', '那个地方',
+    '\u5982\u679c', '\u6709\u4eba', '\u8fd9\u4e2a', '\u90a3\u4e2a', '\u8fd9\u91cc', '\u90a3\u91cc', '\u4ec0\u4e48', '\u600e\u4e48', '\u4e3a\u4f55', '\u4e3a\u4ec0\u4e48', '\u7136\u540e',
+    '\u53ef\u4ee5', '\u662f\u4e0d\u662f', '\u5c31\u662f', '\u4e0d\u662f', '\u4e00\u4e2a', '\u4e00\u4e0b\u5b50', '\u8fd9\u6837', '\u90a3\u6837', '\u4f1a\u88ab', '\u4f1a\u4e0d\u4f1a',
+    '\u5230\u5e95', '\u771f\u7684', '\u5df2\u7ecf', '\u73b0\u5728', '\u4e4b\u524d', '\u4e4b\u540e', '\u800c\u4e14', '\u56e0\u4e3a', '\u6240\u4ee5', '\u90a3\u4e2a\u5730\u65b9',
 ]);
 
-const defaultSystemPrompt = `你是 SillyTavern 的前置世界书路由器。
-只做一件事：从候选 keys 中选择本轮真正相关的条目。
-只输出严格 JSON。
-禁止 Markdown。
-禁止解释。
-禁止 reasoning。
-禁止额外字段。
-唯一合法格式：{"selected":[{"key":"命中的 key","reason":"简短原因"}]}`;
-
+const defaultSystemPrompt = `\u4f60\u662f SillyTavern \u7684\u524d\u7f6e\u4e16\u754c\u4e66\u8def\u7531\u5668\u3002
+\u53ea\u505a\u4e00\u4ef6\u4e8b\uff1a\u4ece\u5019\u9009 keys \u4e2d\u9009\u62e9\u672c\u8f6e\u771f\u6b63\u76f8\u5173\u7684\u6761\u76ee\u3002
+\u53ea\u8f93\u51fa\u4e25\u683c JSON\u3002
+\u7981\u6b62 Markdown\u3002
+\u7981\u6b62\u89e3\u91ca\u3002
+\u7981\u6b62 reasoning\u3002
+\u7981\u6b62\u989d\u5916\u5b57\u6bb5\u3002
+\u552f\u4e00\u5408\u6cd5\u683c\u5f0f\uff1a{"selected":[{"key":"\u547d\u4e2d\u7684 key","reason":"\u7b80\u77ed\u539f\u56e0"}]}`;
 const defaultSettings = {
     enabled: false,
     debug: false,
@@ -92,7 +102,7 @@ const defaultSettings = {
     routerApiKey: '',
     routerModel: '',
     routerModels: [],
-    routerStatus: '未连接',
+    routerStatus: '???',
     routerRequestMaxTokens: 10000,
     maxCandidates: 24,
     maxSelected: 5,
@@ -130,7 +140,7 @@ const defaultSettings = {
     memoryLastErrorsByChat: {},
     memoryGraph: null,
     memoryLastTurnSignature: '',
-    memoryStatus: '未启用',
+    memoryStatus: '???',
     memoryLastPrompt: '',
     memoryLastRaw: '',
     memoryLastError: '',
@@ -456,7 +466,7 @@ function handleMessageDeletedOrSwiped() {
             Object.assign(extension_settings[MODULE_NAME], settings);
             saveSettingsDebounced();
             setCurrentMemoryLastTurnSignature('', context);
-            setMemoryStatus('已回退记忆状态（检测到重刷/删除）', context);
+            setMemoryStatus('\u5df2\u56de\u9000\u8bb0\u5fc6\u72b6\u6001\uff08\u68c0\u6d4b\u5230\u91cd\u751f\u6210/\u5220\u9664\uff09', context);
             
             // Re-render UI if applicable
             if (!memoryGraphDrag && !memoryGraphPan) {
@@ -762,7 +772,7 @@ function saveSetting(key, value) {
 }
 
 function setRouterStatus(text) {
-    settings.routerStatus = String(text || '未连接');
+    settings.routerStatus = String(text || '\u672a\u8fde\u63a5');
     $('#ai_wbr_router_status').text(settings.routerStatus);
     Object.assign(extension_settings[MODULE_NAME], settings);
     saveSettingsDebounced();
@@ -885,7 +895,6 @@ function playStatusBurst(symbol, variant = 'retry') {
     layer.append(burst);
     setTimeout(() => burst.remove(), 1050);
 }
-
 function getEntryBurstLabel(entry) {
     const comment = String(entry?.comment || '')
         .replace(/^=+\s*/u, '')
@@ -958,47 +967,10 @@ function playSelectedEntriesBurst(entries) {
     });
 }
 
-function normalizeText(value) {
-    return String(value ?? '').toLowerCase();
-}
-
 function extractActualUserInput(value) {
     const text = String(value ?? '');
-    const match = text.match(/<本轮用户输入>\s*([\s\S]*?)\s*<\/本轮用户输入>/i);
+    const match = text.match(/<\u672c\u8f6e\u7528\u6237\u8f93\u5165>\s*([\s\S]*?)\s*<\/\u672c\u8f6e\u7528\u6237\u8f93\u5165>/i);
     return (match ? match[1] : text).trim();
-}
-
-function escapeRegex(value) {
-    return String(value ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function clampNumber(value, fallback, min, max) {
-    const parsed = Number(value);
-    if (!Number.isFinite(parsed)) {
-        return fallback;
-    }
-
-    return Math.min(max, Math.max(min, parsed));
-}
-
-function truncateText(value, maxLength) {
-    const text = String(value ?? '').trim();
-    if (text.length <= maxLength) {
-        return text;
-    }
-
-    return `${text.slice(0, Math.max(0, maxLength - 1))}…`;
-}
-
-function uniqueStrings(values) {
-    return [...new Set(values.filter(Boolean).map(value => String(value)))];
-}
-
-function splitIntoSentences(text) {
-    return String(text ?? '')
-        .split(/(?<=[.!?。！？\n])/u)
-        .map(part => part.trim())
-        .filter(Boolean);
 }
 
 function extractQueryTerms(...texts) {
@@ -1037,45 +1009,6 @@ function extractQueryTerms(...texts) {
         .filter(term => term.length >= 2)
         .filter(term => !COMMON_QUERY_TERMS.has(term)))
         .slice(0, MAX_RECALL_TERMS);
-}
-
-function countTermHits(text, term) {
-    if (!text || !term) {
-        return 0;
-    }
-
-    const matches = text.match(new RegExp(escapeRegex(term), 'gu'));
-    return matches?.length ?? 0;
-}
-
-function normalizeUrl(value) {
-    return String(value ?? '').trim().replace(/\/+$/, '');
-}
-
-function parseBlockRules(value) {
-    return String(value ?? '')
-        .split(/\r?\n/u)
-        .map(line => line.trim())
-        .filter(Boolean);
-}
-
-function matchesBlockRule(text, rule) {
-    const source = String(text ?? '');
-    const rawRule = String(rule ?? '').trim();
-    if (!source || !rawRule) {
-        return false;
-    }
-
-    const regexMatch = rawRule.match(/^\/(.+)\/([a-z]*)$/iu);
-    if (regexMatch) {
-        try {
-            return new RegExp(regexMatch[1], regexMatch[2]).test(source);
-        } catch {
-            return false;
-        }
-    }
-
-    return normalizeText(source).includes(normalizeText(rawRule));
 }
 
 function getBlockedTitleRule(entry) {
@@ -1694,7 +1627,7 @@ function getBookshelfDb() {
         return bookshelfDbPromise;
     }
     if (!globalThis.indexedDB) {
-        bookshelfDbPromise = Promise.reject(new Error('当前 WebView 不支持 IndexedDB，无法使用书架向量。'));
+        bookshelfDbPromise = Promise.reject(new Error('Current WebView does not support IndexedDB; vector bookshelf is unavailable.'));
         return bookshelfDbPromise;
     }
 
@@ -1850,11 +1783,10 @@ function isBookshelfBookAvailable(book, context = getContext()) {
 
 function setBookshelfStatus(text) {
     bookshelfLastStatus = String(text || '');
-    $('[id="ai_wbr_bookshelf_status"]').text(bookshelfLastStatus || '书架待命。导入 TXT 后点击书籍向量化。');
+    $('[id="ai_wbr_bookshelf_status"]').text(bookshelfLastStatus || 'No books imported yet. Import TXT files to enable retrieval.');
 }
-
 function setBookshelfModelStatus(text) {
-    $('[id="ai_wbr_bookshelf_model_status"]').text(String(text || '未测试'));
+    $('[id="ai_wbr_bookshelf_model_status"]').text(text || 'Model not loaded');
 }
 
 function renderBookshelfApiModelOptions() {
@@ -1867,7 +1799,7 @@ function renderBookshelfApiModelOptions() {
         if (!select.is('select')) return;
         select.empty().append($('<option></option>', {
             value: '',
-            text: models.length ? '请选择向量模型' : '先点击“获取模型”',
+            text: models.length ? 'Select embedding model' : 'Fetch models first',
         }));
         for (const model of models) {
             select.append($('<option></option>', {
@@ -1902,14 +1834,14 @@ function syncBookshelfProviderVisibility() {
     toggleField('#ai_wbr_bookshelf_local_model', mode === 'browser-local');
     $('[id="ai_wbr_bookshelf_load_local"]').toggle(mode === 'browser-local');
     setBookshelfModelStatus(mode === 'browser-local'
-        ? `本地模型状态：${settings.bookshelfLocalModelStatus || 'not_loaded'}`
-        : (settings.bookshelfApiModel ? `API 模型：${settings.bookshelfApiModel}` : 'API 未配置'));
+        ? `Local model: ${settings.bookshelfLocalModelStatus || 'not_loaded'}`
+        : (settings.bookshelfApiModel ? `API model: ${settings.bookshelfApiModel}` : 'API model not configured'));
 }
 
 function getBookshelfModelsApiUrl() {
     const base = normalizeUrl(settings.bookshelfApiUrl || '');
     if (!base) {
-        throw new Error('请先填写书架 API 地址。');
+        throw new Error('Please enter the bookshelf API URL first.');
     }
     if (/\/models$/i.test(base)) return base;
     if (/\/embeddings$/i.test(base)) return base.replace(/\/embeddings$/i, '/models');
@@ -1925,7 +1857,7 @@ async function fetchBookshelfApiModels() {
         headers.Authorization = `Bearer ${apiKey}`;
     }
 
-    setBookshelfModelStatus('正在获取模型...');
+    setBookshelfModelStatus('Fetching models...');
     const response = await fetch(apiUrl, {
         method: 'GET',
         headers,
@@ -1937,7 +1869,7 @@ async function fetchBookshelfApiModels() {
         : [];
 
     if (!response.ok || !models.length) {
-        throw new Error(data?.error?.message || data?.message || `没有拿到可用模型（HTTP ${response.status}）`);
+        throw new Error(data?.error?.message || data?.message || `No embedding models returned (HTTP ${response.status}).`);
     }
 
     settings.bookshelfApiModels = uniqueStrings(models);
@@ -1948,8 +1880,8 @@ async function fetchBookshelfApiModels() {
     saveSettingsDebounced();
     renderBookshelfApiModelOptions();
     $('#ai_wbr_bookshelf_api_model').val(settings.bookshelfApiModel || '');
-    setBookshelfModelStatus(`已获取 ${settings.bookshelfApiModels.length} 个模型`);
-    toastr?.success?.(`已获取 ${settings.bookshelfApiModels.length} 个向量模型`, '书架向量库');
+    setBookshelfModelStatus(`Fetched ${settings.bookshelfApiModels.length} models`);
+    toastr?.success?.('Done.', 'AI Worldbook Router');
 }
 
 function readBookshelfTextFile(file) {
@@ -1962,13 +1894,12 @@ function readBookshelfTextFile(file) {
 }
 
 function detectBookshelfChunkTitle(text, fallback = '') {
-    const firstLine = String(text || '').split('\n').map(i => i.trim()).find(Boolean) || '';
-    if (/^(第[一二三四五六七八九十百千万0-9０-９]+[章节回卷部]|#{1,6}\s+|[【\[].{1,50}[】\]])/.test(firstLine)) {
-        return truncateText(firstLine.replace(/^#{1,6}\s+/, ''), 60);
+    const firstLine = String(text || '').split('\\n').map(i => i.trim()).find(Boolean) || '';
+    if (/^(chapter|section|part|#{1,6}\\s+|[0-9]+[.)?\\s])/.test(firstLine.toLowerCase())) {
+        return truncateText(firstLine.replace(/^#{1,6}\\s+/, ''), 60);
     }
-    return fallback;
+    return truncateText(fallback || firstLine || 'Untitled chunk', 60);
 }
-
 function splitTextIntoBookshelfChunks(text, options = {}) {
     const chunkSize = clampNumber(options.chunkSize, 700, 200, 2000);
     const overlap = clampNumber(options.overlap, 100, 0, Math.floor(chunkSize / 2));
@@ -2053,20 +1984,20 @@ function getBookshelfEmbeddingProviderMeta() {
         return {
             mode,
             model: String(settings.bookshelfLocalModelId || defaultSettings.bookshelfLocalModelId).trim(),
-            label: '浏览器本地模型',
+            label: 'Browser local embedding model',
         };
     }
     return {
         mode,
         model: String(settings.bookshelfApiModel || '').trim(),
-        label: 'API 向量模型',
+        label: 'API embedding model',
     };
 }
 
 function normalizeBookshelfVector(vector) {
     const values = Array.from(vector || []).map(value => Number(value)).filter(value => Number.isFinite(value));
     if (!values.length) {
-        throw new Error('向量模型返回为空，无法写入书架。');
+        throw new Error('Embedding model returned an empty vector.');
     }
     const norm = Math.sqrt(values.reduce((sum, value) => sum + (value * value), 0)) || 1;
     return values.map(value => Number((value / norm).toFixed(8)));
@@ -2081,7 +2012,7 @@ function parseBookshelfEmbeddingResponse(json) {
 function getBookshelfEmbeddingApiUrl() {
     const base = normalizeUrl(settings.bookshelfApiUrl || '');
     if (!base) {
-        throw new Error('请先填写书架 API 地址。');
+        throw new Error('Please enter the bookshelf API URL first.');
     }
     if (/\/embeddings$/i.test(base)) return base;
     if (/\/v1$/i.test(base)) return `${base}/embeddings`;
@@ -2091,7 +2022,7 @@ function getBookshelfEmbeddingApiUrl() {
 async function embedBookshelfTextByApi(text) {
     const model = String(settings.bookshelfApiModel || '').trim();
     if (!model) {
-        throw new Error('请先填写书架 API 模型名。');
+        throw new Error('Please enter the bookshelf API URL first.');
     }
     const apiUrl = getBookshelfEmbeddingApiUrl();
     const apiKey = String(settings.bookshelfApiKey || '').trim();
@@ -2106,7 +2037,7 @@ async function embedBookshelfTextByApi(text) {
     });
     if (!response.ok) {
         const body = await response.text().catch(() => '');
-        throw new Error(`书架 API 向量化失败：HTTP ${response.status}${body ? ` - ${truncateText(body, 180)}` : ''}`);
+        throw new Error('Please enter the bookshelf API URL first.');
     }
     return parseBookshelfEmbeddingResponse(await response.json());
 }
@@ -2120,7 +2051,7 @@ async function getBookshelfLocalEmbeddingPipeline() {
                 if (env?.useBrowserCache !== undefined) env.useBrowserCache = true;
                 const modelId = String(settings.bookshelfLocalModelId || defaultSettings.bookshelfLocalModelId).trim();
                 if (!modelId) {
-                    throw new Error('请先填写浏览器本地模型 ID。');
+                    throw new Error('Please enter the local embedding model ID first.');
                 }
                 const pipe = await pipeline('feature-extraction', modelId, { quantized: true });
                 saveSetting('bookshelfLocalModelStatus', 'ready');
@@ -2185,6 +2116,53 @@ function buildBookshelfRecallQuery(recentMessages = [], mvuSummary = '') {
     }
     if (mvuSummary) parts.push(mvuSummary);
     return parts.join('\n').trim();
+}
+
+function tagRecallCandidate(item, sourceType) {
+    if (!item || typeof item !== 'object') return item;
+    const title = item.comment
+        || item.title
+        || item.book?.title
+        || item.book?.fileName
+        || item.keys?.primary?.[0]
+        || item.uid
+        || item.id
+        || '';
+    const primaryKeys = uniqueStrings([
+        ...(Array.isArray(item.keys?.primary) ? item.keys.primary : []),
+        title,
+        item.book?.title,
+        item.book?.fileName,
+    ].filter(Boolean));
+    const secondaryKeys = uniqueStrings([
+        ...(Array.isArray(item.keys?.secondary) ? item.keys.secondary : []),
+        sourceType,
+        item.source,
+        item.memoryType,
+        item.title,
+    ].filter(Boolean));
+    const allKeys = uniqueStrings([
+        ...(Array.isArray(item.keys?.all) ? item.keys.all : []),
+        ...primaryKeys,
+        ...secondaryKeys,
+    ]);
+    return {
+        ...item,
+        sourceType,
+        recallId: String(item.routerId || item.uid || item.id || title || ''),
+        recallTitle: String(title || ''),
+        recallScore: Number(item.score || 0),
+        keys: {
+            ...(item.keys || {}),
+            primary: primaryKeys,
+            secondary: secondaryKeys,
+            all: allKeys,
+        },
+    };
+}
+
+function tagRecallCandidates(items = [], sourceType) {
+    return (Array.isArray(items) ? items : []).map(item => tagRecallCandidate(item, sourceType));
 }
 
 function mergeMemoryVectorCandidates(keywordCandidates = [], vectorCandidates = []) {
@@ -2271,20 +2249,19 @@ function buildMemoryVectorText(node, graph = getMemoryGraph()) {
     const parts = [];
     const push = (label, value) => {
         const text = String(value || '').trim();
-        if (text) parts.push(`${label}：${text}`);
+        if (text) parts.push(`${label}: ${text}`);
     };
-    push('标题', node?.title);
-    push('类型', node?.type);
-    push('摘要', node?.summary);
-    push('内容', node?.content);
-    push('地点', node?.location);
-    push('时间', node?.timeSpan);
-    if (Array.isArray(node?.tags) && node.tags.length) push('标签', node.tags.join('、'));
-    if (Array.isArray(node?.keys) && node.keys.length) push('关键词', node.keys.join('、'));
-    if (graph?.lastSummary) push('近期摘要', truncateText(graph.lastSummary, 360));
+    push('Title', node?.title);
+    push('Type', node?.type);
+    push('Summary', node?.summary);
+    push('Content', node?.content);
+    push('Location', node?.location);
+    push('Time', node?.timeSpan);
+    if (Array.isArray(node?.tags) && node.tags.length) push('Tags', node.tags.join(', '));
+    if (Array.isArray(node?.keys) && node.keys.length) push('Keys', node.keys.join(', '));
+    if (graph?.lastSummary) push('Recent summary', truncateText(graph.lastSummary, 360));
     return parts.join('\n').trim();
 }
-
 function buildMemoryVectorRecord(node, graph = getMemoryGraph(), context = getContext(), provider = getBookshelfEmbeddingProviderMeta()) {
     const chatKey = getCurrentChatMemoryKey(context);
     const text = buildMemoryVectorText(node, graph);
@@ -2312,7 +2289,7 @@ async function syncMemoryGraphVectors(graph = getMemoryGraph(), context = getCon
     }
     const provider = getBookshelfEmbeddingProviderMeta();
     if (!provider.model) {
-        throw new Error(provider.mode === 'api' ? '请先填写 API 向量模型名。' : '请先填写浏览器本地模型 ID。');
+        throw new Error('Please enter the bookshelf API URL first.');
     }
     const chatKey = getCurrentChatMemoryKey(context);
     const nodes = (Array.isArray(graph?.nodes) ? graph.nodes : [])
@@ -2383,7 +2360,7 @@ async function syncMemoryGraphVectors(graph = getMemoryGraph(), context = getCon
 
 async function recallMemoryVectorChunks(query, memoryGraph = getMemoryGraph(), context = getContext(), options = {}) {
     const force = !!options.force;
-    if (!force && (!settings.bookshelfEnabled || !settings.bookshelfAutoInject || !settings.bookshelfMemoryVectorRecall)) {
+    if (!force && !settings.bookshelfMemoryVectorRecall) {
         return { candidates: [], selected: [], sync: null };
     }
     const queryText = String(query || '').trim();
@@ -2472,10 +2449,60 @@ async function recallVectorMemoryAndBookshelf(query, memoryGraph = getMemoryGrap
     };
 }
 
+async function buildUnifiedRecallBundle(context, recentMessages, options = {}) {
+    const mvuSummary = options.mvuSummary ?? getCombinedStateSummary(context);
+    const memoryGraph = options.memoryGraph || getMemoryGraph(context);
+    const entries = await getWorldbookEntries(context);
+    const wbCandidates = tagRecallCandidates(
+        recallCandidates(entries, recentMessages, mvuSummary),
+        'worldbook',
+    );
+    const keywordMemoryCandidates = tagRecallCandidates(
+        recallMemoryCandidates(memoryGraph, recentMessages, mvuSummary),
+        'memory-keyword',
+    );
+
+    let memoryCandidates = keywordMemoryCandidates;
+    let bookshelfCandidates = [];
+    let selectedBookshelf = [];
+    let selectedMemoryVectors = [];
+    let vectorErrors = [];
+    let vectorSync = null;
+
+    try {
+        const query = buildBookshelfRecallQuery(recentMessages, mvuSummary);
+        const vectorResult = await recallVectorMemoryAndBookshelf(query, memoryGraph, context, options);
+        const vectorMemoryCandidates = tagRecallCandidates(vectorResult.memoryCandidates || [], 'memory-vector');
+        memoryCandidates = mergeMemoryVectorCandidates(keywordMemoryCandidates, vectorMemoryCandidates);
+        selectedMemoryVectors = tagRecallCandidates(vectorResult.selectedMemoryVectors || [], 'memory-vector');
+        bookshelfCandidates = tagRecallCandidates(vectorResult.bookshelfCandidates || [], 'bookshelf');
+        selectedBookshelf = tagRecallCandidates(vectorResult.selectedBookshelf || [], 'bookshelf');
+        vectorErrors = vectorResult.errors || [];
+        vectorSync = vectorResult.sync || null;
+    } catch (error) {
+        vectorErrors = [error];
+        console.warn(`${LOG_PREFIX} Vector recall skipped.`, error);
+        setBookshelfStatus(`向量召回跳过：${error?.message || error}`);
+    }
+
+    return {
+        mvuSummary,
+        memoryGraph,
+        wbCandidates,
+        memoryCandidates,
+        bookshelfCandidates,
+        selectedBookshelf,
+        selectedMemoryVectors,
+        combinedCandidates: [...wbCandidates, ...memoryCandidates, ...bookshelfCandidates],
+        vectorErrors,
+        vectorSync,
+    };
+}
+
 async function importBookshelfFiles(files) {
-    const list = Array.from(files || []).filter(file => /\.txt$/i.test(file.name) || /^text\//i.test(file.type || ''));
+    const list = Array.from(files || []);
     if (!list.length) {
-        toastr?.warning?.('请选择 TXT 文本文件', '书架补充');
+        setBookshelfStatus('No files selected.');
         return;
     }
 
@@ -2484,11 +2511,11 @@ async function importBookshelfFiles(files) {
     const type = String($('[id="ai_wbr_bookshelf_import_type"]:visible').last().val() || $('[id="ai_wbr_bookshelf_import_type"]').last().val() || 'other');
     let imported = 0;
     let totalChunks = 0;
-    setBookshelfStatus(`正在导入 ${list.length} 个 TXT...`);
+    setBookshelfStatus(`Importing ${list.length} TXT file(s)...`);
 
     for (const file of list) {
         const text = await readBookshelfTextFile(file);
-        const rawTitle = file.name.replace(/\.[^.]+$/, '').trim() || '未命名书籍';
+        const rawTitle = file.name.replace(/\.[^.]+$/, '').trim() || 'Untitled book';
         const now = new Date().toISOString();
         const bookId = `book_${Date.now().toString(36)}_${hashString(`${file.name}:${file.size}:${text.slice(0, 200)}`)}`;
         const chunks = splitTextIntoBookshelfChunks(text, { chunkSize: 700, overlap: 100 });
@@ -2513,35 +2540,36 @@ async function importBookshelfFiles(files) {
         const records = chunks.map((chunk, index) => {
             const textHash = hashString(chunk.text);
             return {
-                id: `${bookId}:chunk:${String(index + 1).padStart(4, '0')}:${textHash}`,
+                id: `${bookId}:chunk:${index}` ,
                 bookId,
-                order: index + 1,
-                title: chunk.title || `片段 ${index + 1}`,
+                index,
+                title: chunk.title || `${rawTitle} #${index + 1}`,
                 text: chunk.text,
                 textHash,
-                vector: [],
-                vectorStatus: 'pending',
+                vector: null,
                 embeddingMode: '',
                 embeddingModel: '',
                 embeddingDim: 0,
-                enabled: true,
-                weight: 1,
                 createdAt: now,
                 updatedAt: now,
             };
         });
+
+        if (settings.bookshelfOnlyBound) {
+            if (scope.chatKey) bindings.push({ type: 'chat', key: scope.chatKey, label: scope.chatName || scope.chatKey, createdAt: now });
+            else if (scope.characterKey) bindings.push({ type: 'character', key: scope.characterKey, label: scope.characterName || scope.characterKey, createdAt: now });
+        }
+
         await bookshelfPut('books', book);
-        await bookshelfPutMany('chunks', records);
-        selectedBookshelfBookId = bookId;
+        if (records.length) await bookshelfPutMany('chunks', records);
         imported += 1;
         totalChunks += records.length;
     }
 
-    setBookshelfStatus(`已导入 ${imported} 本书，共 ${totalChunks} 个片段。请先向量化，再手动绑定召回范围。`);
-    toastr?.success?.(`已导入 ${imported} 本 TXT，待向量化`, '书架补充');
-    await renderBookshelfPanel();
+    bookshelfLastStatus = `Imported ${imported} book(s), ${totalChunks} chunk(s).`;
+    setBookshelfStatus('Ready');
+    renderBookshelfPanel();
 }
-
 async function updateBookshelfBook(bookId, mutator) {
     const book = await bookshelfGet('books', bookId);
     if (!book) return null;
@@ -2557,10 +2585,10 @@ async function updateBookshelfBook(bookId, mutator) {
 async function setBookshelfBinding(bookId, type) {
     const scope = getBookshelfScope();
     const binding = type === 'character'
-        ? { type: 'character', key: scope.characterKey, label: scope.characterName }
+        ? { type: 'character', key: scope.characterKey, label: scope.characterName || scope.characterKey || 'Character' }
         : type === 'chat'
-            ? { type: 'chat', key: scope.chatKey, label: scope.chatName }
-            : { type: 'global', key: 'global', label: '全局补充' };
+            ? { type: 'chat', key: scope.chatKey, label: scope.chatName || scope.chatKey || 'Chat' }
+            : { type: 'global', key: 'global', label: 'Global' };
     await updateBookshelfBook(bookId, (book) => {
         const bindings = normalizeBookshelfBindings(book).filter(item => !(item.type === binding.type && item.key === binding.key));
         bindings.push({ ...binding, createdAt: new Date().toISOString() });
@@ -2568,7 +2596,6 @@ async function setBookshelfBinding(bookId, type) {
     });
     renderBookshelfPanel();
 }
-
 async function removeBookshelfBinding(bookId, type) {
     const scope = getBookshelfScope();
     const key = type === 'character' ? scope.characterKey : type === 'chat' ? scope.chatKey : 'global';
@@ -2593,13 +2620,13 @@ async function rebuildBookshelfBookVectors(bookId) {
     const targets = (chunks || []).filter(chunk => chunk.bookId === bookId);
     if (!targets.length) {
         await updateBookshelfBook(bookId, { status: 'empty', vectorizedCount: 0, chunkCount: 0 });
-        setBookshelfStatus('这本书没有可向量化片段。');
+        setBookshelfStatus('This book has no chunks to vectorize.');
         renderBookshelfPanel();
         return;
     }
     const provider = getBookshelfEmbeddingProviderMeta();
     if (!provider.model) {
-        throw new Error(provider.mode === 'api' ? '请先填写 API 向量模型名。' : '请先填写浏览器本地模型 ID。');
+        throw new Error('Please configure an embedding model first.');
     }
     bookshelfVectorAbortRequested = false;
     await updateBookshelfBook(bookId, {
@@ -2609,16 +2636,13 @@ async function rebuildBookshelfBookVectors(bookId) {
         vectorizedCount: targets.filter(chunk => chunk.vectorStatus === 'ready' && Array.isArray(chunk.vector) && chunk.vector.length).length,
         chunkCount: targets.length,
     });
-    setBookshelfStatus(`正在向量化《${book.title || book.fileName}》：0 / ${targets.length}（${provider.label}）`);
-    const now = new Date().toISOString();
+    setBookshelfStatus(`Vectorizing ${book.title || book.fileName}: 0 / ${targets.length} (${provider.label})`);
     let done = 0;
     let failed = 0;
     let dim = 0;
     const batch = [];
     for (let index = 0; index < targets.length; index += 1) {
-        if (bookshelfVectorAbortRequested) {
-            break;
-        }
+        if (bookshelfVectorAbortRequested) break;
         const chunk = targets[index];
         try {
             const vector = await embedBookshelfText(chunk.text);
@@ -2658,7 +2682,7 @@ async function rebuildBookshelfBookVectors(bookId) {
                 vectorizedCount: done,
                 chunkCount: targets.length,
             });
-            setBookshelfStatus(`正在向量化《${book.title || book.fileName}》：${done} / ${targets.length}${failed ? `，失败 ${failed}` : ''}`);
+            setBookshelfStatus(`Vectorizing ${book.title || book.fileName}: ${done} / ${targets.length}${failed ? `, failed ${failed}` : ''}`);
             await new Promise(resolve => setTimeout(resolve, 0));
         }
     }
@@ -2671,7 +2695,7 @@ async function rebuildBookshelfBookVectors(bookId) {
         chunkCount: targets.length,
         vectorizedCount: done,
     });
-    setBookshelfStatus(`《${book.title || book.fileName}》向量化完成：${done} / ${targets.length}${failed ? `，失败 ${failed}` : ''}。`);
+    setBookshelfStatus(`Vectorization complete for ${book.title || book.fileName}: ${done} / ${targets.length}${failed ? `, failed ${failed}` : ''}.`);
     renderBookshelfPanel();
 }
 
@@ -2683,17 +2707,17 @@ async function clearBookshelfBookVectors(bookId) {
     if (!book) return;
     const now = new Date().toISOString();
     const cleared = (chunks || []).filter(chunk => chunk.bookId === bookId).map(chunk => ({
-            ...chunk,
-            textHash: hashString(chunk.text),
-            vector: [],
-            vectorStatus: 'pending',
-            embeddingMode: '',
-            embeddingModel: '',
-            embeddingDim: 0,
-            error: '',
-            updatedAt: now,
+        ...chunk,
+        textHash: hashString(chunk.text),
+        vector: [],
+        vectorStatus: 'pending',
+        embeddingMode: '',
+        embeddingModel: '',
+        embeddingDim: 0,
+        error: '',
+        updatedAt: now,
     }));
-    await bookshelfPutMany('chunks', cleared);
+    if (cleared.length) await bookshelfPutMany('chunks', cleared);
     await updateBookshelfBook(bookId, {
         status: cleared.length ? 'pending_vectorization' : 'empty',
         embeddingMode: '',
@@ -2702,10 +2726,9 @@ async function clearBookshelfBookVectors(bookId) {
         chunkCount: cleared.length,
         vectorizedCount: 0,
     });
-    setBookshelfStatus(`《${book.title || book.fileName}》已重置为待向量化。`);
+    setBookshelfStatus(`Reset ${book.title || book.fileName} to pending vectorization.`);
     renderBookshelfPanel();
 }
-
 function getLegacyChatMemoryKeys(context = getContext()) {
     const keys = [];
     const add = (key) => {
@@ -3194,10 +3217,10 @@ function normalizeMemoryNode(rawNode, fallbackIndex = 0) {
         timeSpan: truncateText(rawNode?.timeSpan || rawNode?.time_span || rawNode?.time || '', 120),
         keys: uniqueStrings(Array.isArray(rawNode?.keys)
             ? rawNode.keys
-            : String(rawNode?.keys || '').split(/[,\n，、]+/u)),
+            : String(rawNode?.keys || '').split(/[,\n;]+/u)),
         tags: uniqueStrings(Array.isArray(rawNode?.tags)
             ? rawNode.tags
-            : String(rawNode?.tags || '').split(/[,\n，、]+/u)),
+            : String(rawNode?.tags || '').split(/[,\n;]+/u)),
         importance: clampNumber(rawNode?.importance, 0.6, 0, 1),
         credibility: clampNumber(rawNode?.credibility, 0.8, 0, 1),
         updatedAt: new Date().toISOString(),
@@ -3241,7 +3264,7 @@ function getRecentMessagesByCount(chat, count) {
 
 function sanitizeMemoryMessageText(value) {
     return String(value ?? '')
-        .replace(/\[本轮相关世界书\][\s\S]*?\[\/本轮相关世界书\]/gu, ' ')
+        .replace(/\[\[AIWBR_MEMORY_VARS_BEGIN\]\][\s\S]*?\[\[AIWBR_MEMORY_VARS_END\]\]/gu, ' ')
         .replace(/<draft_notes>[\s\S]*?<\/draft_notes>/giu, ' ')
         .replace(/<ai_last_output>[\s\S]*?<\/ai_last_output>/giu, ' ')
         .replace(/<\/?peip>/giu, ' ')
@@ -3294,44 +3317,16 @@ function getHistoryImportRangeFromUi(context = getContext()) {
 }
 
 function buildHistoryImportPreview(rangeInfo, context = getContext()) {
-    const box = $('#ai_wbr_memory_history_preview_box');
-    const status = $('#ai_wbr_memory_history_status');
-    if (!box.length && !status.length) {
-        return;
-    }
-
     const messages = Array.isArray(rangeInfo?.messages) ? rangeInfo.messages : [];
-    const signature = messages.length ? getHistoryImportSignature(messages, context) : '';
-    const imported = signature ? getHistoryImportRecord(signature, context) : null;
-    const floorLabel = rangeInfo?.maxFloor
-        ? `${rangeInfo.startFloor}-${rangeInfo.endFloor} / 共 ${rangeInfo.maxFloor} 层`
-        : '当前聊天没有可整理楼层';
-    status.text(messages.length
-        ? `已选 ${floorLabel}，可整理 ${messages.length} 条消息${imported ? '，此范围已补录过' : ''}。`
-        : `已选 ${floorLabel}。`);
-
-    box.empty();
+    const startFloor = Number(rangeInfo?.startFloor || 0);
+    const endFloor = Number(rangeInfo?.endFloor || 0);
+    const imported = !!rangeInfo?.imported;
+    const floorLabel = startFloor && endFloor ? `${startFloor}-${endFloor}` : 'selected range';
     if (!messages.length) {
-        box.append('<div class="ai-wbr-token-empty">这个范围内没有可整理的聊天内容。</div>');
-        return;
+        return imported ? `Range ${floorLabel} has already been imported.` : `Range ${floorLabel} has no importable messages.`;
     }
-
-    box.append(
-        $('<div class="ai-wbr-memory-history-preview-meta"></div>')
-            .text(`${messages[0].floor}-${messages[messages.length - 1].floor} 楼 · ${messages.length} 条 · ${imported ? '已补录' : '未补录'}`),
-    );
-    for (const message of messages.slice(0, 6)) {
-        box.append(
-            $('<div class="ai-wbr-memory-history-preview-item"></div>')
-                .append($('<b></b>').text(`#${message.floor} ${message.name || (message.isUser ? 'User' : 'Assistant')}`))
-                .append($('<span></span>').text(truncateText(message.text, 180))),
-        );
-    }
-    if (messages.length > 6) {
-        box.append($('<div class="ai-wbr-memory-history-preview-more"></div>').text(`还有 ${messages.length - 6} 条未展示，将一起整理。`));
-    }
+    return `Selected ${floorLabel}; ${messages.length} message(s) can be imported${imported ? '; this range was imported before' : ''}.`;
 }
-
 function getHistoryImportSignature(messages, context = getContext()) {
     const chatKey = getCurrentChatMemoryKey(context);
     const sourceSignature = getMemorySourceSignature(messages);
@@ -3565,81 +3560,39 @@ function getMemoryExtractionSchema() {
 }
 
 function buildMemoryExtractionPrompt(recentMessages, graph) {
-    const recentContext = recentMessages
-        .map(message => `${message.name || (message.isUser ? 'User' : 'Assistant')}: ${truncateText(message.text, MAX_MEMORY_CONTEXT_PREVIEW)}`)
+    const chatText = recentMessages
+        .map(message => `${message.isUser ? 'User' : 'Assistant'} #${message.floor}: ${sanitizeMemoryMessageText(message.text)}`)
         .join('\n\n');
     const currentGraph = truncateText(JSON.stringify({
         state: graph.state,
         stateDefinitions: getCustomMemoryStateDefinitions(graph),
-        nodes: graph.nodes.slice(-8).map(node => ({
-            id: node.id,
-            title: node.title,
-            type: node.type,
-        })),
-        links: graph.links.slice(-12).map(link => ({
-            source: link.source,
-            target: link.target,
-            type: link.type,
-        })),
+        nodes: graph.nodes.slice(-8).map(node => ({ id: node.id, title: node.title, type: node.type })),
+        links: graph.links.slice(-12).map(link => ({ source: link.source, target: link.target, type: link.type })),
     }, null, 2), 4200);
     const customDefinitions = getCustomMemoryStateDefinitions(graph);
     const customDefinitionLines = customDefinitions.length
-        ? customDefinitions.map(definition => `- ${definition.label} (${definition.key})：${definition.instruction || '自定义状态字段'}`).join('\n')
-        : '- 无';
+        ? customDefinitions.map(definition => `- ${definition.label} (${definition.key}): ${definition.instruction || 'Custom state field'}`).join('\n')
+        : '- None';
 
-    return `<role>你是 SillyTavern 的后置轻量记忆变量块输出器。</role>
-
-<task>
-从最近对话里提取“对后续 RP / 剧情推进仍有用”的记忆。
-只返回固定变量块。
-</task>
-
+    return `<role>You are a SillyTavern lightweight memory extractor.</role>
+<task>Extract only durable facts that will matter for future roleplay. Return only the variable block below.</task>
 <rules>
-1. 不要输出 JSON 对象。
-2. 不要输出 Markdown。
-3. 不要输出解释、分析、reasoning、前后缀。
-4. 不要返回 {content:{}}。
-5. 只允许输出变量块本体。
-6. 如果最近对话存在剧情推进、角色互动、地点变化、任务变化、世界观设定、重要承诺、冲突、发现、战斗、交易、关系变化，memory_nodes_json 必须至少有 1 个节点。
-7. 角色扮演场景里，只要互动会影响后续扮演，也要压缩成 event / character / location / quest 节点。
-8. 已有同义节点优先写入 memory_updates_json，不要重复造节点。
+1. Do not return JSON outside the requested variables.
+2. Do not explain your reasoning.
+3. Keep node ids stable and snake_case.
+4. Prefer updating existing nodes over duplicating them.
+5. If there is no useful memory, return empty arrays and preserve state fields as empty strings or arrays.
 </rules>
-
 <custom_state_definitions>
 ${customDefinitionLines}
 </custom_state_definitions>
-
-<example>
-输入剧情：角色逃跑，被导师用魔法拦住。
-正确输出：
-[[AIWBR_MEMORY_VARS_BEGIN]]
-memory_state_current_location_json="小巷口"
-memory_state_current_time_json="夜晚"
-memory_state_protagonist_status_json="紧张，试图脱身"
-memory_state_current_objective_json="脱身"
-memory_state_current_phase_json="冲突升级"
-memory_active_topics_json=["逃跑","拦截","导师"]
-memory_open_questions_json=["导师会如何处置主角？"]
-memory_custom_state_json={}
-memory_nodes_json=[{"id":"event_escape_blocked","title":"逃跑被导师拦住","type":"event","content":"主角试图逃跑，被导师用魔法阻断去路。","tags":["冲突"],"importance":0.8,"credibility":0.9}]
-memory_updates_json=[]
-memory_links_json=[]
-memory_remove_node_ids_json=[]
-memory_remove_link_ids_json=[]
-memory_summary_json="本轮新增了主角逃跑并被导师拦截的关键冲突事件。"
-[[AIWBR_MEMORY_VARS_END]]
-</example>
-
-<current_graph>
-${currentGraph || '{}'}
-</current_graph>
-
-<recent_dialogue>
-${recentContext || '(空)'}
-</recent_dialogue>
-
-<required_output>
-
+<current_memory_graph>
+${currentGraph}
+</current_memory_graph>
+<recent_messages>
+${truncateText(chatText, 9000)}
+</recent_messages>
+<output_format>
 [[AIWBR_MEMORY_VARS_BEGIN]]
 memory_state_current_location_json=""
 memory_state_current_time_json=""
@@ -3653,68 +3606,18 @@ memory_nodes_json=[]
 memory_updates_json=[]
 memory_links_json=[]
 memory_remove_node_ids_json=[]
-memory_remove_link_ids_json=[]
-memory_summary_json=""
+memory_last_summary_json=""
 [[AIWBR_MEMORY_VARS_END]]
-</required_output>
-
-<field_rules>
-1. 上面所有行必须全部输出，顺序不要变。
-2. 每行等号右边必须是合法 JSON 值；字符串用 "...", 数组用 [...]。
-3. 如果没有内容，字符串填 ""，数组填 []。
-4. memory_custom_state_json 必须是 JSON 对象；key 只能来自 <custom_state_definitions> 中给出的 key，value 为字符串。
-5. memory_nodes_json 节点格式：
-{"id":"稳定英文或拼音id","title":"简短标题","type":"event|character|location|faction|item|concept|rule|quest","content":"已确认事实","tags":["标签"],"importance":0.6,"credibility":0.8}
-6. memory_links_json 关系格式：
-{"source":"源节点id或标题","target":"目标节点id或标题","type":"INVOLVES|PART_OF|HAPPENS_AT|FOLLOWS|UPDATES|OPPOSES|ALLIED_WITH|CAUSES|RELATED","weight":0.7,"description":"关系证据"}
-7. memory_summary_json 必须概括“为什么值得写入”；只有确实没有长期价值时才允许是 ""。
-8. 不要输出任何额外字段。
-</field_rules>`;
+</output_format>`;
 }
-
 function buildMemoryExtractionRetryPrompt(recentMessages, graph) {
-    const compactContext = recentMessages
-        .slice(-4)
-        .map(message => `${message.name || (message.isUser ? 'User' : 'Assistant')}: ${truncateText(message.text, 280)}`)
-        .join('\n\n');
+    const basePrompt = buildMemoryExtractionPrompt(recentMessages, graph);
+    return `${basePrompt}
 
-    const compactState = JSON.stringify({
-        state: graph.state || {},
-        stateDefinitions: getCustomMemoryStateDefinitions(graph),
-        node_titles: (graph.nodes || []).slice(-8).map(node => ({ id: node.id, title: node.title, type: node.type })),
-    }, null, 2);
-    const customDefinitions = getCustomMemoryStateDefinitions(graph);
-    const customDefinitionLines = customDefinitions.length
-        ? customDefinitions.map(definition => `- ${definition.label} (${definition.key})：${definition.instruction || '自定义状态字段'}`).join('\n')
-        : '- 无';
-
-    return `<role>你是后置轻量记忆整理器。</role>
-<task>根据最近对话，为长期 RP / 剧情状态输出固定变量块。</task>
-<rules>不要思考过程；不要解释；不要空回复；不要 JSON 对象；只输出变量块。</rules>
-<custom_state_definitions>${customDefinitionLines}</custom_state_definitions>
-<current_graph>${compactState}</current_graph>
-<recent_dialogue>${compactContext || '(空)'}</recent_dialogue>
-<rule>如果存在剧情推进、角色互动、地点变化、任务变化、设定变化，memory_nodes_json 必须至少有 1 个节点。</rule>
-<required_output>
-[[AIWBR_MEMORY_VARS_BEGIN]]
-memory_state_current_location_json=""
-memory_state_current_time_json=""
-memory_state_protagonist_status_json=""
-memory_state_current_objective_json=""
-memory_state_current_phase_json=""
-memory_active_topics_json=[]
-memory_open_questions_json=[]
-memory_custom_state_json={}
-memory_nodes_json=[]
-memory_updates_json=[]
-memory_links_json=[]
-memory_remove_node_ids_json=[]
-memory_remove_link_ids_json=[]
-memory_summary_json=""
-[[AIWBR_MEMORY_VARS_END]]
-</required_output>`;
+<retry_instruction>
+Your previous response could not be parsed. Return only the exact AIWBR variable block. Do not include markdown, prose, comments, or JSON wrappers.
+</retry_instruction>`;
 }
-
 function getRouterRequestMaxTokens() {
     return clampNumber(settings.routerRequestMaxTokens, defaultSettings.routerRequestMaxTokens, 32, 100000);
 }
@@ -3966,7 +3869,7 @@ function applyMemoryGraphUpdate(update, context = getContext()) {
             existing.timeSpan = truncateText(rawUpdate.timeSpan || rawUpdate.time_span, 120);
         }
         if (rawUpdate.keys) {
-            existing.keys = uniqueStrings([...(existing.keys || []), ...(Array.isArray(rawUpdate.keys) ? rawUpdate.keys : String(rawUpdate.keys).split(/[,\n，、]+/u))]);
+            existing.keys = uniqueStrings([...(existing.keys || []), ...(Array.isArray(rawUpdate.keys) ? rawUpdate.keys : String(rawUpdate.keys).split(/[,\n;]+/u))]);
         }
         if (rawUpdate.importance !== undefined) {
             existing.importance = clampNumber(rawUpdate.importance, existing.importance || 0.6, 0, 1);
@@ -4060,7 +3963,7 @@ function stopMemoryAnimation(success = true) {
 
 async function runHistoryMemoryImport() {
     if (!settings.memoryEnabled || isMemoryWorkerRunning || isRouterSelectionRequest) {
-        toastr?.warning?.('记忆整理正在运行，稍后再试。', '世界书读取');
+        toastr?.warning?.('Please try again later.', 'AI Worldbook Router');
         return false;
     }
 
@@ -4072,7 +3975,7 @@ async function runHistoryMemoryImport() {
 
     if (recentMessages.length < 2) {
         setMemoryStatus('历史补录失败：所选楼层不足 2 条可整理消息', context);
-        toastr?.warning?.('请选择至少 2 条有效聊天楼层。', '世界书读取');
+        toastr?.warning?.('Please try again later.', 'AI Worldbook Router');
         return false;
     }
 
@@ -4084,8 +3987,8 @@ async function runHistoryMemoryImport() {
     const signature = getHistoryImportSignature(recentMessages, context);
     const existingRecord = getHistoryImportRecord(signature, context);
     if (skipDone && existingRecord) {
-        setMemoryStatus(`历史补录已跳过：${rangeInfo.startFloor}-${rangeInfo.endFloor} 楼已整理过`, context);
-        toastr?.info?.('这个楼层范围已经补录过，已按设置跳过。', '世界书读取');
+            setMemoryStatus('Importing history memory...', context);
+        toastr?.info?.('Done.', 'AI Worldbook Router');
         return false;
     }
 
@@ -4102,16 +4005,16 @@ async function runHistoryMemoryImport() {
 
     isMemoryWorkerRunning = true;
     startMemoryAnimation();
-    setMemoryStatus(`历史补录整理中：${rangeInfo.startFloor}-${rangeInfo.endFloor} 楼`, context);
+            setMemoryStatus('Importing history memory...', context);
 
     try {
         const graph = getMemoryGraph(context);
         const prompt = buildMemoryExtractionPrompt(recentMessages, graph)
-            + `\n\n<history_import_mode>${mode === 'summary' ? '阶段摘要：优先压缩这段楼层的阶段性剧情、关系变化和未解问题。' : '长期记忆：优先提取可复用的事实、关系、设定、承诺和关键事件。'}</history_import_mode>`
-            + `\n<history_import_range>第 ${rangeInfo.startFloor} 楼到第 ${rangeInfo.endFloor} 楼，共 ${recentMessages.length} 条有效消息。</history_import_range>`;
+            + `\n\n<history_import_mode>${mode === 'summary' ? 'Summary mode: compress this range into durable plot, relationship, and open-question notes.' : 'History mode: extract reusable facts, relationships, settings, promises, and key events.'}</history_import_mode>`
+            + `\n<history_import_range>Floors ${rangeInfo.startFloor}-${rangeInfo.endFloor}; ${recentMessages.length} valid messages.</history_import_range>`;
         const maxAttempts = Math.max(1, Number(settings.memoryRetries || 0) + 1);
-        const baseSystemPrompt = '你是后置轻量记忆变量块输出器。禁止解释，禁止 reasoning，禁止 Markdown，禁止 JSON 对象；只输出指定变量块。';
-        const retrySystemPrompt = '你是变量块输出器。禁止空回复，禁止解释，禁止思考过程，直接输出变量块。';
+        const baseSystemPrompt = 'Return only the requested AIWBR variable block. Do not explain, reason, use markdown, or wrap in JSON.';
+        const retrySystemPrompt = 'Your previous response was invalid. Return only the AIWBR variable block, with no prose or markdown.';
         let raw = '';
         let lastError = null;
         setCurrentMemoryLastRaw('', context);
@@ -4134,7 +4037,7 @@ async function runHistoryMemoryImport() {
                 if (isGatewayLikeError(error) || attempt >= maxAttempts) {
                     throw error;
                 }
-                playStatusBurst('🔄', 'retry');
+                playStatusBurst('retry', 'retry');
                 continue;
             } finally {
                 isRouterSelectionRequest = false;
@@ -4147,7 +4050,7 @@ async function runHistoryMemoryImport() {
                 if (attempt >= maxAttempts) {
                     throw lastError;
                 }
-                playStatusBurst('🔄', 'retry');
+                playStatusBurst('retry', 'retry');
                 continue;
             }
 
@@ -4176,9 +4079,9 @@ async function runHistoryMemoryImport() {
                     }, context);
                     recordHistoryImport(signature, source, context);
                     setCurrentMemorySource(source, context);
-                    setMemoryStatus(`历史补录待确认：${rangeInfo.startFloor}-${rangeInfo.endFloor} 楼 · ${getMemoryReviewQueue(context).length} 条待确认`, context);
-                    playStatusBurst('✦', 'memory');
-                    toastr?.info?.(`历史补录已加入待确认：${review.title}`, '世界书读取');
+            setMemoryStatus('Importing history memory...', context);
+                    playStatusBurst('ok', 'memory');
+                    toastr?.info?.('Done.', 'AI Worldbook Router');
                     stopMemoryAnimation(true);
                     return true;
                 }
@@ -4186,14 +4089,14 @@ async function runHistoryMemoryImport() {
                 const memoryResult = applyMemoryGraphUpdate(update, context);
                 recordHistoryImport(signature, source, context);
                 setCurrentMemorySource(source, context);
-                setMemoryStatus(`历史补录已更新：${rangeInfo.startFloor}-${rangeInfo.endFloor} 楼 · ${memoryResult.graph.nodes.length} 节点 / ${memoryResult.graph.links.length} 关系`, context);
+            setMemoryStatus('Importing history memory...', context);
                 if (memoryResult.touchedEntries.length) {
                     playEntryBurst(memoryResult.touchedEntries, {
                         variant: 'memory',
                         labelGetter: getMemoryBurstLabel,
                     });
                 } else {
-                    playStatusBurst('✦', 'memory');
+                    playStatusBurst('ok', 'memory');
                 }
                 stopMemoryAnimation(true);
                 return true;
@@ -4203,7 +4106,7 @@ async function runHistoryMemoryImport() {
                 if (attempt >= maxAttempts) {
                     throw error;
                 }
-                playStatusBurst('🔄', 'retry');
+                playStatusBurst('retry', 'retry');
             }
         }
 
@@ -4217,8 +4120,8 @@ async function runHistoryMemoryImport() {
         if (error?.routerPrompt && !getCurrentMemoryLastPrompt(context)) {
             setCurrentMemoryLastPrompt(error.routerPrompt, context);
         }
-        setMemoryStatus(`历史补录失败：${truncateText(error?.message || error, 80)}`, context);
-        playStatusBurst('×', 'fail');
+            setMemoryStatus('Importing history memory...', context);
+        playStatusBurst('fail', 'fail');
         stopMemoryAnimation(false);
         return false;
     } finally {
@@ -4268,8 +4171,8 @@ async function runMemoryGraphUpdate(reason = 'realtime', options = {}) {
         setCurrentMemoryLastRaw('', context);
         setCurrentMemoryLastError('', context);
         const maxAttempts = Math.max(1, Number(settings.memoryRetries || 0) + 1);
-        const baseSystemPrompt = '你是后置轻量记忆变量块输出器。禁止解释，禁止 reasoning，禁止 Markdown，禁止 JSON 对象；只输出指定变量块。';
-        const retrySystemPrompt = '你是变量块输出器。禁止空回复，禁止解释，禁止思考过程，直接输出变量块。';
+        const baseSystemPrompt = 'Return only the requested AIWBR variable block. Do not explain, reason, use markdown, or wrap in JSON.';
+        const retrySystemPrompt = 'Your previous response was invalid. Return only the AIWBR variable block, with no prose or markdown.';
         let raw = '';
         let lastError = null;
 
@@ -4290,7 +4193,7 @@ async function runMemoryGraphUpdate(reason = 'realtime', options = {}) {
                 if (isGatewayLikeError(error) || attempt >= maxAttempts) {
                     throw error;
                 }
-                playStatusBurst('🔄', 'retry');
+                playStatusBurst('retry', 'retry');
                 continue;
             } finally {
                 isRouterSelectionRequest = false;
@@ -4303,7 +4206,7 @@ async function runMemoryGraphUpdate(reason = 'realtime', options = {}) {
                 if (attempt >= maxAttempts) {
                     throw lastError;
                 }
-                playStatusBurst('🔄', 'retry');
+                playStatusBurst('retry', 'retry');
                 continue;
             }
 
@@ -4323,7 +4226,7 @@ async function runMemoryGraphUpdate(reason = 'realtime', options = {}) {
                         current: getMemorySourceSnapshot(context, null, scanMessages),
                     });
                     setCurrentMemoryLastTurnSignature('', context);
-                    setMemoryStatus(`${mode === 'summary' ? '间隔归纳' : '实时整理'}已跳过：检测到 roll / swipe / 楼层变化`, context);
+            setMemoryStatus('Importing history memory...', context);
                     stopMemoryAnimation(false);
                     return false;
                 }
@@ -4352,9 +4255,9 @@ async function runMemoryGraphUpdate(reason = 'realtime', options = {}) {
                         updatedContainer.lastAutoMessageCount = messageCount;
                     }
                     persistChatMemoryContainer(updatedContainer, context);
-                    setMemoryStatus(`${mode === 'summary' ? '归纳待确认' : '实时待确认'}：${getMemoryReviewQueue(context).length} 条记忆更新`);
-                    playStatusBurst('✦', 'memory');
-                    toastr?.info?.(`已加入待确认记忆：${review.title}`, '世界书读取');
+                    setMemoryStatus(`Memory update pending review: ${getMemoryReviewQueue(context).length} item(s).`, context);
+                    playStatusBurst('ok', 'memory');
+                    toastr?.info?.('Done.', 'AI Worldbook Router');
                     stopMemoryAnimation(true);
                     return true;
                 }
@@ -4372,14 +4275,14 @@ async function runMemoryGraphUpdate(reason = 'realtime', options = {}) {
                 persistChatMemoryContainer(updatedContainer, context);
                 const nodeCount = memoryResult.graph.nodes.length;
                 const linkCount = memoryResult.graph.links.length;
-                setMemoryStatus(`${mode === 'summary' ? '归纳已更新' : '实时已更新'}：${nodeCount} 节点 / ${linkCount} 关系`);
+                setMemoryStatus(`Memory update pending review: ${getMemoryReviewQueue(context).length} item(s).`, context);
                 if (memoryResult.touchedEntries.length) {
                     playEntryBurst(memoryResult.touchedEntries, {
                         variant: 'memory',
                         labelGetter: getMemoryBurstLabel,
                     });
                 } else {
-                    playStatusBurst('✦', 'memory');
+                    playStatusBurst('ok', 'memory');
                 }
                 stopMemoryAnimation(true);
                 return true;
@@ -4389,7 +4292,7 @@ async function runMemoryGraphUpdate(reason = 'realtime', options = {}) {
                 if (attempt >= maxAttempts) {
                     throw error;
                 }
-                playStatusBurst('🔄', 'retry');
+                playStatusBurst('retry', 'retry');
             }
         }
 
@@ -4404,7 +4307,7 @@ async function runMemoryGraphUpdate(reason = 'realtime', options = {}) {
             setCurrentMemoryLastPrompt(error.routerPrompt, context);
         }
         setMemoryStatus(`记忆失败：${truncateText(error?.message || error, 80)}`);
-        playStatusBurst('×', 'fail');
+        playStatusBurst('fail', 'fail');
         stopMemoryAnimation(false);
         return false;
     } finally {
@@ -4665,7 +4568,7 @@ function buildAiPrompt(recentMessages, mvuSummary, candidates, maxSelectCount = 
     }).join('\n');
 
     return `<task>
-从候选 keys 中选择最多 ${maxSelectCount} 条“本轮真正相关”的条目（世界书或记忆）。
+从候选 keys 中选择最多 ${maxSelectCount} 条“本轮真正相关”的条目（世界书、动态记忆或资料片段）。
 </task>
 
 <rules>
@@ -4720,7 +4623,7 @@ function buildCompactAiPrompt(recentMessages, mvuSummary, candidates, maxSelectC
         .map(entry => `- ${(entry.keys.all.length ? entry.keys.all.join(' / ') : '(无 keys)')}`)
         .join('\n');
 
-    return `<task>从候选 keys 中选择最多 ${maxSelectCount} 条本轮相关条目。</task>
+    return `<task>从候选 keys 中选择最多 ${maxSelectCount} 条本轮相关条目（世界书、动态记忆或资料片段）。</task>
 <rules>只输出严格 JSON；禁止解释；禁止 reasoning；禁止额外字段；如果没有合适条目，输出 {"selected":[]}。</rules>
 <output>{"selected":[{"key":"命中的 key","reason":"简短原因"}]}</output>
 <last_user_message>${lastUserMessage || '(空)'}</last_user_message>
@@ -4936,7 +4839,7 @@ function extractSelectionFromText(rawText, candidates) {
     ];
     const negativeMarkers = [
         'irrelevant', 'not relevant', 'no,', ' no ', 'not the answer', 'indirectly relevant',
-        'just a natural event', 'not what happens after', 'not about', '不相关', '不是答案',
+        'just a natural event', 'not what happens after', 'not about', 'irrelevant', 'not an answer',
         '不是这个', '无关', '只是', '不对',
     ];
     const recovered = [];
@@ -5155,7 +5058,7 @@ async function sendSeparateRouterRequest(context, prompt, {
         maxSelectCount
     );
     const retryRequest = buildPlainSeparateChatPayload(compactPrompt, {
-        systemPrompt: '你是前置世界书路由 JSON 输出器。禁止解释，禁止 reasoning，只输出 {"selected":[...]}。',
+        systemPrompt: 'Return strict JSON only: {"selected":[]}. Do not explain or include reasoning.',
         maxTokens: getRouterRequestMaxTokens(),
     });
     raw = await sendPlainSeparateChatRequest(context, retryRequest);
@@ -5253,11 +5156,11 @@ async function selectWithAi(context, recentMessages, mvuSummary, candidates, max
             debugLog(`Router attempt ${attempt}/${maxAttempts} failed`, error);
 
             if (!isGatewayLikeError(error) && attempt < maxAttempts) {
-                playStatusBurst('🔄', 'retry');
+                playStatusBurst('retry', 'retry');
                 continue;
             }
 
-            playStatusBurst('×', 'fail');
+            playStatusBurst('fail', 'fail');
             flashWorldInfoError();
             throw error;
         }
@@ -5407,13 +5310,13 @@ function getMemoryNonEventNodes(graph) {
 function getMemoryStateRows(graph) {
     const state = graph?.state || {};
     const rows = [
-        { key: 'current_location', label: '当前地点', value: state.current_location || '' },
-        { key: 'current_time', label: '当前时间', value: state.current_time || '' },
-        { key: 'protagonist_status', label: '主角状态', value: state.protagonist_status || '' },
-        { key: 'current_objective', label: '当前目标', value: state.current_objective || '' },
-        { key: 'current_phase', label: '当前阶段', value: state.current_phase || '' },
-        { key: 'active_topics', label: '活跃主题', value: (state.active_topics || []).join('，') },
-        { key: 'open_questions', label: '未解问题', value: (state.open_questions || []).join('；') },
+        { key: 'current_location', label: 'Current location', value: state.current_location || '' },
+        { key: 'current_time', label: 'Current time', value: state.current_time || '' },
+        { key: 'protagonist_status', label: 'Protagonist status', value: state.protagonist_status || '' },
+        { key: 'current_objective', label: 'Current objective', value: state.current_objective || '' },
+        { key: 'current_phase', label: 'Current phase', value: state.current_phase || '' },
+        { key: 'active_topics', label: 'Active topics', value: (state.active_topics || []).join(', ') },
+        { key: 'open_questions', label: 'Open questions', value: (state.open_questions || []).join(', ') },
     ];
     const customValues = state.custom_values && typeof state.custom_values === 'object' ? state.custom_values : {};
     for (const definition of getCustomMemoryStateDefinitions(graph)) {
@@ -5427,7 +5330,6 @@ function getMemoryStateRows(graph) {
     }
     return rows;
 }
-
 function recallMemoryCandidates(graph, recentMessages, mvuSummary) {
     const candidates = recallCandidates(buildMemoryCandidates(graph), recentMessages, mvuSummary)
         .filter(entry => entry.score > 0 || ['event', 'quest', 'character', 'location'].includes(entry.memoryType));
@@ -5506,18 +5408,35 @@ function buildBookshelfInjection(selectedBookshelf = []) {
     if (!items.length) {
         return '';
     }
-    const maxChars = clampNumber(settings.bookshelfMaxChunkChars, defaultSettings.bookshelfMaxChunkChars, 120, 2000);
-    const parts = ['[书架补充记忆]\n以下内容来自当前角色/聊天绑定的 TXT 书架，仅作为本轮回复的补充背景。\n'];
+
+    const header = '[本轮相关资料]\n以下片段来自向量书架召回，仅用于补充本轮回复需要的外部资料。\n';
+    const footer = '\n[/本轮相关资料]';
+    const parts = [header];
+    let used = header.length + footer.length;
+    const maxChars = Math.max(600, Math.floor(clampNumber(settings.maxChars, defaultSettings.maxChars, 500, 50000) * 0.35));
+
     for (const item of items) {
-        const bookTitle = item.book?.title || item.book?.fileName || '未命名书籍';
-        const chunkTitle = item.title || `片段 ${item.order || ''}`;
-        parts.push(`\n- 来源：《${bookTitle}》 / ${chunkTitle} / 分数 ${Number(item.score || 0).toFixed(2)}\n`);
-        parts.push(`${truncateText(item.text || item.content || '', maxChars)}\n`);
+        const bookTitle = item.book?.title || item.book?.fileName || item.bookTitle || '未命名资料';
+        const chunkTitle = item.title || item.chunk?.title || `片段 ${Number(item.index ?? item.chunk?.index ?? 0) + 1}`;
+        const score = Number(item.score || 0);
+        const text = String(item.content || item.text || item.chunk?.text || '').trim();
+        if (!text) continue;
+
+        const separator = `\n--- ${bookTitle} / ${chunkTitle} | score ${score.toFixed(2)} ---\n`;
+        const remaining = maxChars - used - separator.length - footer.length;
+        if (remaining <= 0) break;
+
+        const content = truncateText(text, remaining);
+        parts.push(separator, content, '\n');
+        used += separator.length + content.length + 1;
     }
-    parts.push('[/书架补充记忆]');
+
+    if (parts.length === 1) {
+        return '';
+    }
+    parts.push(footer);
     return parts.join('');
 }
-
 function buildInjection(selectedEntries, memoryGraph = null, selectedMemories = [], selectedBookshelf = []) {
     const worldbookBlock = (() => {
         if (!selectedEntries.length) {
@@ -5597,21 +5516,20 @@ function renderDebugPanel() {
 
 function getStandaloneStatusMeta() {
     if (!settings.enabled) {
-        return { label: '未启用', className: 'idle', icon: 'fa-circle-pause' };
+        return { label: 'Disabled', className: 'idle', icon: 'fa-pause-circle' };
     }
     if (lastRun.error) {
-        return { label: '路由异常', className: 'error', icon: 'fa-triangle-exclamation' };
+        return { label: 'Route error', className: 'error', icon: 'fa-triangle-exclamation' };
     }
     if (lastRun.source && lastRun.source !== 'none') {
         const isFallback = lastRun.source.includes('fallback');
-        return { label: isFallback ? '已 fallback' : '已命中', className: isFallback ? 'warn' : 'ok', icon: isFallback ? 'fa-rotate' : 'fa-circle-check' };
+        return { label: isFallback ? 'Fallback route' : 'Route complete', className: isFallback ? 'warn' : 'ok', icon: isFallback ? 'fa-rotate-left' : 'fa-circle-check' };
     }
-    if (settings.routerStatus && !['未连接', '未启用'].includes(settings.routerStatus)) {
+    if (settings.routerStatus && !['???', '???', 'Ready'].includes(settings.routerStatus)) {
         return { label: settings.routerStatus, className: 'active', icon: 'fa-bolt' };
     }
-    return { label: '等待生成', className: 'ready', icon: 'fa-circle-dot' };
+    return { label: 'Waiting', className: 'ready', icon: 'fa-circle-dot' };
 }
-
 function createStandaloneStat(label, value) {
     return $('<div class="ai-wbr-console-stat"></div>')
         .append($('<div class="ai-wbr-console-stat-value"></div>').text(value))
@@ -5619,7 +5537,7 @@ function createStandaloneStat(label, value) {
 }
 
 function createStandaloneEntryCard(entry, type = 'worldbook', selected = false) {
-    const title = entry.comment || entry.keys?.primary?.[0] || entry.uid || '未命名条目';
+    const title = entry.comment || entry.keys?.primary?.[0] || entry.uid || 'Untitled entry';
     const source = type === 'memory'
         ? `${entry.memoryType || 'memory'}#${entry.uid || ''}`
         : `${entry.world || entry.source || 'worldbook'}#${entry.uid || ''}`;
@@ -5629,13 +5547,12 @@ function createStandaloneEntryCard(entry, type = 'worldbook', selected = false) 
         .toggleClass('selected', !!selected)
         .append($('<div class="ai-wbr-console-entry-head"></div>')
             .append($('<b></b>').text(title))
-            .append($('<span></span>').text(selected ? '已注入' : '候选')))
+            .append($('<span></span>').text(selected ? 'Injected' : 'Candidate')))
         .append($('<div class="ai-wbr-console-entry-meta"></div>').text(source))
         .append(keys ? $('<div class="ai-wbr-console-entry-keys"></div>').text(`keys: ${truncateText(keys, 160)}`) : '')
         .append(entry.reason ? $('<small></small>').text(entry.reason) : '')
         .append(entry.content ? $('<p></p>').text(truncateText(entry.content, 320)) : '');
 }
-
 function getStandaloneTabId() {
     return String($('#ai_wbr_console_tabs .ai-wbr-console-tab.active').data('tab') || 'overview');
 }
@@ -5773,7 +5690,7 @@ function ensureBookshelfStandaloneControls(section) {
         const currentValue = String(panel.find('#ai_wbr_bookshelf_api_model').val() || settings.bookshelfApiModel || '').trim();
         panel.find('#ai_wbr_bookshelf_api_model').replaceWith(
             $('<select id="ai_wbr_bookshelf_api_model" class="text_pole"></select>')
-                .append($('<option></option>', { value: currentValue, text: currentValue || '先点击“获取模型”' })),
+                .append($('<option></option>', { value: currentValue, text: currentValue || 'Fetch models first' })),
         );
     }
     if (!panel.find('#ai_wbr_bookshelf_fetch_models').length) {
@@ -5819,7 +5736,7 @@ function renderStandaloneOverview(container) {
         .append($('<div></div>')
             .append($('<div class="ai-wbr-console-kicker"></div>').text('AI Worldbook Router'))
             .append($('<h3></h3>').text('世界书读取控制台'))
-            .append($('<p></p>').text('生成前筛选相关世界书、记忆与状态，并把命中内容注入本轮 prompt。')))
+            .append($('<p></p>').text('Select relevant worldbook, memory, and state before injecting into the current prompt.')))
         .append($('<div class="ai-wbr-console-status-pill"></div>')
             .addClass(status.className)
             .append($(`<i class="fa-solid ${status.icon}"></i>`))
@@ -5846,7 +5763,7 @@ function renderStandaloneOverview(container) {
         }))
         .append($('<button class="menu_button" type="button">复制注入文本</button>').on('click', async () => {
             await navigator.clipboard?.writeText?.(lastRun.injectionText || '');
-            toastr?.success?.('已复制本轮注入文本', '世界书读取');
+            toastr?.success?.('Done.', 'AI Worldbook Router');
         })));
 
     if (lastRun.error) {
@@ -5879,7 +5796,7 @@ function renderStandaloneInjection(container) {
         .append($('<div class="ai-wbr-console-section-title"></div>').text('本轮最终注入文本'))
         .append($('<button class="menu_button" type="button">复制</button>').on('click', async () => {
             await navigator.clipboard?.writeText?.(lastRun.injectionText || '');
-            toastr?.success?.('已复制本轮注入文本', '世界书读取');
+            toastr?.success?.('Done.', 'AI Worldbook Router');
         })));
     container.append($('<pre class="ai-wbr-console-pre"></pre>').text(lastRun.injectionText || '尚无本轮注入记录'));
 }
@@ -6405,7 +6322,7 @@ async function renderBookshelfPanel() {
     panel.find('#ai_wbr_bookshelf_local_model').val(settings.bookshelfLocalModelId || defaultSettings.bookshelfLocalModelId);
     panel.find('#ai_wbr_bookshelf_embedding_mode').val(getBookshelfEmbeddingMode());
     panel.find('#ai_wbr_bookshelf_test_query').val(settings.bookshelfLastTestQuery || '');
-    setBookshelfStatus(bookshelfLastStatus);
+    setBookshelfStatus('Ready');
 
     panel.find('#ai_wbr_bookshelf_scope').empty().append(
         $('<div class="ai-wbr-bookshelf-scope-card"></div>').append($('<b></b>').text('当前角色卡'), $('<span></span>').text(scope.characterName || '当前角色')),
@@ -7601,7 +7518,7 @@ function bindMemoryPanelActions() {
         const accepted = acceptAllMemoryReviews();
         if (accepted.count) {
             setMemoryStatus(`已确认 ${accepted.count} 条记忆更新`);
-            toastr?.success?.(`已写入 ${accepted.count} 条待确认更新`, '世界书读取');
+            toastr?.success?.('Done.', 'AI Worldbook Router');
         }
         renderMemoryPanel();
     });
@@ -7611,7 +7528,7 @@ function bindMemoryPanelActions() {
         const count = clearMemoryReviewQueue();
         if (count) {
             setMemoryStatus(`已清空 ${count} 条待确认更新`);
-            toastr?.info?.('待确认记忆已清空', '世界书读取');
+            toastr?.info?.('Done.', 'AI Worldbook Router');
         }
         renderMemoryPanel();
     });
@@ -7670,7 +7587,7 @@ function bindMemoryPanelActions() {
             await importBookshelfFiles(this.files);
         } catch (error) {
             setBookshelfStatus(`导入失败：${error?.message || error}`);
-            toastr?.error?.(error?.message || String(error), '书架补充');
+            toastr?.error?.('Operation failed.', 'AI Worldbook Router');
         } finally {
             this.value = '';
         }
@@ -7719,10 +7636,10 @@ function bindMemoryPanelActions() {
             setBookshelfModelStatus('正在测试...');
             const vector = await embedBookshelfText('测试书架向量模型连接。');
             setBookshelfModelStatus(`可用，维度 ${vector.length}`);
-            toastr?.success?.(`向量模型可用，维度 ${vector.length}`, '书架向量库');
+            toastr?.success?.('Done.', 'AI Worldbook Router');
         } catch (error) {
             setBookshelfModelStatus(`失败：${error?.message || error}`);
-            toastr?.error?.(error?.message || String(error), '书架向量库');
+            toastr?.error?.('Operation failed.', 'AI Worldbook Router');
         }
     });
 
@@ -7735,7 +7652,7 @@ function bindMemoryPanelActions() {
             syncBookshelfProviderVisibility();
         } catch (error) {
             setBookshelfModelStatus(`获取失败：${error?.message || error}`);
-            toastr?.error?.(error?.message || String(error), '书架向量库');
+            toastr?.error?.('Operation failed.', 'AI Worldbook Router');
         }
     });
 
@@ -7748,10 +7665,10 @@ function bindMemoryPanelActions() {
             setBookshelfModelStatus('正在下载/加载本地模型...');
             await getBookshelfLocalEmbeddingPipeline();
             setBookshelfModelStatus('本地模型已缓存并可用');
-            toastr?.success?.('本地向量模型已可用', '书架向量库');
+            toastr?.success?.('Done.', 'AI Worldbook Router');
         } catch (error) {
             setBookshelfModelStatus(`失败：${error?.message || error}`);
-            toastr?.error?.(error?.message || String(error), '书架向量库');
+            toastr?.error?.('Operation failed.', 'AI Worldbook Router');
         }
     });
 
@@ -7761,11 +7678,11 @@ function bindMemoryPanelActions() {
             setBookshelfStatus('正在同步图谱记忆向量...');
             const result = await syncMemoryGraphVectors(getMemoryGraph(), getContext(), { force: true });
             setBookshelfStatus(`图谱向量同步完成：节点 ${result.total} 个，可用 ${result.ready} 个，失败 ${result.failed} 个。`);
-            toastr?.success?.(`图谱向量已同步：${result.ready}/${result.total}`, '书架向量库');
+            toastr?.success?.('Done.', 'AI Worldbook Router');
             renderBookshelfPanel();
         } catch (error) {
             setBookshelfStatus(`图谱向量同步失败：${error?.message || error}`);
-            toastr?.error?.(error?.message || String(error), '书架向量库');
+            toastr?.error?.('Operation failed.', 'AI Worldbook Router');
             renderBookshelfPanel();
         }
     });
@@ -7780,7 +7697,7 @@ function bindMemoryPanelActions() {
             renderBookshelfPanel();
         } catch (error) {
             setBookshelfStatus(`图谱向量重置失败：${error?.message || error}`);
-            toastr?.error?.(error?.message || String(error), '书架向量库');
+            toastr?.error?.('Operation failed.', 'AI Worldbook Router');
         }
     });
     function getBookshelfActionBookId(button) {
@@ -7965,7 +7882,7 @@ function bindMemoryPanelActions() {
             const result = acceptMemoryReviewItem(id);
             if (result) {
                 setMemoryStatus(`已确认：${result.graph.nodes.length} 节点 / ${result.graph.links.length} 关系`);
-                toastr?.success?.('记忆更新已写入图谱', '世界书读取');
+                toastr?.success?.('Done.', 'AI Worldbook Router');
             }
             renderMemoryPanel();
         })
@@ -8311,31 +8228,21 @@ async function routeWorldbookForMessages(context, recentMessages, routeSource = 
     const lastUserMessage = getLastUserMessage(recentMessages);
     debugLog('Generation intercepted', { ...logMeta, routeSource, lastUserMessage });
 
-    const mvuSummary = getCombinedStateSummary(context);
-    const memoryGraph = getMemoryGraph(context);
-    let memoryCandidates = recallMemoryCandidates(memoryGraph, recentMessages, mvuSummary);
-    const entries = await getWorldbookEntries(context);
-    const wbCandidates = recallCandidates(entries, recentMessages, mvuSummary);
-    let bookshelfCandidates = [];
+    const recallBundle = await buildUnifiedRecallBundle(context, recentMessages);
+    const {
+        mvuSummary,
+        memoryGraph,
+        wbCandidates,
+        memoryCandidates,
+        bookshelfCandidates,
+        selectedBookshelf: vectorSelectedBookshelf,
+        selectedMemoryVectors,
+        combinedCandidates,
+    } = recallBundle;
     let selectedBookshelf = [];
-    let selectedMemoryVectors = [];
 
-    try {
-        const bookshelfQuery = buildBookshelfRecallQuery(recentMessages, mvuSummary);
-        const vectorResult = await recallVectorMemoryAndBookshelf(bookshelfQuery, memoryGraph, context);
-        memoryCandidates = mergeMemoryVectorCandidates(memoryCandidates, vectorResult.memoryCandidates || []);
-        selectedMemoryVectors = vectorResult.selectedMemoryVectors || [];
-        bookshelfCandidates = vectorResult.bookshelfCandidates || [];
-        selectedBookshelf = vectorResult.selectedBookshelf || [];
-    } catch (error) {
-        console.warn(`${LOG_PREFIX} Vector recall skipped.`, error);
-        setBookshelfStatus(`向量召回跳过：${error?.message || error}`);
-    }
-
-    const combinedCandidates = [...wbCandidates, ...memoryCandidates];
-
-    if (combinedCandidates.length === 0 && !hasMemoryState(memoryGraph) && !selectedBookshelf.length) {
-        debugRun([], [], '', `none-${routeSource}`, '', '', [], [], bookshelfCandidates, selectedBookshelf);
+    if (combinedCandidates.length === 0 && !hasMemoryState(memoryGraph) && !vectorSelectedBookshelf.length) {
+        debugRun([], [], '', `none-${routeSource}`, '', '', [], [], bookshelfCandidates, []);
         lastRouteCompletedAt = Date.now();
         return {
             candidates: wbCandidates,
@@ -8343,7 +8250,7 @@ async function routeWorldbookForMessages(context, recentMessages, routeSource = 
             memoryCandidates,
             selectedMemories: [],
             bookshelfCandidates,
-            selectedBookshelf,
+            selectedBookshelf: [],
             injection: '',
             source: `none-${routeSource}`,
         };
@@ -8359,11 +8266,13 @@ async function routeWorldbookForMessages(context, recentMessages, routeSource = 
     if (combinedCandidates.length) {
         try {
             isRouterSelectionRequest = true;
-            const maxSelectCount = settings.maxSelected + MAX_MEMORY_SELECTED;
+            const maxSelectCount = settings.maxSelected + MAX_MEMORY_SELECTED + clampNumber(settings.bookshelfMaxChunks, defaultSettings.bookshelfMaxChunks, 1, 12);
             const aiResult = await selectWithAi(context, recentMessages, mvuSummary, combinedCandidates, maxSelectCount);
             
             for (const item of aiResult.selected) {
-                if (item.source === 'memory' || item.source === 'memory-vector') {
+                if (item.sourceType === 'bookshelf' || item.source === 'bookshelf') {
+                    selectedBookshelf.push(item);
+                } else if (item.sourceType === 'memory-keyword' || item.sourceType === 'memory-vector' || item.source === 'memory' || item.source === 'memory-vector') {
                     selectedMem.push(item);
                 } else {
                     selectedWb.push(item);
@@ -8372,7 +8281,7 @@ async function routeWorldbookForMessages(context, recentMessages, routeSource = 
             
             routerPrompt = aiResult.prompt;
             routerRaw = aiResult.rawPreview;
-            source = (selectedWb.length || selectedMem.length) ? `ai-${routeSource}` : `empty-ai-${routeSource}`;
+            source = (selectedWb.length || selectedMem.length || selectedBookshelf.length) ? `ai-${routeSource}` : `empty-ai-${routeSource}`;
         } catch (error) {
             source = `keyword-ai-fallback-${routeSource}`;
             shouldFallback = true;
@@ -8384,9 +8293,10 @@ async function routeWorldbookForMessages(context, recentMessages, routeSource = 
         }
     }
 
-    if (shouldFallback && !selectedWb.length && !selectedMem.length) {
+    if (shouldFallback && !selectedWb.length && !selectedMem.length && !selectedBookshelf.length) {
         selectedWb = selectWithFallback(wbCandidates);
         selectedMem = selectMemoryWithFallback(memoryCandidates);
+        selectedBookshelf = vectorSelectedBookshelf;
     }
     selectedMem = mergeSelectedMemoryVectors(selectedMem, selectedMemoryVectors);
 
