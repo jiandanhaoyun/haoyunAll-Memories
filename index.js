@@ -6,7 +6,7 @@
     'use strict';
 
     const NAMESPACE = 'AIWorldbookRouter';
-const VERSION = '0.5.14';
+const VERSION = '0.5.15';
     const LOG_PREFIX = '[AI Worldbook Router Bootstrap]';
     const ENTRY_ID = 'ai_wbr_extension_entry';
     const ROW_ID = 'ai_wbr_extension_row';
@@ -163,6 +163,18 @@ const VERSION = '0.5.14';
             opened = true;
         }
         return opened;
+    }
+
+    function openCoreConsoleRepeatedly(tab = 'overview') {
+        [0, 80, 180, 360, 700].forEach((delay) => {
+            window.setTimeout(() => {
+                try {
+                    callOpenConsole(tab);
+                } catch (error) {
+                    coreLoadError = error;
+                }
+            }, delay);
+        });
     }
 
     function closeHostMenusBeforeOpen() {
@@ -454,8 +466,7 @@ const VERSION = '0.5.14';
 
         window.setTimeout(() => {
             try {
-                callOpenConsole('overview');
-                window.setTimeout(() => callOpenConsole('overview'), 180);
+                openCoreConsoleRepeatedly('overview');
             } catch (error) {
                 coreLoadError = error;
                 if (diagnosticsEnabled || forcePanel) {

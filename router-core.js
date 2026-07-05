@@ -7067,31 +7067,6 @@ function createFloatingMemoryWindow() {
     let fabPointerId = null;
     let fabSuppressNextClick = false;
     let fabLastToggleAt = 0;
-    let fabNativeStart = null;
-
-    function getClientPointFromEvent(event) {
-        const touch = event?.changedTouches?.[0] || event?.touches?.[0];
-        const clientX = touch?.clientX ?? event?.clientX;
-        const clientY = touch?.clientY ?? event?.clientY;
-        if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) {
-            return null;
-        }
-        return { clientX, clientY };
-    }
-
-    function isPointInsideFab(point, extraPadding = 12) {
-        if (!point || !fab?.length || settings.floatingButtonEnabled === false) {
-            return false;
-        }
-        const rect = fab[0].getBoundingClientRect();
-        if (!rect.width || !rect.height) {
-            return false;
-        }
-        return point.clientX >= rect.left - extraPadding
-            && point.clientX <= rect.right + extraPadding
-            && point.clientY >= rect.top - extraPadding
-            && point.clientY <= rect.bottom + extraPadding;
-    }
 
     function openFromFab(event) {
         const now = Date.now();
@@ -7114,34 +7089,6 @@ function createFloatingMemoryWindow() {
                 openWindow('graph');
             }
         }, 260);
-    }
-
-    function nativeFabPressStart(event) {
-        const point = getClientPointFromEvent(event);
-        if (!isPointInsideFab(point, 18)) {
-            return;
-        }
-        fabNativeStart = {
-            clientX: point.clientX,
-            clientY: point.clientY,
-            time: Date.now(),
-        };
-    }
-
-    function nativeFabPressEnd(event) {
-        const point = getClientPointFromEvent(event);
-        if (!fabNativeStart || !isPointInsideFab(point, 24)) {
-            fabNativeStart = null;
-            return;
-        }
-        const dx = point.clientX - fabNativeStart.clientX;
-        const dy = point.clientY - fabNativeStart.clientY;
-        const elapsed = Date.now() - fabNativeStart.time;
-        fabNativeStart = null;
-        if (Math.hypot(dx, dy) > 14 || elapsed > 1200) {
-            return;
-        }
-        openFromFab(event);
     }
 
     function finishFabPointer(e) {
@@ -7224,20 +7171,8 @@ function createFloatingMemoryWindow() {
         openFromFab(e);
     });
 
-    document.removeEventListener('touchstart', globalThis.aiWbrNativeFabPressStart, true);
-    document.removeEventListener('touchend', globalThis.aiWbrNativeFabPressEnd, true);
-    document.removeEventListener('mouseup', globalThis.aiWbrNativeFabPressEnd, true);
-    document.removeEventListener('mousedown', globalThis.aiWbrNativeFabPressStart, true);
-    globalThis.aiWbrNativeFabPressStart = nativeFabPressStart;
-    globalThis.aiWbrNativeFabPressEnd = nativeFabPressEnd;
-    document.addEventListener('touchstart', globalThis.aiWbrNativeFabPressStart, { capture: true, passive: true });
-    try {
-        document.addEventListener('touchend', globalThis.aiWbrNativeFabPressEnd, { capture: true, passive: false });
-    } catch (_) {
-        document.addEventListener('touchend', globalThis.aiWbrNativeFabPressEnd, true);
-    }
-    document.addEventListener('mousedown', globalThis.aiWbrNativeFabPressStart, true);
-    document.addEventListener('mouseup', globalThis.aiWbrNativeFabPressEnd, true);
+    fab[0]?.addEventListener('touchend', openFromFab, { capture: true, passive: false });
+    fab[0]?.addEventListener('click', openFromFab, true);
 
     $('#ai_wbr_floating_close').on('click touchend pointerup', (event) => {
         event.preventDefault();
