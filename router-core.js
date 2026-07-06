@@ -3598,6 +3598,57 @@ function normalizeMemoryLink(rawLink, nodeIds, fallbackIndex = 0) {
     };
 }
 
+function isWeakMemoryTitle(title) {
+    const text = normalizeText(title);
+    if (!text || text.length < 2) return true;
+    return /^(本轮关键事件|关键事件|记忆|事件|摘要|本轮摘要|未命名|unknown|memory|event)$/iu.test(text);
+}
+
+function isValidMemoryNodeForApply(node) {
+    if (!node || isWeakMemoryTitle(node.title)) return false;
+    const body = normalizeText(`${node.content || ''} ${node.summary || ''}`);
+    const hasSubstance = body.length >= 8 || (Array.isArray(node.keys) && node.keys.join('').length >= 4);
+    return hasSubstance;
+}
+
+function sanitizeMemoryUpdateForApply(update) {
+    const sanitized = {
+        ...update,
+        nodes: [],
+        updates: [],
+        links: [],
+    };
+    const validNodeTitles = new Set();
+    const validNodeIds = new Set();
+
+    for (const rawNode of (Array.isArray(update?.nodes) ? update.nodes : []).slice(0, 8)) {
+        const title = truncateText(rawNode?.title || rawNode?.label || rawNode?.id || '', 80);
+        const summary = truncateText(rawNode?.summary || rawNode?.content || rawNode?.description || '', 240);
+        if (isWeakMemoryTitle(title) || normalizeText(summary).length < 8) continue;
+        sanitized.nodes.push(rawNode);
+        validNodeTitles.add(normalizeText(title));
+        validNodeIds.add(createMemoryId(rawNode?.id || title));
+    }
+
+    for (const rawUpdate of (Array.isArray(update?.updates) ? update.updates : []).slice(0, 8)) {
+        const title = rawUpdate?.title || rawUpdate?.titleToUpdate || rawUpdate?.id || '';
+        const content = rawUpdate?.content || rawUpdate?.newContent || rawUpdate?.summary || '';
+        if (isWeakMemoryTitle(title) || normalizeText(content).length < 8) continue;
+        sanitized.updates.push(rawUpdate);
+        validNodeTitles.add(normalizeText(title));
+        validNodeIds.add(createMemoryId(rawUpdate?.id || title));
+    }
+
+    for (const rawLink of (Array.isArray(update?.links) ? update.links : []).slice(0, 12)) {
+        const source = normalizeText(rawLink?.source || rawLink?.sourceId || rawLink?.from || '');
+        const target = normalizeText(rawLink?.target || rawLink?.targetId || rawLink?.to || '');
+        if (!source || !target || source === target) continue;
+        sanitized.links.push(rawLink);
+    }
+
+    return sanitized;
+}
+
 function getRecentMessagesByCount(chat, count) {
     const limit = clampNumber(count, 6, 2, 40);
     return chat
@@ -4121,6 +4172,7 @@ function resolveMemoryNodeId(value, graph) {
 }
 
 function applyMemoryGraphUpdate(update, context = getContext()) {
+    update = sanitizeMemoryUpdateForApply(update);
     const graph = getMemoryGraph(context);
     const now = new Date().toISOString();
     let addedOrUpdatedNodeCount = 0;
@@ -4171,6 +4223,9 @@ function applyMemoryGraphUpdate(update, context = getContext()) {
     const incomingNodes = Array.isArray(update?.nodes) ? update.nodes : [];
     for (const rawNode of incomingNodes.slice(0, 8)) {
         const node = normalizeMemoryNode(rawNode, byId.size);
+        if (!isValidMemoryNodeForApply(node)) {
+            continue;
+        }
         const existing = byId.get(node.id) || graph.nodes.find(item => normalizeText(item.title) === normalizeText(node.title));
         if (existing) {
             Object.assign(existing, {
@@ -4232,23 +4287,6 @@ function applyMemoryGraphUpdate(update, context = getContext()) {
         existing.updatedAt = now;
         addedOrUpdatedNodeCount += 1;
         touchedEntries.push(existing);
-    }
-
-    if (!addedOrUpdatedNodeCount && typeof update?.summary === 'string' && update.summary.trim()) {
-        const fallbackTitle = truncateText(update.summary.trim().split(/[。.!?\n]/u)[0] || '本轮关键事件', 48);
-        const fallbackNode = normalizeMemoryNode({
-            id: `event_${Date.now().toString(36)}`,
-            title: fallbackTitle,
-            type: 'event',
-            summary: fallbackTitle,
-            content: update.summary.trim(),
-            tags: ['自动摘要'],
-            importance: 0.55,
-            credibility: 0.75,
-        }, byId.size);
-        graph.nodes.push(fallbackNode);
-        byId.set(fallbackNode.id, fallbackNode);
-        touchedEntries.push(fallbackNode);
     }
 
     graph.nodes = graph.nodes
@@ -4607,7 +4645,7 @@ async function runMemoryGraphUpdate(reason = 'realtime', options = {}) {
                 persistChatMemoryContainer(container, context);
                 
                 let memoryResult = null;
-                const shouldQueueReview = !!settings.memoryReviewRequired && options.review === true;
+                const shouldQueueReview = options.review !== false;
                 if (shouldQueueReview) {
                     const review = enqueueMemoryReview(update, {
                         reason,
@@ -4626,7 +4664,7 @@ async function runMemoryGraphUpdate(reason = 'realtime', options = {}) {
                         updatedContainer.lastAutoMessageCount = messageCount;
                     }
                     persistChatMemoryContainer(updatedContainer, context);
-                    setMemoryStatus(`Memory update pending review: ${getMemoryReviewQueue(context).length} item(s).`, context);
+                    setMemoryStatus(`已生成待确认记忆更新：${getMemoryReviewQueue(context).length} 条。确认后才会写入图谱。`, context);
                     playStatusBurst('ok', 'memory');
                     toastr?.info?.('Done.', 'AI Worldbook Router');
                     stopMemoryAnimation(true);
@@ -8971,22 +9009,22 @@ function bindMemoryPanelActions() {
 
     $('#ai_wbr_memory_run_now').on('click', async (event) => {
         event.preventDefault();
-        await runMemoryGraphUpdate('manual', {
-            mode: 'realtime',
-            scanMessages: settings.memoryRealtimeScanMessages,
-            force: true,
-            review: false,
-        });
+                await runMemoryGraphUpdate('manual', {
+                    mode: 'realtime',
+                    scanMessages: settings.memoryRealtimeScanMessages,
+                    force: true,
+            review: true,
+                });
     });
 
     $('#ai_wbr_memory_summary_now').on('click', async (event) => {
         event.preventDefault();
-        await runMemoryGraphUpdate('manual_summary', {
-            mode: 'summary',
-            scanMessages: settings.memorySummaryScanMessages,
-            force: true,
-            review: false,
-        });
+                await runMemoryGraphUpdate('manual_summary', {
+                    mode: 'summary',
+                    scanMessages: settings.memorySummaryScanMessages,
+                    force: true,
+            review: true,
+                });
     });
 
     $('#ai_wbr_memory_accept_all').on('click', (event) => {
