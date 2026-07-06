@@ -119,7 +119,7 @@ const defaultSettings = {
     memorySummaryIntervalMessages: 20,
     memorySummaryScanMessages: 24,
     memoryInjectToRouter: true,
-    memoryReviewRequired: true,
+    memoryReviewRequired: false,
     memoryDebug: false,
     memoryScopeDebug: false,
     memoryHistorySkipDone: true,
@@ -4670,7 +4670,7 @@ async function runMemoryGraphUpdate(reason = 'realtime', options = {}) {
                 persistChatMemoryContainer(container, context);
                 
                 let memoryResult = null;
-                const shouldQueueReview = !!settings.memoryReviewRequired && options.review !== false;
+                const shouldQueueReview = !!settings.memoryReviewRequired && options.review === true;
                 if (shouldQueueReview) {
                     const review = enqueueMemoryReview(update, {
                         reason,
@@ -9039,6 +9039,7 @@ function bindMemoryPanelActions() {
             mode: 'realtime',
             scanMessages: settings.memoryRealtimeScanMessages,
             force: true,
+            review: false,
         });
     });
 
@@ -9048,6 +9049,7 @@ function bindMemoryPanelActions() {
             mode: 'summary',
             scanMessages: settings.memorySummaryScanMessages,
             force: true,
+            review: false,
         });
     });
 
