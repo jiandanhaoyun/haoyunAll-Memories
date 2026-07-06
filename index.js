@@ -554,7 +554,7 @@
         } catch (_) {
             // no-op
         }
-        openConsole({ source: event?.type || '悬浮按钮', tab: 'graph', mode: 'floating' });
+        openConsole({ source: event?.type || '悬浮按钮', tab: 'graph', mode: 'full' });
         return false;
     }
 

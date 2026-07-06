@@ -6512,6 +6512,7 @@ function renderMemoryGraphToolbarHtml(graph, displayModel, nodes, edges) {
                 <button class="menu_button ai-wbr-memory-zoom-in" type="button">＋</button>
                 <button class="menu_button ai-wbr-memory-zoom-out" type="button">－</button>
                 <button class="menu_button ai-wbr-memory-zoom-reset" type="button">适配视图</button>
+                <button class="menu_button ai-wbr-memory-open-fullscreen" type="button">全屏图谱</button>
                 <span class="ai-wbr-memory-link-hint">${memoryGraphLinkSourceId ? `连线起点：${escapeHtml(graph.nodes.find(node => node.id === memoryGraphLinkSourceId)?.title || memoryGraphLinkSourceId)}` : ''}</span>
             </div>
         </div>
@@ -8628,6 +8629,18 @@ function bindMemoryPanelActions() {
             fitMemoryGraphToContainer(graph);
             renderMemoryGraphSvg(graph);
         })
+        .on('click.aiWbrGraphWorkspace', '#ai_wbr_memory_graph_fullscreen, .ai-wbr-memory-open-fullscreen', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const openConsole = globalThis.aiWbrOpenConsole;
+            if (typeof openConsole === 'function') {
+                openConsole('graph', { mode: 'full' });
+                setTimeout(() => {
+                    fitMemoryGraphToContainer(getMemoryGraph());
+                    renderMemoryPanel('graph');
+                }, 160);
+            }
+        })
         .on('click.aiWbrGraphWorkspace', '#ai_wbr_memory_graph_close_detail, .ai-wbr-memory-detail-close', (event) => {
             event.preventDefault();
             memoryGraphSelectedNodeId = '';
@@ -9712,15 +9725,15 @@ function createFloatingMemoryWindow() {
         fabLastToggleAt = now;
         event?.preventDefault?.();
         event?.stopPropagation?.();
-        openWindow('graph', { mode: 'floating' });
+        openWindow('graph', { mode: 'full' });
         setTimeout(() => {
             if (!win.hasClass('open') || getStandaloneTabId() !== 'graph') {
-                openWindow('graph', { mode: 'floating' });
+                openWindow('graph', { mode: 'full' });
             }
         }, 80);
         setTimeout(() => {
             if (!win.hasClass('open') || !$('#ai_wbr_memory_graph').is(':visible')) {
-                openWindow('graph', { mode: 'floating' });
+                openWindow('graph', { mode: 'full' });
             }
         }, 260);
     }
