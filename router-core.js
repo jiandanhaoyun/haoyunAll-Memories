@@ -6247,6 +6247,175 @@ function renderMemoryGraphTypeFilters(graph) {
     </div>`;
 }
 
+function getMemoryPreviewGroupKey(type) {
+    const normalized = String(type || 'event').toLowerCase();
+    if (normalized === 'character') return 'character';
+    if (normalized === 'event' || normalized === 'quest') return 'event';
+    if (normalized === 'location') return 'location';
+    if (normalized === 'item') return 'item';
+    if (normalized === 'faction' || normalized === 'concept' || normalized === 'rule') return 'setting';
+    return 'other';
+}
+
+function getMemoryPreviewGroupLabel(group) {
+    return ({
+        character: '人物',
+        event: '事件',
+        location: '地点',
+        item: '物品',
+        setting: '设定',
+        other: '其他',
+    })[group] || group;
+}
+
+function renderMemoryPreviewPanel(graph, displayModel = buildMemoryGraphDisplayModel(graph)) {
+    const panel = $('#ai_wbr_memory_preview_panel');
+    if (!panel.length) {
+        return;
+    }
+
+    const nodes = Array.isArray(displayModel?.nodes) ? displayModel.nodes : [];
+    const links = Array.isArray(displayModel?.links) ? displayModel.links : [];
+    const degree = new Map(nodes.map(node => [String(node.id), 0]));
+    for (const link of links) {
+        degree.set(String(link.source || ''), (degree.get(String(link.source || '')) || 0) + 1);
+        degree.set(String(link.target || ''), (degree.get(String(link.target || '')) || 0) + 1);
+    }
+
+    const grouped = new Map();
+    for (const node of nodes) {
+        const group = getMemoryPreviewGroupKey(node.type);
+        if (!grouped.has(group)) {
+            grouped.set(group, []);
+        }
+        grouped.get(group).push(node);
+    }
+
+    const orderedGroups = ['character', 'event', 'location', 'item', 'setting', 'other'];
+    const createCard = (node) => {
+        const typeLabel = getOptionLabel(MEMORY_NODE_TYPE_OPTIONS, node.type, node.type || 'event');
+        const summary = node.summary || node.content || '';
+        const selected = String(node.id) === String(memoryGraphSelectedNodeId);
+        const score = Math.round(clampNumber(node.importance, 0.5, 0, 1) * 100);
+        const tags = uniqueStrings([...(Array.isArray(node.keys) ? node.keys : []), ...(Array.isArray(node.tags) ? node.tags : [])]).slice(0, 3);
+        return $('<button class="ai-wbr-memory-preview-card" type="button"></button>')
+            .toggleClass('selected', selected)
+            .attr('data-memory-node-id', node.id)
+            .append($('<b></b>').text(node.title || node.id))
+            .append($('<small></small>').text(truncateText(summary, 96) || '暂无摘要'))
+            .append($('<div class="ai-wbr-memory-preview-meta"></div>')
+                .append($('<span></span>').text(typeLabel))
+                .append($('<span></span>').text(`${score}% · ${degree.get(String(node.id)) || 0} 关系`)))
+            .append(tags.length
+                ? $('<div class="ai-wbr-memory-preview-tags"></div>').append(tags.map(tag => $('<span></span>').text(tag)))
+                : '');
+    };
+
+    panel.empty().append(
+        $('<div class="ai-wbr-memory-preview-head"></div>')
+            .append($('<div></div>')
+                .append($('<div class="ai-wbr-memory-preview-kicker"></div>').text('Memory Preview'))
+                .append($('<div class="ai-wbr-memory-preview-title"></div>').text('记忆预览')))
+            .append($('<div class="ai-wbr-memory-preview-count"></div>').text(`${nodes.length}/${displayModel.totalNodes || nodes.length}`)),
+        $('<input class="text_pole ai-wbr-memory-preview-search" type="search" placeholder="搜索记忆、人物、地点、关键词" />').val(memoryGraphSearchText || ''),
+    );
+
+    if (!nodes.length) {
+        panel.append($('<div class="ai-wbr-token-empty m-t-1"></div>').text('暂无可预览的记忆。清除筛选或继续生成后会显示。'));
+        return;
+    }
+
+    for (const group of orderedGroups) {
+        const groupNodes = (grouped.get(group) || [])
+            .slice()
+            .sort((a, b) => getMemoryGraphNodeScore(b, degree.get(String(b.id)) || 0) - getMemoryGraphNodeScore(a, degree.get(String(a.id)) || 0))
+            .slice(0, 8);
+        if (!groupNodes.length) {
+            continue;
+        }
+        panel.append(
+            $('<section class="ai-wbr-memory-preview-section"></section>')
+                .append($('<div class="ai-wbr-memory-preview-section-title"></div>')
+                    .append($('<span></span>').text(getMemoryPreviewGroupLabel(group)))
+                    .append($('<small></small>').text(`${grouped.get(group).length}`)))
+                .append($('<div class="ai-wbr-memory-preview-list"></div>').append(groupNodes.map(createCard))),
+        );
+    }
+}
+
+function applyMemoryGraphPreviewLayout(displayModel, canvasWidth, canvasHeight) {
+    const nodes = Array.isArray(displayModel?.nodes) ? displayModel.nodes : [];
+    const links = Array.isArray(displayModel?.links) ? displayModel.links : [];
+    if (!nodes.length || displayModel.mode === 'full') {
+        return false;
+    }
+
+    const padding = MEMORY_GRAPH_LAYOUT_PADDING;
+    const top = Math.max(118, padding * 1.15);
+    const availableWidth = Math.max(360, canvasWidth - padding * 2);
+    const availableHeight = Math.max(260, canvasHeight - top - padding);
+    const selectedId = String(memoryGraphSelectedNodeId || '');
+    const nodeById = new Map(nodes.map(node => [String(node.id), node]));
+
+    if (displayModel.mode === 'focus' && selectedId && nodeById.has(selectedId)) {
+        const center = nodeById.get(selectedId);
+        center.x = (canvasWidth - MEMORY_GRAPH_NODE_WIDTH) / 2;
+        center.y = top + (availableHeight - MEMORY_GRAPH_NODE_HEIGHT) / 2;
+        const neighbors = nodes.filter(node => String(node.id) !== selectedId);
+        const innerIds = new Set();
+        for (const link of links) {
+            if (String(link.source) === selectedId) innerIds.add(String(link.target));
+            if (String(link.target) === selectedId) innerIds.add(String(link.source));
+        }
+        const inner = neighbors.filter(node => innerIds.has(String(node.id)));
+        const outer = neighbors.filter(node => !innerIds.has(String(node.id)));
+        const placeRing = (items, radiusX, radiusY, startAngle = -Math.PI / 2) => {
+            items.forEach((node, index) => {
+                const angle = startAngle + (Math.PI * 2 * index / Math.max(1, items.length));
+                node.x = (canvasWidth / 2) + Math.cos(angle) * radiusX - MEMORY_GRAPH_NODE_WIDTH / 2;
+                node.y = (top + availableHeight / 2) + Math.sin(angle) * radiusY - MEMORY_GRAPH_NODE_HEIGHT / 2;
+                const clamped = clampMemoryNodePosition(node.x, node.y, canvasWidth, canvasHeight, top);
+                node.x = clamped.x;
+                node.y = clamped.y;
+            });
+        };
+        placeRing(inner, Math.min(availableWidth * 0.34, 320), Math.min(availableHeight * 0.28, 210));
+        placeRing(outer, Math.min(availableWidth * 0.46, 470), Math.min(availableHeight * 0.42, 320), -Math.PI / 2 + 0.22);
+        return true;
+    }
+
+    const groups = ['character', 'event', 'location', 'item', 'setting', 'other'];
+    const buckets = new Map(groups.map(group => [group, []]));
+    for (const node of nodes) {
+        const group = getMemoryPreviewGroupKey(node.type);
+        (buckets.get(group) || buckets.get('other')).push(node);
+    }
+    const activeGroups = groups.filter(group => buckets.get(group).length);
+    const columns = Math.min(3, Math.max(1, activeGroups.length));
+    const rows = Math.ceil(activeGroups.length / columns);
+    const cellWidth = availableWidth / columns;
+    const cellHeight = availableHeight / Math.max(1, rows);
+
+    activeGroups.forEach((group, groupIndex) => {
+        const col = groupIndex % columns;
+        const row = Math.floor(groupIndex / columns);
+        const items = buckets.get(group)
+            .slice()
+            .sort((a, b) => getMemoryGraphNodeScore(b) - getMemoryGraphNodeScore(a));
+        const localColumns = Math.max(1, Math.floor(cellWidth / (MEMORY_GRAPH_NODE_WIDTH + 22)));
+        items.forEach((node, index) => {
+            const localCol = index % localColumns;
+            const localRow = Math.floor(index / localColumns);
+            node.x = padding + col * cellWidth + 14 + localCol * (MEMORY_GRAPH_NODE_WIDTH + 22);
+            node.y = top + row * cellHeight + 16 + localRow * (MEMORY_GRAPH_NODE_HEIGHT + 24);
+            const clamped = clampMemoryNodePosition(node.x, node.y, canvasWidth, canvasHeight, top);
+            node.x = clamped.x;
+            node.y = clamped.y;
+        });
+    });
+    return true;
+}
+
 function renderMemoryDetailDrawer(graph = getMemoryGraph()) {
     const drawer = $('#ai_wbr_memory_detail_drawer');
     if (!drawer.length) {
@@ -6361,6 +6530,7 @@ function renderMemoryGraphSvg(graph) {
     graph.links = Array.isArray(graph.links) ? graph.links : [];
 
     const displayModel = buildMemoryGraphDisplayModel(graph);
+    renderMemoryPreviewPanel(graph, displayModel);
     const nodes = displayModel.nodes;
     if (!nodes.length) {
         container.html(`
@@ -6388,7 +6558,11 @@ function renderMemoryGraphSvg(graph) {
     const width = viewport.layoutWidth;
     const height = viewport.layoutHeight;
     const positions = new Map();
-    let layoutChanged = normalizeMemoryGraphLayout(nodes, displayModel.links, width, height);
+    const usedPreviewLayout = applyMemoryGraphPreviewLayout(displayModel, width, height);
+    let layoutChanged = false;
+    if (!usedPreviewLayout) {
+        layoutChanged = normalizeMemoryGraphLayout(nodes, displayModel.links, width, height);
+    }
     nodes.forEach((node) => {
         positions.set(node.id, {
             x: Number(node.x || 0),
@@ -7170,7 +7344,9 @@ function showMemoryNodePopover(nodeId, clientX, clientY) {
 
 function bindMemoryGraphSvgInteractions() {
     const container = $('#ai_wbr_memory_graph');
+    const previewPanel = $('#ai_wbr_memory_preview_panel');
     container.off('.memoryGraphSvg');
+    previewPanel.off('.memoryGraphPreview');
     $(document).off('.memoryGraphSvg');
 
     const renderCurrentGraph = (options = {}) => {
@@ -7180,6 +7356,29 @@ function bindMemoryGraphSvgInteractions() {
         }
         renderMemoryGraphSvg(graph);
     };
+
+    previewPanel.on('input.memoryGraphPreview', '.ai-wbr-memory-preview-search', function (event) {
+        event.stopPropagation();
+        const value = String($(this).val() || '');
+        clearTimeout(memoryGraphSearchTimer);
+        memoryGraphSearchTimer = setTimeout(() => {
+            memoryGraphSearchText = value;
+            renderCurrentGraph({ fit: true });
+        }, 180);
+    });
+
+    previewPanel.on('click.memoryGraphPreview', '.ai-wbr-memory-preview-card', function (event) {
+        event.preventDefault();
+        const nodeId = String($(this).data('memoryNodeId') || '');
+        if (!nodeId) {
+            return;
+        }
+        memoryGraphSelectedNodeId = nodeId;
+        memoryGraphSelectedLinkId = '';
+        memoryGraphDetailMode = 'node';
+        memoryGraphDisplayMode = 'focus';
+        renderMemoryPanel('graph');
+    });
 
     container.on('click.memoryGraphSvg', '.ai-wbr-memory-mode', function (event) {
         event.preventDefault();
@@ -7351,6 +7550,7 @@ function bindMemoryGraphSvgInteractions() {
         memoryGraphSelectedNodeId = nodeId;
         memoryGraphSelectedLinkId = '';
         memoryGraphDetailMode = 'node';
+        memoryGraphDisplayMode = 'focus';
         renderMemoryPanel('graph');
         $('#ai_wbr_memory_node_popover').hide();
     });
