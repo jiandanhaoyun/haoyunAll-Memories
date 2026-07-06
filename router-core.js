@@ -190,6 +190,7 @@ let lastRun = {
     error: '',
     routerPrompt: '',
     routerRaw: '',
+    pipeline: null,
 };
 let burstCleanupTimer = null;
 let routerBusyPromise = null;
@@ -2146,12 +2147,23 @@ function tagRecallCandidate(item, sourceType) {
         ...primaryKeys,
         ...secondaryKeys,
     ]);
+    const score = Number(item.score || 0);
+    const semanticScore = Number(item.semanticScore || 0);
+    const keywordScore = Number(item.keywordScore || 0);
+    const matchedKeys = Array.isArray(item.matchedKeys) ? item.matchedKeys : [];
+    const reason = item.reason
+        || (sourceType === 'memory-vector' ? `图谱向量命中：语义 ${semanticScore.toFixed(2)}，关键词 ${keywordScore.toFixed(2)}` : '')
+        || (sourceType === 'bookshelf' ? `书架向量命中：语义 ${semanticScore.toFixed(2)}，关键词 ${keywordScore.toFixed(2)}` : '')
+        || (matchedKeys.length ? `关键词命中：${matchedKeys.join(', ')}` : '')
+        || `候选分数 ${score.toFixed(2)}`;
     return {
         ...item,
         sourceType,
         recallId: String(item.routerId || item.uid || item.id || title || ''),
         recallTitle: String(title || ''),
-        recallScore: Number(item.score || 0),
+        recallScore: score,
+        recallReason: reason,
+        selectedBy: item.selectedBy || '',
         keys: {
             ...(item.keys || {}),
             primary: primaryKeys,
@@ -2496,6 +2508,27 @@ async function buildUnifiedRecallBundle(context, recentMessages, options = {}) {
         combinedCandidates: [...wbCandidates, ...memoryCandidates, ...bookshelfCandidates],
         vectorErrors,
         vectorSync,
+        pipeline: {
+            preRefresh: options.preRefresh || null,
+            graph: {
+                nodes: Array.isArray(memoryGraph?.nodes) ? memoryGraph.nodes.length : 0,
+                links: Array.isArray(memoryGraph?.links) ? memoryGraph.links.length : 0,
+                hasState: hasMemoryState(memoryGraph),
+                updatedAt: memoryGraph?.updatedAt || '',
+            },
+            recall: {
+                worldbook: wbCandidates.length,
+                memory: memoryCandidates.length,
+                bookshelf: bookshelfCandidates.length,
+                combined: wbCandidates.length + memoryCandidates.length + bookshelfCandidates.length,
+                selectedMemoryVectors: selectedMemoryVectors.length,
+                selectedBookshelf: selectedBookshelf.length,
+            },
+            vector: {
+                sync: vectorSync,
+                errors: vectorErrors.map(error => error?.message || String(error)),
+            },
+        },
     };
 }
 
@@ -4353,6 +4386,76 @@ function scheduleMemoryGraphUpdate() {
     }, 900);
 }
 
+async function preRefreshMemoryForRoute(context = getContext()) {
+    const startedAt = Date.now();
+    const result = {
+        attempted: false,
+        completed: false,
+        timedOut: false,
+        updated: false,
+        skippedReason: '',
+        durationMs: 0,
+    };
+
+    if (!settings.memoryEnabled) {
+        result.skippedReason = 'memory-disabled';
+        return result;
+    }
+    if (!settings.memoryRealtimeEnabled) {
+        result.skippedReason = 'realtime-disabled';
+        return result;
+    }
+    if (isMemoryWorkerRunning || isRouterSelectionRequest) {
+        result.skippedReason = 'memory-busy';
+        return result;
+    }
+
+    const chat = Array.isArray(context?.chat) ? context.chat : [];
+    const scanMessages = clampNumber(settings.memoryRealtimeScanMessages, defaultSettings.memoryRealtimeScanMessages, 2, 40);
+    const recentMessages = getMemoryRelevantMessages(chat, scanMessages);
+    if (recentMessages.length < 2) {
+        result.skippedReason = 'not-enough-messages';
+        return result;
+    }
+
+    const signature = getMemoryTurnSignature(recentMessages);
+    if (signature && signature === getCurrentMemoryLastTurnSignature(context)) {
+        result.skippedReason = 'already-current';
+        return result;
+    }
+
+    result.attempted = true;
+    const updatePromise = runMemoryGraphUpdate('pre_route', {
+        mode: 'realtime',
+        scanMessages,
+    })
+        .then(updated => {
+            result.completed = true;
+            result.updated = !!updated;
+            return result;
+        })
+        .catch(error => {
+            result.completed = true;
+            result.skippedReason = error?.message || String(error);
+            console.warn(`${LOG_PREFIX} Pre-route memory refresh failed.`, error);
+            return result;
+        });
+
+    const timeoutMs = 1800;
+    const timeoutPromise = new Promise(resolve => {
+        setTimeout(() => {
+            result.timedOut = true;
+            result.skippedReason = 'timeout';
+            resolve(result);
+        }, timeoutMs);
+    });
+
+    const settled = await Promise.race([updatePromise, timeoutPromise]);
+    updatePromise.finally(() => renderDebugPanel()).catch(() => {});
+    settled.durationMs = Date.now() - startedAt;
+    return settled;
+}
+
 function normalizeWorldEntry(rawEntry, source, worldName, index) {
     const id = getEntryId(rawEntry, index);
     return {
@@ -5480,17 +5583,49 @@ function renderDebugPanel() {
     const selectedMemories = Array.isArray(lastRun?.selectedMemories) ? lastRun.selectedMemories : [];
     const bookshelfCandidates = Array.isArray(lastRun?.bookshelfCandidates) ? lastRun.bookshelfCandidates : [];
     const selectedBookshelf = Array.isArray(lastRun?.selectedBookshelf) ? lastRun.selectedBookshelf : [];
+    const pipeline = lastRun?.pipeline && typeof lastRun.pipeline === 'object' ? lastRun.pipeline : null;
     const summary = lastRun.error
         ? `失败：${lastRun.error}`
         : `世界书候选 ${candidates.length} 条，选择 ${selected.length} 条；记忆候选 ${memoryCandidates.length} 条，选择 ${selectedMemories.length} 条；书架候选 ${bookshelfCandidates.length} 条，选择 ${selectedBookshelf.length} 条；注入 ${lastRun.injectedChars} 字符，来源：${lastRun.source}`;
     $('#ai_wbr_last_summary').text(summary);
+
+    const pipelineItems = [];
+    if (pipeline) {
+        const pre = pipeline.preRefresh || {};
+        const graph = pipeline.graph || {};
+        const recall = pipeline.recall || {};
+        const vector = pipeline.vector || {};
+        const sync = vector.sync || {};
+        const selectedStats = pipeline.selected || {};
+        const injection = pipeline.injection || {};
+        const preLabel = pre.attempted
+            ? (pre.timedOut ? `预刷新超时，后台继续整理 · ${pre.durationMs || 0}ms` : `预刷新${pre.updated ? '已更新' : '无变化'} · ${pre.durationMs || 0}ms`)
+            : `预刷新跳过：${pre.skippedReason || 'not-needed'}`;
+        pipelineItems.push(
+            $('<div class="ai-wbr-last-item ai-wbr-pipeline-item"></div>')
+                .append($('<div></div>').text('[流水线] 记忆预刷新'))
+                .append($('<small></small>').text(preLabel)),
+            $('<div class="ai-wbr-last-item ai-wbr-pipeline-item"></div>')
+                .append($('<div></div>').text('[流水线] 图谱状态'))
+                .append($('<small></small>').text(`节点 ${graph.nodes || 0} · 关系 ${graph.links || 0} · 状态 ${graph.hasState ? '有' : '无'}${graph.updatedAt ? ` · 更新 ${graph.updatedAt}` : ''}`)),
+            $('<div class="ai-wbr-last-item ai-wbr-pipeline-item"></div>')
+                .append($('<div></div>').text('[流水线] 召回候选'))
+                .append($('<small></small>').text(`世界书 ${recall.worldbook || 0} · 记忆 ${recall.memory || 0} · 书架 ${recall.bookshelf || 0} · 合计 ${recall.combined || 0}`)),
+            $('<div class="ai-wbr-last-item ai-wbr-pipeline-item"></div>')
+                .append($('<div></div>').text('[流水线] 向量同步'))
+                .append($('<small></small>').text(sync.skipped ? '跳过' : `总 ${sync.total || 0} · ready ${sync.ready || 0} · pending ${sync.pending || 0} · failed ${sync.failed || 0}${vector.errors?.length ? ` · 错误 ${vector.errors.join(' | ')}` : ''}`)),
+            $('<div class="ai-wbr-last-item ai-wbr-pipeline-item"></div>')
+                .append($('<div></div>').text('[流水线] 最终注入'))
+                .append($('<small></small>').text(`世界书 ${selectedStats.worldbook || 0} · 记忆 ${selectedStats.memory || 0} · 资料 ${selectedStats.bookshelf || 0} · 字符 ${injection.chars || lastRun.injectedChars || 0}`)),
+        );
+    }
 
     const worldbookItems = selected.map(entry => {
         const title = entry.comment || entry.keys?.primary?.[0] || entry.uid;
         const keys = entry.matchedKeys?.length ? ` | keys: ${entry.matchedKeys.join(', ')}` : '';
         return $('<div class="ai-wbr-last-item"></div>')
             .append($('<div></div>').text(`${title} (${entry.world || entry.source}#${entry.uid})`))
-            .append($('<small></small>').text(`${entry.reason || ''}${keys}`));
+            .append($('<small></small>').text(`${entry.reason || entry.recallReason || ''}${keys}${entry.sourceType ? ` · ${entry.sourceType}` : ''}`));
     });
 
     const memoryItems = selectedMemories.map(entry => {
@@ -5498,16 +5633,16 @@ function renderDebugPanel() {
         const keys = entry.matchedKeys?.length ? ` | keys: ${entry.matchedKeys.join(', ')}` : '';
         return $('<div class="ai-wbr-last-item"></div>')
             .append($('<div></div>').text(`[记忆] ${title} (${entry.memoryType || 'memory'}#${entry.uid})`))
-            .append($('<small></small>').text(`${entry.reason || ''}${keys}`));
+            .append($('<small></small>').text(`${entry.reason || entry.recallReason || ''}${keys}${entry.sourceType ? ` · ${entry.sourceType}` : ''}`));
     });
 
     const bookshelfItems = selectedBookshelf.map(entry => (
         $('<div class="ai-wbr-last-item"></div>')
             .append($('<div></div>').text(`[书架] 《${entry.book?.title || entry.book?.fileName || '书架'}》 / ${entry.title || entry.uid}`))
-            .append($('<small></small>').text(`分数 ${Number(entry.score || 0).toFixed(2)} · ${truncateText(entry.text || entry.content || '', 120)}`))
+            .append($('<small></small>').text(`${entry.recallReason || `分数 ${Number(entry.score || 0).toFixed(2)}`} · ${truncateText(entry.text || entry.content || '', 120)}`))
     ));
 
-    $('#ai_wbr_last_items').empty().append([...worldbookItems, ...memoryItems, ...bookshelfItems]);
+    $('#ai_wbr_last_items').empty().append([...pipelineItems, ...worldbookItems, ...memoryItems, ...bookshelfItems]);
     $('#ai_wbr_injection_text').text(lastRun.injectionText || '尚无本轮注入记录');
     $('#ai_wbr_router_prompt').text(lastRun.routerPrompt || '尚无前置 AI Prompt 记录');
     $('#ai_wbr_router_raw').text(lastRun.routerRaw || '尚无前置 AI 返回记录');
@@ -8141,7 +8276,7 @@ function debugLog(...args) {
     }
 }
 
-function debugRun(candidates, selected, injection, source, routerPrompt = '', routerRaw = '', memoryCandidates = [], selectedMemories = [], bookshelfCandidates = [], selectedBookshelf = []) {
+function debugRun(candidates, selected, injection, source, routerPrompt = '', routerRaw = '', memoryCandidates = [], selectedMemories = [], bookshelfCandidates = [], selectedBookshelf = [], pipeline = null) {
     lastRun = {
         candidates,
         selected,
@@ -8155,6 +8290,7 @@ function debugRun(candidates, selected, injection, source, routerPrompt = '', ro
         error: '',
         routerPrompt,
         routerRaw,
+        pipeline,
     };
 
     if (settings.debug) {
@@ -8220,6 +8356,7 @@ function debugError(error) {
         error: error?.message || String(error),
         routerPrompt: '',
         routerRaw: '',
+        pipeline: null,
     };
     renderDebugPanel();
 }
@@ -8228,7 +8365,8 @@ async function routeWorldbookForMessages(context, recentMessages, routeSource = 
     const lastUserMessage = getLastUserMessage(recentMessages);
     debugLog('Generation intercepted', { ...logMeta, routeSource, lastUserMessage });
 
-    const recallBundle = await buildUnifiedRecallBundle(context, recentMessages);
+    const preRefresh = await preRefreshMemoryForRoute(context);
+    const recallBundle = await buildUnifiedRecallBundle(context, recentMessages, { preRefresh });
     const {
         mvuSummary,
         memoryGraph,
@@ -8242,7 +8380,7 @@ async function routeWorldbookForMessages(context, recentMessages, routeSource = 
     let selectedBookshelf = [];
 
     if (combinedCandidates.length === 0 && !hasMemoryState(memoryGraph) && !vectorSelectedBookshelf.length) {
-        debugRun([], [], '', `none-${routeSource}`, '', '', [], [], bookshelfCandidates, []);
+        debugRun([], [], '', `none-${routeSource}`, '', '', [], [], bookshelfCandidates, [], recallBundle.pipeline);
         lastRouteCompletedAt = Date.now();
         return {
             candidates: wbCandidates,
@@ -8312,7 +8450,21 @@ async function routeWorldbookForMessages(context, recentMessages, routeSource = 
 
     const injection = buildInjection(selectedWb, memoryGraph, selectedMem, selectedBookshelf);
     setExtensionPrompt(PROMPT_KEY, injection, settings.position, settings.depth, false, settings.role);
-    debugRun(wbCandidates, selectedWb, injection, source, routerPrompt, routerRaw, memoryCandidates, selectedMem, bookshelfCandidates, selectedBookshelf);
+    const pipeline = {
+        ...recallBundle.pipeline,
+        selected: {
+            worldbook: selectedWb.length,
+            memory: selectedMem.length,
+            bookshelf: selectedBookshelf.length,
+        },
+        injection: {
+            chars: injection.length,
+            hasWorldbook: !!selectedWb.length,
+            hasMemory: !!(selectedMem.length || hasMemoryState(memoryGraph)),
+            hasBookshelf: !!selectedBookshelf.length,
+        },
+    };
+    debugRun(wbCandidates, selectedWb, injection, source, routerPrompt, routerRaw, memoryCandidates, selectedMem, bookshelfCandidates, selectedBookshelf, pipeline);
     lastRouteCompletedAt = Date.now();
 
     return {
