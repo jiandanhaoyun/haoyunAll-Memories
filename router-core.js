@@ -1972,6 +1972,200 @@ function splitTextIntoBookshelfChunks(text, options = {}) {
     return chunks.slice(0, BOOKSHELF_MAX_IMPORT_CHUNKS);
 }
 
+function getMemoryBookTypeConfig(type) {
+    const normalized = String(type || 'other').toLowerCase();
+    if (['character', 'person', 'npc', 'role'].includes(normalized)) {
+        return { key: 'character', type: 'character', title: '自动记忆书：人物档案' };
+    }
+    if (['event', 'plot', 'quest', 'scene', 'timeline'].includes(normalized)) {
+        return { key: 'plot', type: 'plot', title: '自动记忆书：剧情时间线' };
+    }
+    if (['rule', 'concept', 'world', 'faction', 'location', 'place', 'item'].includes(normalized)) {
+        return { key: 'world', type: normalized === 'rule' ? 'rule' : 'world', title: '自动记忆书：世界设定' };
+    }
+    return { key: 'memory', type: 'memory', title: '自动记忆书：综合记忆' };
+}
+
+function formatMemoryBookNodeChunk(node, graph = getMemoryGraph()) {
+    const relatedLinks = (Array.isArray(graph?.links) ? graph.links : [])
+        .filter(link => String(link?.source) === String(node?.id) || String(link?.target) === String(node?.id))
+        .slice(0, 6)
+        .map(link => {
+            const otherId = String(link.source) === String(node.id) ? link.target : link.source;
+            const other = (Array.isArray(graph?.nodes) ? graph.nodes : []).find(item => String(item.id) === String(otherId));
+            return `${link.type || 'RELATED'} -> ${other?.title || otherId}`;
+        });
+    const parts = [];
+    const push = (label, value) => {
+        const text = String(value || '').trim();
+        if (text) parts.push(`${label}：${text}`);
+    };
+    push('标题', node?.title || node?.id);
+    push('类型', node?.type);
+    push('摘要', node?.summary);
+    push('内容', node?.content);
+    push('地点', node?.location);
+    push('时间', node?.timeSpan);
+    if (Array.isArray(node?.tags) && node.tags.length) push('标签', node.tags.join('、'));
+    if (Array.isArray(node?.keys) && node.keys.length) push('关键词', node.keys.join('、'));
+    if (relatedLinks.length) push('关联', relatedLinks.join('；'));
+    return parts.join('\n').trim();
+}
+
+function buildMemoryGraphBookshelfDefinitions(graph = getMemoryGraph(), context = getContext()) {
+    const nodes = (Array.isArray(graph?.nodes) ? graph.nodes : [])
+        .filter(node => node?.id && formatMemoryBookNodeChunk(node, graph));
+    const groups = new Map();
+    for (const node of nodes) {
+        const config = getMemoryBookTypeConfig(node.type);
+        if (!groups.has(config.key)) {
+            groups.set(config.key, { ...config, chunks: [] });
+        }
+        groups.get(config.key).chunks.push({
+            title: truncateText(node.title || node.id || `记忆片段 ${groups.get(config.key).chunks.length + 1}`, 70),
+            text: formatMemoryBookNodeChunk(node, graph),
+            sourceNodeId: String(node.id || ''),
+            sourceType: String(node.type || ''),
+        });
+    }
+
+    const links = Array.isArray(graph?.links) ? graph.links : [];
+    if (links.length) {
+        const nodeById = new Map(nodes.map(node => [String(node.id), node]));
+        const relationLines = links.slice(-80).map(link => {
+            const source = nodeById.get(String(link.source));
+            const target = nodeById.get(String(link.target));
+            return `${source?.title || link.source} --${link.type || 'RELATED'}--> ${target?.title || link.target}`;
+        }).filter(Boolean);
+        if (relationLines.length) {
+            const relationText = relationLines.join('\n');
+            groups.set('relations', {
+                key: 'relations',
+                type: 'memory',
+                title: '自动记忆书：关系网络',
+                chunks: splitTextIntoBookshelfChunks(relationText, { chunkSize: 520, overlap: 60 })
+                    .map((chunk, index) => ({
+                        title: chunk.title || `关系摘要 ${index + 1}`,
+                        text: chunk.text,
+                        sourceType: 'relations',
+                    })),
+            });
+        }
+    }
+
+    const stateParts = [];
+    if (graph?.lastSummary) stateParts.push(`最近摘要：${truncateText(graph.lastSummary, 900)}`);
+    const stateValues = graph?.state?.custom_values || graph?.custom_values || {};
+    for (const [key, value] of Object.entries(stateValues || {})) {
+        const text = String(value ?? '').trim();
+        if (text) stateParts.push(`${key}：${text}`);
+    }
+    if (stateParts.length) {
+        groups.set('state', {
+            key: 'state',
+            type: 'memory',
+            title: '自动记忆书：当前状态',
+            chunks: splitTextIntoBookshelfChunks(stateParts.join('\n'), { chunkSize: 520, overlap: 60 })
+                .map((chunk, index) => ({
+                    title: chunk.title || `状态摘要 ${index + 1}`,
+                    text: chunk.text,
+                    sourceType: 'state',
+                })),
+        });
+    }
+
+    return Array.from(groups.values())
+        .map(group => ({
+            ...group,
+            chunks: (group.chunks || []).filter(chunk => String(chunk?.text || '').trim()).slice(0, 160),
+        }))
+        .filter(group => group.chunks.length);
+}
+
+async function syncMemoryGraphBookshelfBooks(graph = getMemoryGraph(), context = getContext(), options = {}) {
+    const scope = getBookshelfScope(context);
+    const chatKey = getCurrentChatMemoryKey(context);
+    const definitions = buildMemoryGraphBookshelfDefinitions(graph, context);
+    const existingBooks = await bookshelfGetAll('books').catch(() => []);
+    const staleBooks = (existingBooks || []).filter(book => (
+        book?.autoGenerated
+        && book?.autoSource === 'memory-graph'
+        && book?.autoChatKey === chatKey
+    ));
+    for (const book of staleBooks) {
+        await bookshelfDeleteBook(book.id);
+    }
+
+    const now = new Date().toISOString();
+    const provider = getBookshelfEmbeddingProviderMeta();
+    const createdBooks = [];
+    let totalChunks = 0;
+    for (const definition of definitions) {
+        const bookId = `auto_memory:${hashString(chatKey)}:${definition.key}`;
+        const bindings = [
+            { type: 'chat', key: scope.chatKey, label: scope.chatName || scope.chatKey, createdAt: now },
+        ];
+        if (scope.characterKey) {
+            bindings.push({ type: 'character', key: scope.characterKey, label: scope.characterName || scope.characterKey, createdAt: now });
+        }
+        const book = {
+            id: bookId,
+            title: definition.title,
+            fileName: `${definition.title}.memory`,
+            type: definition.type || 'memory',
+            enabled: true,
+            bindings,
+            status: definition.chunks.length ? 'pending_vectorization' : 'empty',
+            autoGenerated: true,
+            autoSource: 'memory-graph',
+            autoChatKey: chatKey,
+            sourceSummary: `由当前图谱自动拆分：${definition.chunks.length} 个摘要片段`,
+            embeddingMode: options.vectorize ? provider.mode : '',
+            embeddingModel: options.vectorize ? provider.model : '',
+            embeddingDim: 0,
+            chunkCount: definition.chunks.length,
+            vectorizedCount: 0,
+            createdAt: now,
+            updatedAt: now,
+        };
+        const chunks = definition.chunks.map((chunk, index) => ({
+            id: `${bookId}:chunk:${index}`,
+            bookId,
+            index,
+            order: index + 1,
+            title: chunk.title || `${definition.title} #${index + 1}`,
+            text: chunk.text,
+            textHash: hashString(chunk.text),
+            sourceNodeId: chunk.sourceNodeId || '',
+            sourceType: chunk.sourceType || definition.key,
+            enabled: true,
+            vector: [],
+            vectorStatus: 'pending',
+            embeddingMode: '',
+            embeddingModel: '',
+            embeddingDim: 0,
+            createdAt: now,
+            updatedAt: now,
+        }));
+        await bookshelfPut('books', book);
+        if (chunks.length) await bookshelfPutMany('chunks', chunks);
+        createdBooks.push(book);
+        totalChunks += chunks.length;
+    }
+
+    if (options.vectorize) {
+        for (const book of createdBooks) {
+            await rebuildBookshelfBookVectors(book.id);
+        }
+    }
+    return {
+        books: createdBooks.length,
+        chunks: totalChunks,
+        deleted: staleBooks.length,
+        bookIds: createdBooks.map(book => book.id),
+    };
+}
+
 function tokenizeBookshelfText(text) {
     const normalized = normalizeText(text).toLowerCase();
     const terms = extractQueryTerms(normalized).filter(item => item.length >= 2);
@@ -5753,6 +5947,7 @@ function createBookshelfStandaloneFold() {
                     <div class="ai-wbr-bookshelf-tabs">
                         <span class="ai-wbr-bookshelf-read-badge">向量召回</span>
                         <button id="ai_wbr_bookshelf_import" class="ai-wbr-bookshelf-link" type="button">导入TXT</button>
+                        <button id="ai_wbr_bookshelf_build_memory_books" class="ai-wbr-bookshelf-link" type="button">生成记忆书</button>
                         <button id="ai_wbr_bookshelf_test_open" class="ai-wbr-bookshelf-link" type="button">召回测试</button>
                     </div>
 
@@ -5829,6 +6024,7 @@ function createBookshelfStandaloneFold() {
                         <div class="ai-wbr-bookshelf-actions">
                             <button id="ai_wbr_bookshelf_test_provider" class="menu_button" type="button">测试向量模型</button>
                             <button id="ai_wbr_bookshelf_load_local" class="menu_button" type="button">下载/加载本地模型</button>
+                            <button id="ai_wbr_bookshelf_build_memory_books" class="menu_button" type="button">从图谱生成记忆书</button>
                             <button id="ai_wbr_bookshelf_vectorize_memory" class="menu_button" type="button">同步图谱向量</button>
                             <button id="ai_wbr_bookshelf_reset_memory_vectors" class="menu_button" type="button">重置图谱向量</button>
                         </div>
@@ -5860,6 +6056,13 @@ function ensureBookshelfStandaloneControls(section) {
         config.find('#ai_wbr_bookshelf_max_chunks').before('<input id="ai_wbr_bookshelf_memory_vector_max" class="text_pole" type="number" min="1" max="12" step="1" />');
     }
     const actions = panel.find('.ai-wbr-bookshelf-actions').first();
+    const tabs = panel.find('.ai-wbr-bookshelf-tabs').first();
+    if (tabs.length && !panel.find('#ai_wbr_bookshelf_build_memory_books').length) {
+        tabs.find('#ai_wbr_bookshelf_import').after('<button id="ai_wbr_bookshelf_build_memory_books" class="ai-wbr-bookshelf-link" type="button">生成记忆书</button>');
+    }
+    if (actions.length && !panel.find('#ai_wbr_bookshelf_build_memory_books').length) {
+        actions.find('#ai_wbr_bookshelf_load_local').after('<button id="ai_wbr_bookshelf_build_memory_books" class="menu_button" type="button">从图谱生成记忆书</button>');
+    }
     if (actions.length && !panel.find('#ai_wbr_bookshelf_vectorize_memory').length) {
         actions.find('#ai_wbr_bookshelf_load_local').after('<button id="ai_wbr_bookshelf_vectorize_memory" class="menu_button" type="button">同步图谱向量</button>');
     }
@@ -6951,6 +7154,7 @@ function getBookshelfTypeLabel(type) {
         world: '世界观',
         plot: '剧情记录',
         rule: '规则设定',
+        memory: '自动记忆书',
         other: '其他资料',
     })[String(type || 'other')] || '其他资料';
 }
@@ -8578,6 +8782,31 @@ function bindMemoryPanelActions() {
             renderBookshelfPanel();
         } catch (error) {
             setBookshelfStatus(`图谱向量同步失败：${error?.message || error}`);
+            toastr?.error?.('Operation failed.', 'AI Worldbook Router');
+            renderBookshelfPanel();
+        }
+    });
+
+    $(document).off('click.aiWbrBookshelfBuildMemoryBooks', '#ai_wbr_bookshelf_build_memory_books').on('click.aiWbrBookshelfBuildMemoryBooks', '#ai_wbr_bookshelf_build_memory_books', async (event) => {
+        event.preventDefault();
+        try {
+            setBookshelfStatus('正在从图谱拆分并生成自动记忆书...');
+            const result = await syncMemoryGraphBookshelfBooks(getMemoryGraph(), getContext(), { vectorize: false });
+            selectedBookshelfBookId = result.bookIds?.[0] || selectedBookshelfBookId;
+            bookshelfLastTestResults = [];
+            const provider = getBookshelfEmbeddingProviderMeta();
+            if (provider.model && result.bookIds?.length) {
+                for (const bookId of result.bookIds) {
+                    await rebuildBookshelfBookVectors(bookId);
+                }
+                setBookshelfStatus(`自动记忆书已生成并向量化：${result.books} 本，${result.chunks} 个摘要片段；已替换旧书 ${result.deleted} 本。`);
+            } else {
+                setBookshelfStatus(`自动记忆书已生成：${result.books} 本，${result.chunks} 个摘要片段；配置向量模型后点击书籍“开始向量化”。`);
+            }
+            toastr?.success?.('Memory books generated.', 'AI Worldbook Router');
+            renderBookshelfPanel();
+        } catch (error) {
+            setBookshelfStatus(`生成记忆书失败：${error?.message || error}`);
             toastr?.error?.('Operation failed.', 'AI Worldbook Router');
             renderBookshelfPanel();
         }
