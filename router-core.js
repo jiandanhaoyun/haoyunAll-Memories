@@ -1089,7 +1089,7 @@ function getEntryId(entry, fallback) {
     return entry.uid ?? entry.id ?? entry.displayIndex ?? fallback;
 }
 
-function getEntryKeys(entry) {
+function getEntryKeys(entry = {}) {
     const primary = Array.isArray(entry.key) ? entry.key : (Array.isArray(entry.keys) ? entry.keys : []);
     const secondary = Array.isArray(entry.keysecondary)
         ? entry.keysecondary
@@ -5671,12 +5671,30 @@ function createStandaloneStat(label, value) {
         .append($('<div class="ai-wbr-console-stat-label"></div>').text(label));
 }
 
-function createStandaloneEntryCard(entry, type = 'worldbook', selected = false) {
-    const title = entry.comment || entry.keys?.primary?.[0] || entry.uid || 'Untitled entry';
+function createStandaloneEntryCard(entry = {}, type = 'worldbook', selected = false) {
+    const keyData = entry.keys && typeof entry.keys === 'object' && !Array.isArray(entry.keys) && Array.isArray(entry.keys.all)
+        ? entry.keys
+        : getEntryKeys(entry);
+    const primaryKeys = Array.isArray(keyData.primary) ? keyData.primary : [];
+    const allKeys = Array.isArray(keyData.all) ? keyData.all : [];
+    const matchedKeys = Array.isArray(entry.matchedKeys)
+        ? entry.matchedKeys
+        : (entry.matchedKeys ? [entry.matchedKeys] : []);
+    const title = entry.comment
+        || entry.recallTitle
+        || primaryKeys[0]
+        || entry.title
+        || entry.uid
+        || entry.id
+        || 'Untitled entry';
     const source = type === 'memory'
-        ? `${entry.memoryType || 'memory'}#${entry.uid || ''}`
-        : `${entry.world || entry.source || 'worldbook'}#${entry.uid || ''}`;
-    const keys = entry.matchedKeys?.length ? entry.matchedKeys.join(', ') : getEntryKeys(entry).join(', ');
+        ? `${entry.memoryType || entry.sourceType || 'memory'}#${entry.uid || entry.id || ''}`
+        : type === 'bookshelf'
+            ? `${entry.book?.title || entry.book?.fileName || 'bookshelf'}#${entry.uid || entry.id || ''}`
+            : `${entry.world || entry.source || entry.sourceType || 'worldbook'}#${entry.uid || entry.id || ''}`;
+    const keys = matchedKeys.length ? matchedKeys.map(String).join(', ') : allKeys.map(String).join(', ');
+    const body = entry.content || entry.text || entry.chunk?.text || '';
+    const reason = entry.reason || entry.recallReason || '';
 
     return $('<div class="ai-wbr-console-entry"></div>')
         .toggleClass('selected', !!selected)
@@ -5685,8 +5703,24 @@ function createStandaloneEntryCard(entry, type = 'worldbook', selected = false) 
             .append($('<span></span>').text(selected ? 'Injected' : 'Candidate')))
         .append($('<div class="ai-wbr-console-entry-meta"></div>').text(source))
         .append(keys ? $('<div class="ai-wbr-console-entry-keys"></div>').text(`keys: ${truncateText(keys, 160)}`) : '')
-        .append(entry.reason ? $('<small></small>').text(entry.reason) : '')
-        .append(entry.content ? $('<p></p>').text(truncateText(entry.content, 320)) : '');
+        .append(reason ? $('<small></small>').text(reason) : '')
+        .append(body ? $('<p></p>').text(truncateText(body, 320)) : '');
+}
+
+function appendStandaloneEntryCard(list, entry, type, selected) {
+    try {
+        list.append(createStandaloneEntryCard(entry, type, selected));
+    } catch (error) {
+        console.warn(`${LOG_PREFIX} failed to render ${type} route candidate`, error, entry);
+        const title = entry?.comment || entry?.title || entry?.uid || entry?.id || 'Bad route candidate';
+        list.append($('<div class="ai-wbr-console-entry"></div>')
+            .toggleClass('selected', !!selected)
+            .append($('<div class="ai-wbr-console-entry-head"></div>')
+                .append($('<b></b>').text(title))
+                .append($('<span></span>').text(selected ? 'Injected' : 'Candidate')))
+            .append($('<div class="ai-wbr-console-entry-meta"></div>').text(`${type}#${entry?.uid || entry?.id || ''}`))
+            .append($('<small></small>').text(`候选字段不完整，已跳过部分详情：${error?.message || error}`)));
+    }
 }
 function getStandaloneTabId() {
     return String($('#ai_wbr_console_tabs .ai-wbr-console-tab.active').data('tab') || 'overview');
@@ -5909,19 +5943,24 @@ function renderStandaloneOverview(container) {
 function renderStandaloneRoutes(container) {
     const selectedIds = new Set((lastRun.selected || []).map(entry => getEntryId(entry, entry.uid)));
     const memorySelectedIds = new Set((lastRun.selectedMemories || []).map(entry => String(entry.uid)));
+    const bookshelfSelectedIds = new Set((lastRun.selectedBookshelf || []).map(entry => String(entry.uid || entry.id)));
     const candidates = Array.isArray(lastRun.candidates) ? lastRun.candidates : [];
     const memoryCandidates = Array.isArray(lastRun.memoryCandidates) ? lastRun.memoryCandidates : [];
+    const bookshelfCandidates = Array.isArray(lastRun.bookshelfCandidates) ? lastRun.bookshelfCandidates : [];
     const list = $('<div class="ai-wbr-console-entry-list"></div>');
 
     container.append($('<div class="ai-wbr-console-section-title"></div>').text('世界书路由结果'));
-    if (!candidates.length && !memoryCandidates.length) {
+    if (!candidates.length && !memoryCandidates.length && !bookshelfCandidates.length) {
         list.append($('<div class="ai-wbr-console-empty"></div>').text('尚无路由记录。下一次生成后会显示候选与命中条目。'));
     }
     for (const entry of candidates) {
-        list.append(createStandaloneEntryCard(entry, 'worldbook', selectedIds.has(getEntryId(entry, entry.uid))));
+        appendStandaloneEntryCard(list, entry, 'worldbook', selectedIds.has(getEntryId(entry, entry.uid)));
     }
     for (const entry of memoryCandidates) {
-        list.append(createStandaloneEntryCard(entry, 'memory', memorySelectedIds.has(String(entry.uid))));
+        appendStandaloneEntryCard(list, entry, 'memory', memorySelectedIds.has(String(entry.uid)));
+    }
+    for (const entry of bookshelfCandidates) {
+        appendStandaloneEntryCard(list, entry, 'bookshelf', bookshelfSelectedIds.has(String(entry.uid || entry.id)));
     }
     container.append(list);
 }
