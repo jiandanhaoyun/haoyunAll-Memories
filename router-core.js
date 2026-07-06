@@ -3498,7 +3498,8 @@ function removeMemoryReviewItem(id, context = getContext()) {
 function acceptMemoryReviewItem(id, context = getContext()) {
     const item = getMemoryReviewQueue(context).find(entry => String(entry.id) === String(id));
     if (!item) return null;
-    if (item.status === 'stale' || !isMemorySourceCurrent(item.source, context)) {
+    const sourceInvalidated = item.source?.id && getInvalidatedMemorySourceIds(item.source.chatKey || getCurrentChatMemoryKey(context)).includes(String(item.source.id));
+    if (item.status === 'stale' || sourceInvalidated || (item.source?.chatKey && item.source.chatKey !== getCurrentChatMemoryKey(context))) {
         const container = getChatMemoryContainer(context);
         container.reviewQueue = getMemoryReviewQueue(context).map(entry => String(entry.id) === String(id)
             ? { ...entry, status: 'stale', staleReason: entry.staleReason || 'source_changed' }
@@ -3607,7 +3608,7 @@ function isWeakMemoryTitle(title) {
 function isValidMemoryNodeForApply(node) {
     if (!node || isWeakMemoryTitle(node.title)) return false;
     const body = normalizeText(`${node.content || ''} ${node.summary || ''}`);
-    const hasSubstance = body.length >= 8 || (Array.isArray(node.keys) && node.keys.join('').length >= 4);
+    const hasSubstance = body.length >= 4 || (Array.isArray(node.keys) && node.keys.join('').length >= 2);
     return hasSubstance;
 }
 
@@ -3618,25 +3619,20 @@ function sanitizeMemoryUpdateForApply(update) {
         updates: [],
         links: [],
     };
-    const validNodeTitles = new Set();
-    const validNodeIds = new Set();
-
     for (const rawNode of (Array.isArray(update?.nodes) ? update.nodes : []).slice(0, 8)) {
         const title = truncateText(rawNode?.title || rawNode?.label || rawNode?.id || '', 80);
         const summary = truncateText(rawNode?.summary || rawNode?.content || rawNode?.description || '', 240);
-        if (isWeakMemoryTitle(title) || normalizeText(summary).length < 8) continue;
+        const keys = Array.isArray(rawNode?.keys) ? rawNode.keys.join('') : String(rawNode?.keys || '');
+        if (isWeakMemoryTitle(title) || (normalizeText(summary).length < 4 && normalizeText(keys).length < 2)) continue;
         sanitized.nodes.push(rawNode);
-        validNodeTitles.add(normalizeText(title));
-        validNodeIds.add(createMemoryId(rawNode?.id || title));
     }
 
     for (const rawUpdate of (Array.isArray(update?.updates) ? update.updates : []).slice(0, 8)) {
         const title = rawUpdate?.title || rawUpdate?.titleToUpdate || rawUpdate?.id || '';
         const content = rawUpdate?.content || rawUpdate?.newContent || rawUpdate?.summary || '';
-        if (isWeakMemoryTitle(title) || normalizeText(content).length < 8) continue;
+        const keys = Array.isArray(rawUpdate?.keys) ? rawUpdate.keys.join('') : String(rawUpdate?.keys || '');
+        if (isWeakMemoryTitle(title) || (normalizeText(content).length < 4 && normalizeText(keys).length < 2)) continue;
         sanitized.updates.push(rawUpdate);
-        validNodeTitles.add(normalizeText(title));
-        validNodeIds.add(createMemoryId(rawUpdate?.id || title));
     }
 
     for (const rawLink of (Array.isArray(update?.links) ? update.links : []).slice(0, 12)) {
@@ -7398,7 +7394,8 @@ function renderMemoryReviewQueue() {
     for (const item of queue) {
         const summary = item.summary || summarizeMemoryUpdateProposal(item.update);
         const sourceLabel = getMemorySourceLabel(item.source);
-        const isStale = item.status === 'stale' || !isMemorySourceCurrent(item.source);
+        const sourceInvalidated = item.source?.id && getInvalidatedMemorySourceIds(item.source.chatKey || getCurrentChatMemoryKey()).includes(String(item.source.id));
+        const isStale = item.status === 'stale' || sourceInvalidated || (item.source?.chatKey && item.source.chatKey !== getCurrentChatMemoryKey());
         const chips = [
             `新增 ${summary.nodes || 0}`,
             `修改 ${summary.updates || 0}`,
