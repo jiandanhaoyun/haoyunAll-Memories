@@ -6507,11 +6507,13 @@ function renderMemoryGraphToolbarHtml(graph, displayModel, nodes, edges) {
                 <label class="ai-wbr-memory-weight-filter">关系≥<span>${Math.round(displayModel.minWeight * 100)}%</span><input class="ai-wbr-memory-link-weight" type="range" min="0" max="1" step="0.05" value="${displayModel.minWeight}" /></label>
             </div>
             ${renderMemoryGraphTypeFilters(graph)}
-            <div class="ai-wbr-memory-graph-summary">显示 ${nodes.length}/${displayModel.totalNodes} 节点，${edges.length}/${displayModel.totalLinks} 关系${displayModel.hiddenNodes || displayModel.hiddenLinks ? `，已收起 ${displayModel.hiddenNodes} 节点 / ${displayModel.hiddenLinks} 关系` : ''}</div>
-            <button class="menu_button ai-wbr-memory-zoom-in" type="button">＋</button>
-            <button class="menu_button ai-wbr-memory-zoom-out" type="button">－</button>
-            <button class="menu_button ai-wbr-memory-zoom-reset" type="button">适配视图</button>
-            <span class="ai-wbr-memory-link-hint">${memoryGraphLinkSourceId ? `连线起点：${escapeHtml(graph.nodes.find(node => node.id === memoryGraphLinkSourceId)?.title || memoryGraphLinkSourceId)}` : ''}</span>
+            <div class="ai-wbr-memory-graph-row ai-wbr-memory-graph-statusbar">
+                <div class="ai-wbr-memory-graph-summary">显示 ${nodes.length}/${displayModel.totalNodes} 节点，${edges.length}/${displayModel.totalLinks} 关系${displayModel.hiddenNodes || displayModel.hiddenLinks ? `，已收起 ${displayModel.hiddenNodes} 节点 / ${displayModel.hiddenLinks} 关系` : ''}</div>
+                <button class="menu_button ai-wbr-memory-zoom-in" type="button">＋</button>
+                <button class="menu_button ai-wbr-memory-zoom-out" type="button">－</button>
+                <button class="menu_button ai-wbr-memory-zoom-reset" type="button">适配视图</button>
+                <span class="ai-wbr-memory-link-hint">${memoryGraphLinkSourceId ? `连线起点：${escapeHtml(graph.nodes.find(node => node.id === memoryGraphLinkSourceId)?.title || memoryGraphLinkSourceId)}` : ''}</span>
+            </div>
         </div>
     `;
 }
@@ -6707,21 +6709,10 @@ function renderMemoryGraphSvg(graph) {
     const nodes = displayModel.nodes;
     if (!nodes.length) {
         container.html(`
-            <div class="ai-wbr-memory-graph-toolbar">
-                <div class="ai-wbr-memory-graph-row">
-                    <button class="menu_button ai-wbr-memory-mode ${displayModel.mode === 'overview' ? 'active' : ''}" type="button" data-memory-graph-mode="overview">概览</button>
-                    <button class="menu_button ai-wbr-memory-mode ${displayModel.mode === 'focus' ? 'active' : ''}" type="button" data-memory-graph-mode="focus" ${memoryGraphSelectedNodeId ? '' : 'disabled'}>聚焦</button>
-                    <button class="menu_button ai-wbr-memory-mode ${displayModel.mode === 'full' ? 'active' : ''}" type="button" data-memory-graph-mode="full">全量</button>
-                    <button class="menu_button ai-wbr-memory-clear-filters" type="button">清除筛选</button>
-                </div>
-                <div class="ai-wbr-memory-graph-row">
-                    <input class="text_pole ai-wbr-memory-graph-search" type="search" placeholder="搜索人物、地点、事件、关键词" value="${escapeHtml(memoryGraphSearchText)}" />
-                    <label class="ai-wbr-memory-weight-filter">关系≥<span>${Math.round(displayModel.minWeight * 100)}%</span><input class="ai-wbr-memory-link-weight" type="range" min="0" max="1" step="0.05" value="${displayModel.minWeight}" /></label>
-                </div>
-                ${renderMemoryGraphTypeFilters(graph)}
-                <div class="ai-wbr-memory-graph-summary">显示 0/${displayModel.totalNodes} 节点，0/${displayModel.totalLinks} 关系</div>
+            ${renderMemoryGraphToolbarHtml(graph, displayModel, [], [])}
+            <div class="ai-wbr-memory-graph-canvas ai-wbr-memory-graph-empty">
+                <div class="ai-wbr-token-empty">暂无可显示的记忆节点。可以清除搜索/类型筛选，或生成回复后让记忆图谱继续整理。</div>
             </div>
-            <div class="ai-wbr-token-empty">暂无可显示的记忆节点。可以清除搜索/类型筛选，或生成回复后让记忆图谱继续整理。</div>
         `);
         bindMemoryGraphSvgInteractions();
         return;
@@ -6820,25 +6811,10 @@ function renderMemoryGraphSvg(graph) {
     syncMemoryGraphViewToContainerAspect(container[0]);
 
     container.html(`
-        <div class="ai-wbr-memory-graph-toolbar">
-            <div class="ai-wbr-memory-graph-row">
-                <button class="menu_button ai-wbr-memory-mode ${displayModel.mode === 'overview' ? 'active' : ''}" type="button" data-memory-graph-mode="overview">概览</button>
-                <button class="menu_button ai-wbr-memory-mode ${displayModel.mode === 'focus' ? 'active' : ''}" type="button" data-memory-graph-mode="focus" ${memoryGraphSelectedNodeId ? '' : 'disabled'}>聚焦</button>
-                <button class="menu_button ai-wbr-memory-mode ${displayModel.mode === 'full' ? 'active' : ''}" type="button" data-memory-graph-mode="full">全量</button>
-                <button class="menu_button ai-wbr-memory-clear-filters" type="button">清除筛选</button>
-            </div>
-            <div class="ai-wbr-memory-graph-row">
-                <input class="text_pole ai-wbr-memory-graph-search" type="search" placeholder="搜索人物、地点、事件、关键词" value="${escapeHtml(memoryGraphSearchText)}" />
-                <label class="ai-wbr-memory-weight-filter">关系≥<span>${Math.round(displayModel.minWeight * 100)}%</span><input class="ai-wbr-memory-link-weight" type="range" min="0" max="1" step="0.05" value="${displayModel.minWeight}" /></label>
-            </div>
-            ${renderMemoryGraphTypeFilters(graph)}
-            <div class="ai-wbr-memory-graph-summary">显示 ${nodes.length}/${displayModel.totalNodes} 节点，${edges.length}/${displayModel.totalLinks} 关系${displayModel.hiddenNodes || displayModel.hiddenLinks ? `，已收起 ${displayModel.hiddenNodes} 节点 / ${displayModel.hiddenLinks} 关系` : ''}</div>
-            <button class="menu_button ai-wbr-memory-zoom-in" type="button">＋</button>
-            <button class="menu_button ai-wbr-memory-zoom-out" type="button">－</button>
-            <button class="menu_button ai-wbr-memory-zoom-reset" type="button">适配视图</button>
-            <span class="ai-wbr-memory-link-hint">${memoryGraphLinkSourceId ? `连线起点：${escapeHtml(graph.nodes.find(node => node.id === memoryGraphLinkSourceId)?.title || memoryGraphLinkSourceId)}` : ''}</span>
+        ${renderMemoryGraphToolbarHtml(graph, displayModel, nodes, edges)}
+        <div class="ai-wbr-memory-graph-canvas">
+            <svg viewBox="${memoryGraphView.x} ${memoryGraphView.y} ${memoryGraphView.width} ${memoryGraphView.height}" preserveAspectRatio="none" role="img" aria-label="记忆图谱">${markerDefs}${lines}${cards}</svg>
         </div>
-        <svg viewBox="${memoryGraphView.x} ${memoryGraphView.y} ${memoryGraphView.width} ${memoryGraphView.height}" preserveAspectRatio="none" role="img" aria-label="记忆图谱">${markerDefs}${lines}${cards}</svg>
     `);
     bindMemoryGraphSvgInteractions();
 }
