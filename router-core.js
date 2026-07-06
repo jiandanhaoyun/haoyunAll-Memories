@@ -3137,6 +3137,19 @@ function hasUsefulMemoryContainer(container) {
     );
 }
 
+function hasUsefulMemoryGraph(graph) {
+    if (!graph || typeof graph !== 'object' || Array.isArray(graph)) {
+        return false;
+    }
+    const safeGraph = cloneMemoryGraph(graph);
+    return !!(
+        (Array.isArray(safeGraph.nodes) && safeGraph.nodes.length)
+        || (Array.isArray(safeGraph.links) && safeGraph.links.length)
+        || hasMemoryState(safeGraph)
+        || String(safeGraph.lastSummary || '').trim()
+    );
+}
+
 function cloneMemoryContainerForScope(container, chatKey) {
     const normalized = normalizeChatMemoryContainer(container);
     normalized.chatKey = chatKey;
@@ -3218,14 +3231,21 @@ function getChatMemoryContainer(context = getContext()) {
     if (storedContainer && typeof storedContainer === 'object' && !Array.isArray(storedContainer)) {
         const normalizedStored = normalizeChatMemoryContainer(storedContainer);
         normalizedStored.chatKey = currentChatKey;
-        memoryScopeDebugLog('getChatMemoryContainer from settings map', {
+        if (hasUsefulMemoryContainer(normalizedStored)) {
+            memoryScopeDebugLog('getChatMemoryContainer from settings map', {
+                chatKey: currentChatKey,
+                graph: getMemoryGraphSummary(normalizedStored.graph),
+            }, context);
+            return normalizedStored;
+        }
+        memoryScopeDebugLog('getChatMemoryContainer ignored empty settings map container', {
             chatKey: currentChatKey,
             graph: getMemoryGraphSummary(normalizedStored.graph),
         }, context);
-        return normalizedStored;
     }
 
-    for (const legacyKey of getLegacyChatMemoryKeys(context)) {
+    const legacyChatKeys = getLegacyChatMemoryKeys(context);
+    for (const legacyKey of legacyChatKeys) {
         const legacyContainer = settings.memoryContainersByChat?.[legacyKey];
         if (!hasUsefulMemoryContainer(legacyContainer)) {
             continue;
@@ -3294,6 +3314,39 @@ function getChatMemoryContainer(context = getContext()) {
         return normalized;
     }
 
+    for (const legacyKey of [currentChatKey, ...legacyChatKeys]) {
+        const legacyGraph = settings.memoryGraphsByChat?.[legacyKey];
+        if (!hasUsefulMemoryGraph(legacyGraph)) {
+            continue;
+        }
+        const migrated = normalizeChatMemoryContainer({ graph: legacyGraph, chatKey: currentChatKey });
+        migrated.migratedAt = new Date().toISOString();
+        migrated.migratedFrom = `memoryGraphsByChat:${legacyKey}`;
+        settings.memoryContainersByChat[currentChatKey] = migrated;
+        Object.assign(extension_settings[MODULE_NAME], settings);
+        saveSettingsDebounced();
+        memoryScopeDebugLog('getChatMemoryContainer migrated from legacy graph map', {
+            legacyKey,
+            currentChatKey,
+            graph: getMemoryGraphSummary(migrated.graph),
+        }, context);
+        return migrated;
+    }
+
+    if (hasUsefulMemoryGraph(settings.memoryGraph)) {
+        const migrated = normalizeChatMemoryContainer({ graph: settings.memoryGraph, chatKey: currentChatKey });
+        migrated.migratedAt = new Date().toISOString();
+        migrated.migratedFrom = 'memoryGraph';
+        settings.memoryContainersByChat[currentChatKey] = migrated;
+        Object.assign(extension_settings[MODULE_NAME], settings);
+        saveSettingsDebounced();
+        memoryScopeDebugLog('getChatMemoryContainer migrated from global memoryGraph fallback', {
+            currentChatKey,
+            graph: getMemoryGraphSummary(migrated.graph),
+        }, context);
+        return migrated;
+    }
+
     memoryScopeDebugLog('getChatMemoryContainer empty/default', {
         rawType: raw === undefined ? 'undefined' : typeof raw,
         rawPreview: typeof raw === 'string' ? raw.slice(0, 180) : JSON.stringify(raw || null).slice(0, 180),
@@ -3308,6 +3361,8 @@ function persistChatMemoryContainer(container, context = getContext()) {
     const normalized = normalizeChatMemoryContainer(container);
     normalized.chatKey = chatKey;
     settings.memoryContainersByChat[chatKey] = normalized;
+    settings.memoryGraphsByChat[chatKey] = cloneMemoryGraph(normalized.graph);
+    settings.memoryGraph = normalized.graph;
     Object.assign(extension_settings[MODULE_NAME], settings);
     saveSettingsDebounced();
 
@@ -7246,7 +7301,15 @@ function renderMemoryGraphSvg(graph) {
     graph.nodes = Array.isArray(graph.nodes) ? graph.nodes : [];
     graph.links = Array.isArray(graph.links) ? graph.links : [];
 
-    const displayModel = buildMemoryGraphDisplayModel(graph);
+    let displayModel = buildMemoryGraphDisplayModel(graph);
+    if (!displayModel.nodes.length && graph.nodes.length) {
+        memoryGraphSearchText = '';
+        memoryGraphVisibleTypes = new Set();
+        if (memoryGraphDisplayMode === 'search' || memoryGraphDisplayMode === 'focus') {
+            memoryGraphDisplayMode = 'overview';
+        }
+        displayModel = buildMemoryGraphDisplayModel(graph);
+    }
     renderMemoryPreviewPanel(graph, displayModel);
     if (displayModel.mode === 'timeline') {
         renderMemoryTimelineView(graph, displayModel);
