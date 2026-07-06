@@ -3744,7 +3744,7 @@ function ensureMemoryUpdateHasVisibleFallback(update, messages, mode = 'realtime
             type: 'event',
             summary: truncateText(summary, 160),
             content: summary,
-            tags: ['auto_memory'],
+            tags: ['自动记忆'],
             importance: 0.55,
             credibility: 0.75,
         }],
@@ -4085,7 +4085,7 @@ function getMemoryExtractionSchema() {
 
 function buildMemoryExtractionPrompt(recentMessages, graph) {
     const chatText = recentMessages
-        .map(message => `${message.isUser ? 'User' : 'Assistant'} #${message.floor}: ${sanitizeMemoryMessageText(message.text)}`)
+        .map(message => `${message.isUser ? '用户' : '助手'} #${message.floor}: ${sanitizeMemoryMessageText(message.text)}`)
         .join('\n\n');
     const currentGraph = truncateText(JSON.stringify({
         state: graph.state,
@@ -4098,14 +4098,14 @@ function buildMemoryExtractionPrompt(recentMessages, graph) {
         ? customDefinitions.map(definition => `- ${definition.label} (${definition.key}): ${definition.instruction || 'Custom state field'}`).join('\n')
         : '- None';
 
-    return `<role>You are a SillyTavern lightweight memory extractor.</role>
-<task>Extract only durable facts that will matter for future roleplay. Return only the variable block below.</task>
+    return `<role>你是 SillyTavern 的轻量记忆整理器。</role>
+<task>只提取后续角色扮演会继续用到的稳定事实、剧情进展、人物关系、地点、物品、设定和未解决问题。只能返回下方变量块。</task>
 <rules>
-1. Do not return JSON outside the requested variables.
-2. Do not explain your reasoning.
-3. Keep node ids stable and snake_case.
-4. Prefer updating existing nodes over duplicating them.
-5. If there is no useful memory, return empty arrays and preserve state fields as empty strings or arrays.
+1. 除指定变量块外，不要返回任何 JSON、Markdown、解释或寒暄。
+2. 所有 title、summary、content、location、timeSpan、tags、keys、state 字段必须优先使用中文；只有专有名词、角色原名、英文地名或用户原文明确为英文时才保留英文。
+3. node id 保持稳定，使用小写 snake_case；id 可以是英文/拼音，但展示给用户的标题和摘要必须是中文。
+4. 优先更新已有节点，避免重复创建含义相同的节点。
+5. 如果有可用剧情内容，至少生成 1 个中文 event 节点；只有完全没有有效记忆时才返回空数组。
 </rules>
 <custom_state_definitions>
 ${customDefinitionLines}
@@ -4139,7 +4139,7 @@ function buildMemoryExtractionRetryPrompt(recentMessages, graph) {
     return `${basePrompt}
 
 <retry_instruction>
-Your previous response could not be parsed. Return only the exact AIWBR variable block. Do not include markdown, prose, comments, or JSON wrappers.
+上一次返回无法解析。请只返回完整的 AIWBR 变量块，不要包含 Markdown、解释、注释或额外 JSON 包装。除 id 外，所有可读内容继续使用中文。
 </retry_instruction>`;
 }
 function getRouterRequestMaxTokens() {
@@ -6215,9 +6215,9 @@ function createStandaloneEntryCard(entry = {}, type = 'worldbook', selected = fa
         .toggleClass('selected', !!selected)
         .append($('<div class="ai-wbr-console-entry-head"></div>')
             .append($('<b></b>').text(title))
-            .append($('<span></span>').text(selected ? 'Injected' : 'Candidate')))
+            .append($('<span></span>').text(selected ? '已注入' : '候选')))
         .append($('<div class="ai-wbr-console-entry-meta"></div>').text(source))
-        .append(keys ? $('<div class="ai-wbr-console-entry-keys"></div>').text(`keys: ${truncateText(keys, 160)}`) : '')
+        .append(keys ? $('<div class="ai-wbr-console-entry-keys"></div>').text(`关键词：${truncateText(keys, 160)}`) : '')
         .append(reason ? $('<small></small>').text(reason) : '')
         .append(body ? $('<p></p>').text(truncateText(body, 320)) : '');
 }
@@ -6232,7 +6232,7 @@ function appendStandaloneEntryCard(list, entry, type, selected) {
             .toggleClass('selected', !!selected)
             .append($('<div class="ai-wbr-console-entry-head"></div>')
                 .append($('<b></b>').text(title))
-                .append($('<span></span>').text(selected ? 'Injected' : 'Candidate')))
+                .append($('<span></span>').text(selected ? '已注入' : '候选')))
             .append($('<div class="ai-wbr-console-entry-meta"></div>').text(`${type}#${entry?.uid || entry?.id || ''}`))
             .append($('<small></small>').text(`候选字段不完整，已跳过部分详情：${error?.message || error}`)));
     }
@@ -6349,7 +6349,8 @@ function createBookshelfStandaloneFold() {
 function ensureBookshelfStandaloneControls(section) {
     const panel = section.find('#ai_wbr_bookshelf_panel');
     if (!panel.length) return;
-    if (!panel.find('.ai-wbr-bookshelf-app').length) {
+    const hasOriginalSettingsLayout = panel.find('.ai-wbr-bookshelf-layout, .ai-wbr-bookshelf-import, .ai-wbr-bookshelf-config').length > 0;
+    if (!panel.find('.ai-wbr-bookshelf-app').length && !hasOriginalSettingsLayout) {
         const rebuiltPanel = createBookshelfStandaloneFold().find('#ai_wbr_bookshelf_panel');
         panel.empty().append(rebuiltPanel.children());
     }
@@ -6406,7 +6407,7 @@ function ensureBookshelfStandaloneSection() {
         section = $('<div class="ai-wbr-section" id="ai_wbr_bookshelf_section"></div>');
     }
     const fold = $('.ai-wbr-bookshelf-fold');
-    if (fold.length && !section.find('#ai_wbr_bookshelf_panel').length) {
+    if (fold.length && !section.find('#ai_wbr_bookshelf_panel').length && !fold.closest('#ai_wbr_memory_section').length) {
         section.append(fold.detach());
     }
     if (!section.find('#ai_wbr_bookshelf_panel').length) {
@@ -6476,7 +6477,7 @@ function renderStandaloneOverview(container) {
         .append($('<div></div>')
             .append($('<div class="ai-wbr-console-kicker"></div>').text('AI Worldbook Router'))
             .append($('<h3></h3>').text('世界书读取控制台'))
-            .append($('<p></p>').text('Select relevant worldbook, memory, and state before injecting into the current prompt.')))
+            .append($('<p></p>').text('生成前自动筛选相关世界书、记忆和状态，再注入当前提示词。')))
         .append($('<div class="ai-wbr-console-status-pill"></div>')
             .addClass(status.className)
             .append($(`<i class="fa-solid ${status.icon}"></i>`))
@@ -6607,6 +6608,13 @@ function createStandaloneSettingsNav(label, tabId, description) {
 }
 
 function renderStandaloneSettings(container) {
+    const settingsContent = getSettingsContentContainer();
+    const originalSections = settingsContent.find('.ai-wbr-section').length;
+    container.append($('<div class="ai-wbr-console-alert"></div>').text(
+        originalSections
+            ? '完整设置仍保留在扩展设置页；这里提供常用开关和分区快捷入口。'
+            : '如果完整设置页未显示，请关闭并重新打开扩展设置，插件会自动还原被独立窗口临时移动的面板。',
+    ));
     container.append($('<div class="ai-wbr-console-section-title"></div>').text('核心设置'));
     container.append(
         $('<div class="ai-wbr-console-form"></div>')
