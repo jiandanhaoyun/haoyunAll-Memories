@@ -4607,7 +4607,8 @@ async function runMemoryGraphUpdate(reason = 'realtime', options = {}) {
                 persistChatMemoryContainer(container, context);
                 
                 let memoryResult = null;
-                if (settings.memoryReviewRequired) {
+                const shouldQueueReview = !!settings.memoryReviewRequired && options.review === true;
+                if (shouldQueueReview) {
                     const review = enqueueMemoryReview(update, {
                         reason,
                         signature,
@@ -4645,7 +4646,7 @@ async function runMemoryGraphUpdate(reason = 'realtime', options = {}) {
                 persistChatMemoryContainer(updatedContainer, context);
                 const nodeCount = memoryResult.graph.nodes.length;
                 const linkCount = memoryResult.graph.links.length;
-                setMemoryStatus(`Memory update pending review: ${getMemoryReviewQueue(context).length} item(s).`, context);
+                setMemoryStatus(`记忆图谱已更新：${nodeCount} 个节点，${linkCount} 条关系。`, context);
                 if (memoryResult.touchedEntries.length) {
                     playEntryBurst(memoryResult.touchedEntries, {
                         variant: 'memory',
@@ -6375,6 +6376,7 @@ function renderStandaloneInjection(container) {
 }
 
 function renderStandaloneModel(container) {
+    container.append($('<div class="ai-wbr-console-section-title"></div>').text('独立路由模型'));
     const panel = $('<div class="ai-wbr-console-form"></div>');
     panel.append($('<label class="checkbox_label"></label>')
         .append($('<input type="checkbox" />').prop('checked', !!settings.routerUseSeparateModel).on('input', function () {
@@ -6410,6 +6412,56 @@ function renderStandaloneModel(container) {
         .append($('<button class="menu_button" type="button">拉取模型</button>').on('click', fetchRouterModels))
         .append($('<span class="ai-wbr-status"></span>').text(settings.routerStatus || '未连接')));
     container.append(panel);
+}
+
+function createStandaloneSettingsToggle(label, key, description = '', afterSave = null) {
+    return $('<label class="checkbox_label"></label>')
+        .append($('<input type="checkbox" />')
+            .prop('checked', !!settings[key])
+            .on('input', function () {
+                saveSetting(key, !!$(this).prop('checked'));
+                $(`#ai_wbr_${String(key).replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`)}`).prop('checked', !!settings[key]);
+                if (typeof afterSave === 'function') afterSave();
+                renderStandaloneConsole('settings');
+            }))
+        .append($('<span></span>').text(label))
+        .append(description ? $('<small></small>').text(description) : '');
+}
+
+function createStandaloneSettingsNav(label, tabId, description) {
+    return $('<button class="menu_button" type="button"></button>')
+        .append($('<b></b>').text(label))
+        .append(description ? $('<small></small>').text(description) : '')
+        .on('click', () => renderStandaloneConsole(tabId));
+}
+
+function renderStandaloneSettings(container) {
+    container.append($('<div class="ai-wbr-console-section-title"></div>').text('核心设置'));
+    container.append(
+        $('<div class="ai-wbr-console-form"></div>')
+            .append(createStandaloneSettingsToggle('启用前置 AI 世界书路由', 'enabled', '控制正式生成前是否筛选并注入世界书。'))
+            .append(createStandaloneSettingsToggle('启用记忆存储', 'memoryEnabled', '开启后才会整理聊天记忆和刷新图谱。'))
+            .append(createStandaloneSettingsToggle('实时整理聊天记忆', 'memoryRealtimeEnabled', '生成结束后自动整理最近消息。'))
+            .append(createStandaloneSettingsToggle('间隔归纳整理', 'memorySummaryEnabled', '按消息间隔压缩阶段剧情和关系变化。'))
+            .append(createStandaloneSettingsToggle('记忆状态参与路由', 'memoryInjectToRouter', '让图谱摘要辅助世界书路由命中。'))
+            .append(createStandaloneSettingsToggle('启用书架补充召回', 'bookshelfEnabled', '允许书架和记忆书参与向量召回。'))
+            .append(createStandaloneSettingsToggle('自动维护当前聊天记忆书', 'bookshelfAutoMemoryBook', '从当前图谱自动生成聊天绑定记忆书。', () => {
+                if (settings.bookshelfAutoMemoryBook) {
+                    scheduleBookshelfMemoryBookSync(getContext(), { force: true, silent: false, delayMs: 100 });
+                }
+            })),
+    );
+
+    container.append($('<div class="ai-wbr-console-section-title"></div>').text('设置分区'));
+    container.append(
+        $('<div class="ai-wbr-console-actions ai-wbr-console-settings-nav"></div>')
+            .append(createStandaloneSettingsNav('记忆设置', 'memory', '整理、历史补录、JSON 和调试。'))
+            .append(createStandaloneSettingsNav('图谱视图', 'graph', '全屏图谱、布局和详情面板。'))
+            .append(createStandaloneSettingsNav('书架设置', 'bookshelf', '记忆书、向量模型和召回测试。'))
+            .append(createStandaloneSettingsNav('调试信息', 'debug', '查看前置 Prompt、返回和错误。')),
+    );
+
+    renderStandaloneModel(container);
 }
 
 function renderStandaloneDebug(container) {
@@ -6468,7 +6520,7 @@ function renderStandaloneConsole(tabId = getStandaloneTabId()) {
     } else if (tabId === 'debug') {
         renderStandaloneDebug(body);
     } else if (tabId === 'settings') {
-        renderStandaloneModel(body);
+        renderStandaloneSettings(body);
     }
 
     const status = getStandaloneStatusMeta();
@@ -8922,6 +8974,8 @@ function bindMemoryPanelActions() {
         await runMemoryGraphUpdate('manual', {
             mode: 'realtime',
             scanMessages: settings.memoryRealtimeScanMessages,
+            force: true,
+            review: false,
         });
     });
 
@@ -8930,6 +8984,8 @@ function bindMemoryPanelActions() {
         await runMemoryGraphUpdate('manual_summary', {
             mode: 'summary',
             scanMessages: settings.memorySummaryScanMessages,
+            force: true,
+            review: false,
         });
     });
 
