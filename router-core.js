@@ -6376,8 +6376,10 @@ function applyMemoryGraphPreviewLayout(displayModel, canvasWidth, canvasHeight) 
         return false;
     }
 
-    const padding = MEMORY_GRAPH_LAYOUT_PADDING;
-    const top = Math.max(118, padding * 1.15);
+    const isNarrow = canvasWidth < 760;
+    const isMedium = canvasWidth >= 760 && canvasWidth < 1040;
+    const padding = isNarrow ? 38 : MEMORY_GRAPH_LAYOUT_PADDING;
+    const top = isNarrow ? 104 : Math.max(118, padding * 1.15);
     const availableWidth = Math.max(360, canvasWidth - padding * 2);
     const availableHeight = Math.max(260, canvasHeight - top - padding);
     const selectedId = String(memoryGraphSelectedNodeId || '');
@@ -6405,8 +6407,8 @@ function applyMemoryGraphPreviewLayout(displayModel, canvasWidth, canvasHeight) 
                 node.y = clamped.y;
             });
         };
-        placeRing(inner, Math.min(availableWidth * 0.34, 320), Math.min(availableHeight * 0.28, 210));
-        placeRing(outer, Math.min(availableWidth * 0.46, 470), Math.min(availableHeight * 0.42, 320), -Math.PI / 2 + 0.22);
+        placeRing(inner, Math.min(availableWidth * (isNarrow ? 0.42 : 0.34), isNarrow ? 230 : 320), Math.min(availableHeight * 0.28, isNarrow ? 170 : 210));
+        placeRing(outer, Math.min(availableWidth * (isNarrow ? 0.48 : 0.46), isNarrow ? 310 : 470), Math.min(availableHeight * 0.42, isNarrow ? 250 : 320), -Math.PI / 2 + 0.22);
         return true;
     }
 
@@ -6417,7 +6419,7 @@ function applyMemoryGraphPreviewLayout(displayModel, canvasWidth, canvasHeight) 
         (buckets.get(group) || buckets.get('other')).push(node);
     }
     const activeGroups = groups.filter(group => buckets.get(group).length);
-    const columns = Math.min(3, Math.max(1, activeGroups.length));
+    const columns = Math.min(isNarrow ? 1 : isMedium ? 2 : 3, Math.max(1, activeGroups.length));
     const rows = Math.ceil(activeGroups.length / columns);
     const cellWidth = availableWidth / columns;
     const cellHeight = availableHeight / Math.max(1, rows);
@@ -6428,12 +6430,12 @@ function applyMemoryGraphPreviewLayout(displayModel, canvasWidth, canvasHeight) 
         const items = buckets.get(group)
             .slice()
             .sort((a, b) => getMemoryGraphNodeScore(b) - getMemoryGraphNodeScore(a));
-        const localColumns = Math.max(1, Math.floor(cellWidth / (MEMORY_GRAPH_NODE_WIDTH + 22)));
+        const localColumns = Math.max(1, Math.floor(cellWidth / (MEMORY_GRAPH_NODE_WIDTH + (isNarrow ? 10 : 22))));
         items.forEach((node, index) => {
             const localCol = index % localColumns;
             const localRow = Math.floor(index / localColumns);
-            node.x = padding + col * cellWidth + 14 + localCol * (MEMORY_GRAPH_NODE_WIDTH + 22);
-            node.y = top + row * cellHeight + 16 + localRow * (MEMORY_GRAPH_NODE_HEIGHT + 24);
+            node.x = padding + col * cellWidth + (isNarrow ? 4 : 14) + localCol * (MEMORY_GRAPH_NODE_WIDTH + (isNarrow ? 10 : 22));
+            node.y = top + row * cellHeight + (isNarrow ? 10 : 16) + localRow * (MEMORY_GRAPH_NODE_HEIGHT + (isNarrow ? 16 : 24));
             const clamped = clampMemoryNodePosition(node.x, node.y, canvasWidth, canvasHeight, top);
             node.x = clamped.x;
             node.y = clamped.y;
