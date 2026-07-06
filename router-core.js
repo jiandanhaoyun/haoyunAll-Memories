@@ -2015,15 +2015,37 @@ function formatMemoryBookNodeChunk(node, graph = getMemoryGraph()) {
 function buildMemoryGraphBookshelfDefinitions(graph = getMemoryGraph(), context = getContext()) {
     const nodes = (Array.isArray(graph?.nodes) ? graph.nodes : [])
         .filter(node => node?.id && formatMemoryBookNodeChunk(node, graph));
-    const groups = new Map();
+    const scope = getBookshelfScope(context);
+    const chapters = new Map([
+        ['prologue', { title: '序章：最近摘要', chunks: [] }],
+        ['character', { title: '第一章：人物档案', chunks: [] }],
+        ['plot', { title: '第二章：剧情时间线', chunks: [] }],
+        ['world', { title: '第三章：世界设定', chunks: [] }],
+        ['relations', { title: '第四章：关系网络', chunks: [] }],
+        ['state', { title: '第五章：当前状态', chunks: [] }],
+        ['memory', { title: '附录：综合记忆', chunks: [] }],
+    ]);
+
+    const pushChapterChunk = (chapterKey, title, text, extra = {}) => {
+        const chapter = chapters.get(chapterKey) || chapters.get('memory');
+        const clean = String(text || '').trim();
+        if (!clean) return;
+        chapter.chunks.push({
+            title: truncateText(title || `${chapter.title} ${chapter.chunks.length + 1}`, 70),
+            text: clean,
+            chapterKey,
+            chapterTitle: chapter.title,
+            ...extra,
+        });
+    };
+
+    if (graph?.lastSummary) {
+        pushChapterChunk('prologue', '最近剧情摘要', `最近摘要：${truncateText(graph.lastSummary, 1200)}`, { sourceType: 'summary' });
+    }
+
     for (const node of nodes) {
         const config = getMemoryBookTypeConfig(node.type);
-        if (!groups.has(config.key)) {
-            groups.set(config.key, { ...config, chunks: [] });
-        }
-        groups.get(config.key).chunks.push({
-            title: truncateText(node.title || node.id || `记忆片段 ${groups.get(config.key).chunks.length + 1}`, 70),
-            text: formatMemoryBookNodeChunk(node, graph),
+        pushChapterChunk(config.key, node.title || node.id, formatMemoryBookNodeChunk(node, graph), {
             sourceNodeId: String(node.id || ''),
             sourceType: String(node.type || ''),
         });
@@ -2039,47 +2061,47 @@ function buildMemoryGraphBookshelfDefinitions(graph = getMemoryGraph(), context 
         }).filter(Boolean);
         if (relationLines.length) {
             const relationText = relationLines.join('\n');
-            groups.set('relations', {
-                key: 'relations',
-                type: 'memory',
-                title: '自动记忆书：关系网络',
-                chunks: splitTextIntoBookshelfChunks(relationText, { chunkSize: 520, overlap: 60 })
-                    .map((chunk, index) => ({
-                        title: chunk.title || `关系摘要 ${index + 1}`,
-                        text: chunk.text,
-                        sourceType: 'relations',
-                    })),
-            });
+            splitTextIntoBookshelfChunks(relationText, { chunkSize: 520, overlap: 60 })
+                .forEach((chunk, index) => {
+                    pushChapterChunk('relations', chunk.title || `关系摘要 ${index + 1}`, chunk.text, { sourceType: 'relations' });
+                });
         }
     }
 
     const stateParts = [];
-    if (graph?.lastSummary) stateParts.push(`最近摘要：${truncateText(graph.lastSummary, 900)}`);
     const stateValues = graph?.state?.custom_values || graph?.custom_values || {};
     for (const [key, value] of Object.entries(stateValues || {})) {
         const text = String(value ?? '').trim();
         if (text) stateParts.push(`${key}：${text}`);
     }
     if (stateParts.length) {
-        groups.set('state', {
-            key: 'state',
-            type: 'memory',
-            title: '自动记忆书：当前状态',
-            chunks: splitTextIntoBookshelfChunks(stateParts.join('\n'), { chunkSize: 520, overlap: 60 })
-                .map((chunk, index) => ({
-                    title: chunk.title || `状态摘要 ${index + 1}`,
-                    text: chunk.text,
-                    sourceType: 'state',
-                })),
-        });
+        splitTextIntoBookshelfChunks(stateParts.join('\n'), { chunkSize: 520, overlap: 60 })
+            .forEach((chunk, index) => {
+                pushChapterChunk('state', chunk.title || `状态摘要 ${index + 1}`, chunk.text, { sourceType: 'state' });
+            });
     }
 
-    return Array.from(groups.values())
-        .map(group => ({
-            ...group,
-            chunks: (group.chunks || []).filter(chunk => String(chunk?.text || '').trim()).slice(0, 160),
-        }))
-        .filter(group => group.chunks.length);
+    const chunks = [];
+    for (const [chapterKey, chapter] of chapters.entries()) {
+        chapter.chunks.slice(0, 80).forEach((chunk, index) => {
+            chunks.push({
+                ...chunk,
+                chapterKey,
+                chapterTitle: chapter.title,
+                title: `${chapter.title} · ${chunk.title || `片段 ${index + 1}`}`,
+            });
+        });
+    }
+    if (!chunks.length) return [];
+    return [{
+        key: 'chat_novel',
+        type: 'memory',
+        title: `记忆书：${scope.chatName || '当前聊天'}`,
+        chapters: Array.from(chapters.values())
+            .map(chapter => ({ title: chapter.title, count: chapter.chunks.length }))
+            .filter(chapter => chapter.count),
+        chunks: chunks.slice(0, 240),
+    }];
 }
 
 async function syncMemoryGraphBookshelfBooks(graph = getMemoryGraph(), context = getContext(), options = {}) {
@@ -2105,9 +2127,6 @@ async function syncMemoryGraphBookshelfBooks(graph = getMemoryGraph(), context =
         const bindings = [
             { type: 'chat', key: scope.chatKey, label: scope.chatName || scope.chatKey, createdAt: now },
         ];
-        if (scope.characterKey) {
-            bindings.push({ type: 'character', key: scope.characterKey, label: scope.characterName || scope.characterKey, createdAt: now });
-        }
         const book = {
             id: bookId,
             title: definition.title,
@@ -2119,7 +2138,9 @@ async function syncMemoryGraphBookshelfBooks(graph = getMemoryGraph(), context =
             autoGenerated: true,
             autoSource: 'memory-graph',
             autoChatKey: chatKey,
-            sourceSummary: `由当前图谱自动拆分：${definition.chunks.length} 个摘要片段`,
+            autoScope: 'chat',
+            chapters: definition.chapters || [],
+            sourceSummary: `当前聊天专属记忆书：${definition.chapters?.length || 0} 章，${definition.chunks.length} 个摘要片段`,
             embeddingMode: options.vectorize ? provider.mode : '',
             embeddingModel: options.vectorize ? provider.model : '',
             embeddingDim: 0,
@@ -2136,6 +2157,8 @@ async function syncMemoryGraphBookshelfBooks(graph = getMemoryGraph(), context =
             title: chunk.title || `${definition.title} #${index + 1}`,
             text: chunk.text,
             textHash: hashString(chunk.text),
+            chapterKey: chunk.chapterKey || '',
+            chapterTitle: chunk.chapterTitle || '',
             sourceNodeId: chunk.sourceNodeId || '',
             sourceType: chunk.sourceType || definition.key,
             enabled: true,
@@ -7294,8 +7317,62 @@ async function renderBookshelfPanel() {
         } else {
             detailBox.addClass('open');
             const selectedChunks = (chunksByBook.get(selectedBook.id) || []).sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
+            const isAutoMemoryBook = selectedBook.autoGenerated && selectedBook.autoSource === 'memory-graph';
+            const chapters = [];
+            const chapterSeen = new Set();
+            for (const chapter of Array.isArray(selectedBook.chapters) ? selectedBook.chapters : []) {
+                const title = String(chapter?.title || '').trim();
+                if (title && !chapterSeen.has(title)) {
+                    chapterSeen.add(title);
+                    chapters.push({ title, count: Number(chapter.count || 0) });
+                }
+            }
+            for (const chunk of selectedChunks) {
+                const title = String(chunk.chapterTitle || '正文目录').trim();
+                if (!chapterSeen.has(title)) {
+                    chapterSeen.add(title);
+                    chapters.push({ title, count: selectedChunks.filter(item => String(item.chapterTitle || '正文目录') === title).length });
+                }
+            }
+            const chapterList = chapters.length ? chapters : [{ title: '正文目录', count: selectedChunks.length }];
             const isCharBound = isBookshelfBookBound(selectedBook, 'character', scope.characterKey);
             const isGlobalBound = isBookshelfBookBound(selectedBook, 'global', 'global');
+            const actionBox = $('<div class="ai-wbr-bookshelf-actions"></div>')
+                .append($('<button class="menu_button ai-wbr-bookshelf-rebuild" type="button"></button>').attr('data-bookshelf-book-id', selectedBook.id).text(Number(selectedBook.vectorizedCount || 0) ? '\u91cd\u65b0\u5411\u91cf\u5316' : '\u5f00\u59cb\u5411\u91cf\u5316'))
+                .append($('<button class="menu_button ai-wbr-bookshelf-toggle" type="button"></button>').attr('data-bookshelf-book-id', selectedBook.id).text(selectedBook.enabled === false ? '\u542f\u7528\u53ec\u56de' : '\u505c\u7528\u53ec\u56de'));
+            if (!isAutoMemoryBook) {
+                actionBox
+                    .append($('<button class="menu_button ai-wbr-bookshelf-bind-character" type="button"></button>').attr('data-bookshelf-book-id', selectedBook.id).text(isCharBound ? '\u53d6\u6d88\u89d2\u8272\u5361\u7ed1\u5b9a' : '\u7ed1\u5b9a\u5f53\u524d\u89d2\u8272\u5361'))
+                    .append($('<button class="menu_button ai-wbr-bookshelf-bind-global" type="button"></button>').attr('data-bookshelf-book-id', selectedBook.id).text(isGlobalBound ? '\u53d6\u6d88\u5168\u5c40' : '\u8bbe\u4e3a\u5168\u5c40'))
+                    .append($('<button class="menu_button ai-wbr-bookshelf-clear-bindings" type="button"></button>').attr('data-bookshelf-book-id', selectedBook.id).text('\u6e05\u7a7a\u7ed1\u5b9a'));
+            }
+            actionBox
+                .append($('<button class="menu_button ai-wbr-bookshelf-clear-vector" type="button"></button>').attr('data-bookshelf-book-id', selectedBook.id).text('\u91cd\u7f6e\u5411\u91cf'))
+                .append($('<button class="menu_button ai-wbr-bookshelf-delete" type="button"></button>').attr('data-bookshelf-book-id', selectedBook.id).text('\u5220\u9664'));
+            const novelReader = $('<div class="ai-wbr-bookshelf-novel-reader"></div>')
+                .append(
+                    $('<aside class="ai-wbr-bookshelf-toc"></aside>')
+                        .append($('<b></b>').text('目录'))
+                        .append(chapterList.map((chapter, index) => (
+                            $('<button class="ai-wbr-bookshelf-toc-item" type="button"></button>')
+                                .attr('data-bookshelf-chapter-title', chapter.title)
+                                .toggleClass('active', index === 0)
+                                .append($('<span></span>').text(chapter.title))
+                                .append($('<small></small>').text(`${chapter.count || 0} 节`))
+                        ))),
+                    $('<div class="ai-wbr-bookshelf-chunk-list ai-wbr-bookshelf-novel-pages"></div>').append(
+                        selectedChunks.slice(0, 80).map(chunk => (
+                            $('<article class="ai-wbr-bookshelf-chunk ai-wbr-bookshelf-page"></article>')
+                                .toggleClass('disabled', chunk.enabled === false)
+                                .attr('data-bookshelf-chunk-id', chunk.id)
+                                .attr('data-bookshelf-chapter-title', chunk.chapterTitle || '正文目录')
+                                .append($('<div class="ai-wbr-bookshelf-chunk-head"></div>')
+                                    .append($('<b></b>').text(chunk.title || `第 ${chunk.order || ''} 节`))
+                                    .append($('<span></span>').text(chunk.enabled === false ? '禁用' : chunk.vectorStatus === 'ready' ? '已向量化' : chunk.vectorStatus === 'failed' ? '失败' : '待向量化')))
+                                .append($('<p></p>').text(chunk.text || ''))
+                        )),
+                    ),
+                );
             detailBox.append(
                 $('<div class="ai-wbr-bookshelf-selected-detail"></div>')
                     .attr('data-bookshelf-book-id', selectedBook.id)
@@ -7303,30 +7380,17 @@ async function renderBookshelfPanel() {
                 $('<div class="ai-wbr-bookshelf-detail-head"></div>')
                     .append($('<b></b>').text(`《${selectedBook.title || selectedBook.fileName || '未命名'}》`))
                     .append($('<span></span>').text(`${getBookshelfTypeLabel(selectedBook.type)} · ${getBookshelfStatusLabel(selectedBook)} · ${selectedBook.vectorizedCount || 0}/${selectedBook.chunkCount || 0}`)),
-                $('<div class="ai-wbr-bookshelf-tags"></div>').append(getBookshelfBindingLabels(selectedBook).map(label => $('<span></span>').text(label))),
-                $('<div class="ai-wbr-bookshelf-actions"></div>')
-                    .append($('<button class="menu_button ai-wbr-bookshelf-rebuild" type="button"></button>').attr('data-bookshelf-book-id', selectedBook.id).text(Number(selectedBook.vectorizedCount || 0) ? '\u91cd\u65b0\u5411\u91cf\u5316' : '\u5f00\u59cb\u5411\u91cf\u5316'))
-                    .append($('<button class="menu_button ai-wbr-bookshelf-toggle" type="button"></button>').attr('data-bookshelf-book-id', selectedBook.id).text(selectedBook.enabled === false ? '\u542f\u7528\u53ec\u56de' : '\u505c\u7528\u53ec\u56de'))
-                    .append($('<button class="menu_button ai-wbr-bookshelf-bind-character" type="button"></button>').attr('data-bookshelf-book-id', selectedBook.id).text(isCharBound ? '\u53d6\u6d88\u89d2\u8272\u5361\u7ed1\u5b9a' : '\u7ed1\u5b9a\u5f53\u524d\u89d2\u8272\u5361'))
-                    .append($('<button class="menu_button ai-wbr-bookshelf-bind-global" type="button"></button>').attr('data-bookshelf-book-id', selectedBook.id).text(isGlobalBound ? '\u53d6\u6d88\u5168\u5c40' : '\u8bbe\u4e3a\u5168\u5c40'))
-                    .append($('<button class="menu_button ai-wbr-bookshelf-clear-bindings" type="button"></button>').attr('data-bookshelf-book-id', selectedBook.id).text('\u6e05\u7a7a\u7ed1\u5b9a'))
-                    .append($('<button class="menu_button ai-wbr-bookshelf-clear-vector" type="button"></button>').attr('data-bookshelf-book-id', selectedBook.id).text('\u91cd\u7f6e\u5411\u91cf'))
-                    .append($('<button class="menu_button ai-wbr-bookshelf-delete" type="button"></button>').attr('data-bookshelf-book-id', selectedBook.id).text('\u5220\u9664')),
-                $('<div class="ai-wbr-bookshelf-chunk-list"></div>').append(
-                    selectedChunks.slice(0, 24).map(chunk => (
-                        $('<div class="ai-wbr-bookshelf-chunk"></div>')
-                            .toggleClass('disabled', chunk.enabled === false)
-                            .attr('data-bookshelf-chunk-id', chunk.id)
-                            .append($('<div class="ai-wbr-bookshelf-chunk-head"></div>')
-                                .append($('<b></b>').text(`${String(chunk.order || '').padStart(2, '0')} · ${chunk.title || '片段'}`))
-                                .append($('<span></span>').text(chunk.enabled === false ? '禁用' : chunk.vectorStatus === 'ready' ? '已向量化' : chunk.vectorStatus === 'failed' ? '失败' : '待向量化')))
-                            .append($('<p></p>').text(truncateText(chunk.text || '', 260)))
-                    )),
+                $('<div class="ai-wbr-bookshelf-tags"></div>').append(
+                    getBookshelfBindingLabels(selectedBook).map(label => $('<span></span>').text(label)),
+                    isAutoMemoryBook ? $('<span></span>').text('单聊天记录绑定') : null,
                 ),
+                selectedBook.sourceSummary ? $('<div class="ai-wbr-bookshelf-source-summary"></div>').text(selectedBook.sourceSummary) : null,
+                actionBox,
+                novelReader,
                     ),
             );
-            if (selectedChunks.length > 24) {
-                detailBox.append($('<div class="ai-wbr-token-empty"></div>').text(`已显示前 24 个片段，共 ${selectedChunks.length} 个。`));
+            if (selectedChunks.length > 80) {
+                detailBox.append($('<div class="ai-wbr-token-empty"></div>').text(`已显示前 80 个小节，共 ${selectedChunks.length} 个。`));
             }
         }
 
@@ -8846,6 +8910,21 @@ function bindMemoryPanelActions() {
             event.preventDefault();
             selectedBookshelfBookId = String($(this).closest('[data-bookshelf-book-id]').data('bookshelfBookId') || '');
             renderBookshelfPanel();
+        })
+        .on('click.aiWbrBookshelf', '.ai-wbr-bookshelf-toc-item', function (event) {
+            event.preventDefault();
+            const button = $(this);
+            const chapterTitle = String(button.data('bookshelfChapterTitle') || '');
+            const detail = button.closest('.ai-wbr-bookshelf-selected-detail');
+            const pages = detail.find('.ai-wbr-bookshelf-novel-pages');
+            const target = pages.find('.ai-wbr-bookshelf-page').filter(function () {
+                return String($(this).data('bookshelfChapterTitle') || '') === chapterTitle;
+            }).first();
+            button.siblings('.ai-wbr-bookshelf-toc-item').removeClass('active');
+            button.addClass('active');
+            if (target.length && pages.length) {
+                pages.stop(true).animate({ scrollTop: pages.scrollTop() + target.position().top - 8 }, 160);
+            }
         })
         .on('click.aiWbrBookshelf', '.ai-wbr-bookshelf-toggle', async function (event) {
             event.preventDefault();
