@@ -4004,6 +4004,16 @@ function escapeRegex(value) {
 
 function getDefaultMemoryRuleConfig() {
     const commonBlocks = ['当前', '状态', '阶段', '摘要', '剧情', '本轮', '字段', '列表', '信息', '内容'];
+    const aiCardWritingGuide = [
+        '由 AI 在每回合实时记忆更新时直接填入记忆卡片；本地规则只负责约束、校验、净化和合并。',
+        '优先输出 memory_cards_json；角色、地点、道具、势力、设定、规则、任务、事件都应由 AI 根据剧情理解主动分类。',
+        '角色标题只能写人名或称呼，例如“林悦”；不要把“提出入住”“是否会答应”等动作、疑问、状态写进角色标题。',
+        '地点标题只能写地点名；道具标题只能写物品名；势力标题只能写组织/家族/阵营名。',
+        '设定和规则只写会长期复用的世界观、能力、限制、契约、机制；一次性动作写进事件。',
+        '任务标题写未完成目标或待办，例如“请求入住林悦家”；已发生经过写事件。',
+        '同类型同标题必须 upsert 更新旧卡，不要重复新建近义卡。',
+        '证据不足时跳过该类型，不要为了填满分类而编造。'
+    ].join('\n');
     const titleCleaners = {
         character: ['是否会', '能否', '是否', '想要', '准备', '打算', '需要', '希望', '说', '问', '回答', '表示', '提出', '同意', '拒绝', '解释', '告诉', '询问', '请求', '答应', '反对', '进入', '离开', '出现', '看向', '递给', '收留', '入住', '帮助', '攻击', '带领', '阻止', '会'],
         location: ['前往', '进入', '来到', '离开', '抵达', '返回', '附近', '里面', '门口', '位于', '到达', '穿过'],
@@ -4109,6 +4119,7 @@ function getDefaultMemoryRuleConfig() {
             },
         ],
         blockKeywords: uniqueStrings([...commonBlocks, '当前目标', '当前位置', '地点状态', '任务状态', '角色设定', '人物关系', '道具栏', '势力设定', '事件', '特产', '鞋子', '公寓', '大学', '玄关', '客厅']),
+        aiCardWritingGuide,
         titleCleaners,
         exampleRules: [
             { id: 'ex_character_statement', enabled: true, source: '林悦提出入住', targetType: 'character', expectedTitle: '林悦' },
@@ -4226,6 +4237,11 @@ function serializeMemoryRuleExamples(examples = []) {
         .join('\n');
 }
 
+function normalizeMemoryRuleGuideText(value, fallback = '') {
+    const text = String(value || fallback || '').trim();
+    return truncateText(text, 2400);
+}
+
 function normalizeMemoryRuleConfig(config = null) {
     const defaults = getDefaultMemoryRuleConfig();
     const raw = config && typeof config === 'object' ? config : {};
@@ -4267,6 +4283,7 @@ function normalizeMemoryRuleConfig(config = null) {
         enabled: raw.enabled !== false,
         entityRules: entityRules.length ? entityRules : defaults.entityRules,
         blockKeywords: splitMemoryRuleKeywords(blockKeywordSource).slice(0, 80),
+        aiCardWritingGuide: normalizeMemoryRuleGuideText(raw.aiCardWritingGuide, defaults.aiCardWritingGuide),
         titleCleaners: normalizeMemoryRuleTitleCleaners(raw.titleCleaners, defaults.titleCleaners),
         exampleRules: normalizeMemoryRuleExampleRules(raw.exampleRules, defaults.exampleRules),
     };
@@ -4311,6 +4328,7 @@ function collectMemoryRuleConfigFromDrawer() {
         enabled: !!drawer.find('#ai_wbr_memory_rule_enabled').prop('checked'),
         entityRules,
         blockKeywords: splitMemoryRuleKeywords(drawer.find('#ai_wbr_memory_rule_block_keywords').val()),
+        aiCardWritingGuide: normalizeMemoryRuleGuideText(drawer.find('#ai_wbr_memory_rule_ai_guide').val(), current.aiCardWritingGuide),
         titleCleaners: parseMemoryRuleTitleCleaners(drawer.find('#ai_wbr_memory_rule_title_cleaners').val(), current.titleCleaners),
         exampleRules: parseMemoryRuleExamples(drawer.find('#ai_wbr_memory_rule_examples').val(), current.exampleRules),
     });
@@ -4662,14 +4680,15 @@ function runMemoryRulePreview() {
 
 function buildMemoryRulePromptGuide(config = getMemoryRuleConfig()) {
     if (!config?.enabled) {
-        return '自定义规则已关闭，仅使用内置拆分规则。';
+        return '自定义 AI 填卡规则已关闭。仍需由 AI 根据默认类型规范输出 memory_cards_json，本地只做校验、净化和合并。';
     }
+    const aiGuide = normalizeMemoryRuleGuideText(config.aiCardWritingGuide, getDefaultMemoryRuleConfig().aiCardWritingGuide);
     const lines = (Array.isArray(config.entityRules) ? config.entityRules : [])
         .filter(rule => rule?.enabled && rule.targetType && splitMemoryRuleKeywords(rule.keywords).length)
         .map(rule => {
             const positives = splitMemoryRuleKeywords(rule.positiveKeywords).join('、') || '无';
             const negatives = splitMemoryRuleKeywords(rule.negativeKeywords).join('、') || '无';
-            return `- ${rule.label || getOptionLabel(MEMORY_NODE_TYPE_OPTIONS, rule.targetType, rule.targetType)} -> type=${rule.targetType}；触发词：${splitMemoryRuleKeywords(rule.keywords).join('、')}；正向上下文：${positives}；排除词：${negatives}；最低置信度：${rule.minConfidence || 64}%。低于阈值不要写入。`;
+            return `- ${rule.label || getOptionLabel(MEMORY_NODE_TYPE_OPTIONS, rule.targetType, rule.targetType)} -> memory_cards_json.type=${rule.targetType}；AI 关注词：${splitMemoryRuleKeywords(rule.keywords).join('、')}；应写入场景：${positives}；不要写入：${negatives}；最低置信度：${rule.minConfidence || 64}%。低于阈值不要写入该类型卡片。`;
         });
     const cleaners = Object.entries(normalizeMemoryRuleTitleCleaners(config.titleCleaners))
         .filter(([, words]) => words.length)
@@ -4678,7 +4697,7 @@ function buildMemoryRulePromptGuide(config = getMemoryRuleConfig()) {
         .filter(rule => rule.enabled)
         .slice(0, 12)
         .map(rule => `- ${rule.source} => ${getMemoryRuleTypeLabel(rule.targetType)}:${rule.expectedTitle}`);
-    return `${lines.length ? lines.join('\n') : '没有启用的自定义规则。'}\n标题净化词：命中后必须把动作短语净化为实体标题，例如“林悦提出入住”只能写成“林悦”。\n${cleaners.join('\n') || '- 无'}\n示例句规则：\n${examples.join('\n') || '- 无'}\n分类优先级：rule > concept > quest > location > item > faction > character > event。若同一内容可归入更具体类型，不要降级写入 event；若角色/地点/道具/势力/设定/任务证据不足，跳过该类型而不是强行造卡。`;
+    return `AI 填卡总规则：\n${aiGuide}\n\n分类写入规则：\n${lines.length ? lines.join('\n') : '- 没有启用的自定义分类规则。'}\n\n标题净化词：这些词不能进入实体标题，命中后必须把动作短语净化为实体标题，例如“林悦提出入住”只能写成“林悦”。\n${cleaners.join('\n') || '- 无'}\n\n示例句规则：按这些示例理解剧情，并输出 memory_cards_json；不要把示例原句整体当标题。\n${examples.join('\n') || '- 无'}\n\n分类优先级：rule > concept > quest > location > item > faction > character > event。若同一内容可归入更具体类型，不要降级写入 event；若角色/地点/道具/势力/设定/任务证据不足，跳过该类型而不是强行造卡。`;
 }
 
 function splitMemoryEntityTokens(value) {
@@ -4731,6 +4750,146 @@ function createMemoryEntityNode(type, title, sourceNode = null, state = {}, fall
         tags: uniqueStrings(['自动拆分', getOptionLabel(MEMORY_NODE_TYPE_OPTIONS, safeType, safeType)]),
         importance: safeType === 'quest' ? 0.62 : 0.55,
         credibility: 0.72,
+    };
+}
+
+function getMemoryCardArray(update = {}) {
+    const candidates = [
+        update?.memory_cards,
+        update?.memoryCards,
+        update?.cards,
+        update?.card_updates,
+        update?.memory_card_updates,
+    ];
+    for (const value of candidates) {
+        if (Array.isArray(value)) {
+            return value;
+        }
+    }
+    return [];
+}
+
+function normalizeMemoryCardOperation(card = {}) {
+    const operation = String(card?.operation || card?.op || card?.action || 'upsert').trim().toLowerCase();
+    if (/^(delete|remove|删除|移除)$/u.test(operation)) return 'remove';
+    if (/^(skip|ignore|忽略|跳过)$/u.test(operation)) return 'skip';
+    return 'upsert';
+}
+
+function normalizeAiMemoryCardToNode(card = {}, state = {}, fallbackIndex = 0) {
+    const operation = normalizeMemoryCardOperation(card);
+    if (operation !== 'upsert') {
+        return null;
+    }
+    const type = normalizeMemoryNodeType(card);
+    const rawTitle = card?.title || card?.name || card?.label || card?.id || '';
+    const cleaned = type && type !== 'event'
+        ? cleanMemoryRuleTitleByType(rawTitle, type, { config: getMemoryRuleConfig() })
+        : { title: stripMemoryEntityTail(rawTitle), originalTitle: rawTitle, reason: '' };
+    const title = truncateText(cleaned.title || rawTitle, 80);
+    if (isWeakMemoryTitle(title)) {
+        return null;
+    }
+    const status = truncateText(card?.status || card?.state || card?.current_status || '', 180);
+    const evidence = truncateText(card?.evidence || card?.source || card?.quote || card?.reason || '', 220);
+    const summary = truncateText(card?.summary || status || card?.content || card?.description || title, 160);
+    const contentParts = [
+        card?.content || card?.description || summary,
+        status ? `状态：${status}` : '',
+        evidence ? `证据：${evidence}` : '',
+    ].filter(Boolean);
+    const keys = uniqueStrings([
+        ...(Array.isArray(card?.keys) ? card.keys : String(card?.keys || '').split(/[,\n;；、，|/]+/u)),
+        evidence,
+        cleaned.originalTitle,
+    ].filter(Boolean));
+    const tags = uniqueStrings([
+        ...(Array.isArray(card?.tags) ? card.tags : String(card?.tags || '').split(/[,\n;；、，|/]+/u)),
+        'AI填卡',
+        getMemoryRuleTypeLabel(type),
+        cleaned.reason ? '标题净化' : '',
+    ].filter(Boolean));
+    return {
+        id: createMemoryId(`${type}_${title}`, `${type || 'card'}_${fallbackIndex + 1}`),
+        title,
+        type,
+        content: truncateText(contentParts.join('\n'), 1200),
+        summary,
+        location: truncateText(card?.location || card?.scene || (type === 'location' ? title : state.current_location || ''), 120),
+        timeSpan: truncateText(card?.timeSpan || card?.time_span || card?.time || state.current_time || state.current_phase || '', 120),
+        keys,
+        tags,
+        importance: clampNumber(card?.importance ?? card?.weight, type === 'event' ? 0.6 : 0.62, 0, 1),
+        credibility: clampNumber(card?.credibility ?? card?.confidence, 0.82, 0, 1),
+    };
+}
+
+function expandMemoryCardsIntoUpdate(update = {}) {
+    const cards = getMemoryCardArray(update);
+    if (!cards.length) {
+        return update;
+    }
+    const state = update?.state && typeof update.state === 'object' ? update.state : {};
+    const nodes = Array.isArray(update?.nodes) ? [...update.nodes] : [];
+    const links = Array.isArray(update?.links) ? [...update.links] : [];
+    const removeNodeIds = Array.isArray(update?.remove_node_ids) ? [...update.remove_node_ids] : [];
+    const cardTitleByIndex = [];
+    for (const [index, card] of cards.slice(0, 32).entries()) {
+        const operation = normalizeMemoryCardOperation(card);
+        const title = card?.title || card?.name || card?.label || card?.id || '';
+        if (operation === 'remove') {
+            if (title) removeNodeIds.push(title);
+            continue;
+        }
+        if (operation === 'skip') {
+            continue;
+        }
+        const node = normalizeAiMemoryCardToNode(card, state, nodes.length + index);
+        if (!node) {
+            continue;
+        }
+        cardTitleByIndex[index] = node.title;
+        nodes.push(node);
+        const related = Array.isArray(card?.related)
+            ? card.related
+            : Array.isArray(card?.relatedTo)
+                ? card.relatedTo
+                : Array.isArray(card?.related_to)
+                    ? card.related_to
+                    : [];
+        for (const target of related.slice(0, 8)) {
+            const targetTitle = typeof target === 'object' ? target.title || target.target || target.id : target;
+            if (!targetTitle) continue;
+            links.push({
+                source: node.title,
+                target: targetTitle,
+                type: typeof target === 'object' ? (target.type || target.relation || 'RELATED') : 'RELATED',
+                weight: typeof target === 'object' ? target.weight : 0.68,
+                description: typeof target === 'object' ? target.description || '' : '',
+            });
+        }
+    }
+    for (const [index, card] of cards.slice(0, 32).entries()) {
+        const explicitLinks = Array.isArray(card?.links) ? card.links : [];
+        const sourceTitle = cardTitleByIndex[index] || card?.title || card?.name || card?.label || '';
+        for (const link of explicitLinks.slice(0, 8)) {
+            const target = link?.target || link?.to || link?.title || '';
+            if (!sourceTitle || !target) continue;
+            links.push({
+                source: link?.source || link?.from || sourceTitle,
+                target,
+                type: link?.type || link?.relation || 'RELATED',
+                weight: link?.weight ?? 0.7,
+                description: link?.description || '',
+            });
+        }
+    }
+    return {
+        ...update,
+        memory_cards: cards,
+        nodes,
+        links,
+        remove_node_ids: removeNodeIds,
     };
 }
 
@@ -4939,6 +5098,7 @@ function expandMemoryUpdateEntityNodes(update, graph = getMemoryGraph()) {
 }
 
 function sanitizeMemoryUpdateForApply(update) {
+    update = expandMemoryCardsIntoUpdate(update);
     update = expandMemoryUpdateEntityNodes(update);
     const ruleConfig = getMemoryRuleConfig();
     const sanitized = {
@@ -4960,7 +5120,7 @@ function sanitizeMemoryUpdateForApply(update) {
         if (!raw) return '';
         return idRedirects.get(normalizeText(raw)) || idRedirects.get(createMemoryId(raw)) || raw;
     };
-    for (const rawNode of (Array.isArray(update?.nodes) ? update.nodes : []).slice(0, 14)) {
+    for (const rawNode of (Array.isArray(update?.nodes) ? update.nodes : []).slice(0, 32)) {
         const nodeType = normalizeMemoryNodeType(rawNode);
         const rawTitle = rawNode?.title || rawNode?.label || rawNode?.id || '';
         const rawId = rawNode?.id || '';
@@ -5009,7 +5169,7 @@ function sanitizeMemoryUpdateForApply(update) {
         });
     }
 
-    for (const rawLink of (Array.isArray(update?.links) ? update.links : []).slice(0, 12)) {
+    for (const rawLink of (Array.isArray(update?.links) ? update.links : []).slice(0, 32)) {
         const source = redirectEndpoint(rawLink?.source || rawLink?.sourceId || rawLink?.from || '');
         const target = redirectEndpoint(rawLink?.target || rawLink?.targetId || rawLink?.to || '');
         const sourceKey = normalizeText(source);
@@ -5401,6 +5561,7 @@ function getMemoryExtractionSchema() {
             additionalProperties: true,
             properties: {
                 state: { type: 'object' },
+                memory_cards: { type: 'array', items: { type: 'object' } },
                 nodes: { type: 'array', items: { type: 'object' } },
                 updates: { type: 'array', items: { type: 'object' } },
                 links: { type: 'array', items: { type: 'object' } },
@@ -5435,7 +5596,7 @@ function buildMemoryExtractionPrompt(recentMessages, graph) {
         : '- None';
     const memoryRuleGuide = buildMemoryRulePromptGuide();
 
-    return `<role>你是 SillyTavern 的轻量记忆整理器。你需要把剧情记忆拆成可检索的图谱节点，而不是只写剧情摘要。</role>
+    return `<role>你是 SillyTavern 的轻量记忆整理器。你需要由 AI 直接填写记忆卡片，并把剧情记忆拆成可检索的图谱节点，而不是只写剧情摘要。</role>
 <task>只提取后续角色扮演会继续用到的稳定事实、剧情进展、人物关系、地点、物品、设定和未解决问题。只能返回下方变量块。</task>
 <rules>
 1. 除指定变量块外，不要返回任何 JSON、Markdown、解释或寒暄。
@@ -5446,15 +5607,31 @@ function buildMemoryExtractionPrompt(recentMessages, graph) {
 6. Every new or updated event/location/character node should include location and timeSpan when they are known or can be inherited from current state.
 7. If the recent messages only imply the same scene or phase, use state.current_location/current_time as the default location/timeSpan for affected nodes.
 8. Add links for meaningful same-scene or same-time continuity when it helps connect plot events without inventing facts.
-9. Do not put every fact into event nodes. Split durable entities into typed nodes: character, location, item, faction, concept, rule, quest, and event.
-10. When a message introduces a person, place, item, organization, rule, ability, or open task, create or update that typed node and link it to the related event.
-11. 如果 event 节点的 summary/content/keys/tags 中出现角色、地点、道具、势力、设定、规则或任务，必须同时在 memory_nodes_json 中给出对应的独立 typed node。
-12. tags 或 keys 可以显式标注实体，例如 "角色:小开"、"地点:密室入口"、"道具:金属牌"、"任务:调查门后声响"，便于系统稳定拆分。
-13. event 节点描述“发生了什么”；character/location/item/faction/concept/rule/quest 节点描述“长期会再次用到的对象或设定”。不要把人物、地点、道具只藏在 event 内容里。
-14. memory_links_json 应优先连接 event -> character 用 INVOLVES，event -> location 用 HAPPENS_AT，event -> item 用 INVOLVES，event -> quest 用 UPDATES 或 RELATED。
-15. 状态字段只写“当前状态”，不要把角色、地点、道具、势力、设定的完整信息塞进状态字段；这些信息必须进入 memory_nodes_json。
-16. current_location 只写地点名，current_time 只写时间点，protagonist_status 只写主角身体/情绪/处境，current_objective 只写下一步目标，active_topics/open_questions 只写短条目。
+9. 必须优先填写 memory_cards_json，由 AI 直接决定卡片类型、标题、状态、摘要和证据；memory_nodes_json 仅作为兼容字段或补充字段。
+10. Do not put every fact into event nodes. Split durable entities into typed cards/nodes: character, location, item, faction, concept, rule, quest, and event.
+11. When a message introduces a person, place, item, organization, rule, ability, or open task, create or update that typed memory card and link it to the related event.
+12. 如果 event 节点的 summary/content/keys/tags 中出现角色、地点、道具、势力、设定、规则或任务，必须同时在 memory_cards_json 中给出对应的独立 typed card。
+13. tags 或 keys 可以显式标注实体，例如 "角色:小开"、"地点:密室入口"、"道具:金属牌"、"任务:调查门后声响"，便于系统稳定拆分。
+14. event 节点描述“发生了什么”；character/location/item/faction/concept/rule/quest 节点描述“长期会再次用到的对象或设定”。不要把人物、地点、道具只藏在 event 内容里。
+15. memory_links_json 应优先连接 event -> character 用 INVOLVES，event -> location 用 HAPPENS_AT，event -> item 用 INVOLVES，event -> quest 用 UPDATES 或 RELATED。
+16. 状态字段只写“当前状态”，不要把角色、地点、道具、势力、设定的完整信息塞进状态字段；这些信息必须进入 memory_cards_json。
+17. current_location 只写地点名，current_time 只写时间点，protagonist_status 只写主角身体/情绪/处境，current_objective 只写下一步目标，active_topics/open_questions 只写短条目。
 </rules>
+<memory_cards_json_format>
+memory_cards_json 是 AI 主写入字段，每项格式：
+{
+  "operation": "upsert",
+  "type": "character|location|item|faction|concept|rule|quest|event",
+  "title": "卡片标题",
+  "status": "当前状态，可空",
+  "summary": "短摘要",
+  "content": "可选详情",
+  "evidence": "来自本回合剧情的证据短句",
+  "confidence": 0.0-1.0,
+  "related": [{"title":"相关卡片标题","type":"INVOLVES|HAPPENS_AT|UPDATES|RELATED","description":"关系说明"}]
+}
+标题必须是实体名或任务名，不要把动作句当标题。例如“林悦提出入住 / 林悦是否会答应”应写为 character 标题“林悦”，动作写入 status/summary；同时可写 quest“请求入住林悦家”。
+</memory_cards_json_format>
 <node_type_guide>
 - character：人物、身份、关系、状态长期变化。
 - location：地点、场景、房间、城市、秘境、据点。
@@ -5465,7 +5642,7 @@ function buildMemoryExtractionPrompt(recentMessages, graph) {
 - event：本轮发生的剧情进展，只记录动作和结果。
 </node_type_guide>
 <memory_card_write_rules>
-以下是用户在图谱规则界面配置的记忆卡片写入规则。命中触发词时，必须优先按 target type 写入或更新对应类型的 memory_nodes_json 节点；不要只塞进 event 或 state。
+以下是用户在图谱规则界面配置的 AI 记忆卡片写入规则。它们不是本地关键词分类器，而是告诉你应该如何填写 memory_cards_json；不要只塞进 event、memory_nodes_json 或 state。
 ${memoryRuleGuide}
 </memory_card_write_rules>
 <custom_state_definitions>
@@ -5487,6 +5664,7 @@ memory_state_current_phase_json=""
 memory_active_topics_json=[]
 memory_open_questions_json=[]
 memory_custom_state_json={}
+memory_cards_json=[]
 memory_nodes_json=[]
 memory_updates_json=[]
 memory_links_json=[]
@@ -5520,7 +5698,7 @@ function parseMemoryUpdate(rawResponse, prompt = '') {
 
         const blockMatch = raw.match(/\[\[AIWBR_MEMORY_VARS_BEGIN\]\]([\s\S]*?)\[\[AIWBR_MEMORY_VARS_END\]\]/u);
         const body = (blockMatch ? blockMatch[1] : raw).trim();
-        if (!body.includes('memory_nodes_json=') && !body.includes('memory_summary_json=')) {
+        if (!body.includes('memory_cards_json=') && !body.includes('memory_nodes_json=') && !body.includes('memory_summary_json=')) {
             return null;
         }
 
@@ -5563,6 +5741,7 @@ function parseMemoryUpdate(rawResponse, prompt = '') {
                 open_questions: readJsonValue('memory_open_questions_json', []),
                 custom_state: readJsonValue('memory_custom_state_json', {}),
             },
+            memory_cards: readJsonValue('memory_cards_json', []),
             nodes: readJsonValue('memory_nodes_json', []),
             updates: readJsonValue('memory_updates_json', []),
             links: readJsonValue('memory_links_json', []),
@@ -5575,6 +5754,9 @@ function parseMemoryUpdate(rawResponse, prompt = '') {
     const looksLikeMemoryPayload = (value) => {
         return value && typeof value === 'object' && !Array.isArray(value) && (
             value.state !== undefined
+            || value.memory_cards !== undefined
+            || value.memoryCards !== undefined
+            || value.cards !== undefined
             || value.nodes !== undefined
             || value.updates !== undefined
             || value.links !== undefined
@@ -8636,6 +8818,11 @@ function renderMemoryRuleDrawerHtml() {
                 <div class="ai-wbr-memory-rule-toolbar">
                     <button class="menu_button ai-wbr-memory-rule-add" type="button">新增规则</button>
                     <button class="menu_button ai-wbr-memory-rule-reset" type="button">恢复默认</button>
+                </div>
+                <div class="ai-wbr-memory-rule-card ai-wbr-memory-rule-ai-guide">
+                    <b>AI 填卡规则</b>
+                    <small>这里写给 AI 的记忆卡片写入规范。AI 会在每回合实时更新时优先输出 memory_cards_json，本地只做标题净化、合并和兜底。</small>
+                    <textarea id="ai_wbr_memory_rule_ai_guide" class="text_pole" rows="9" placeholder="例如：角色标题只能写人名；任务标题写未完成目标；证据不足时跳过。">${escapeHtml(config.aiCardWritingGuide || '')}</textarea>
                 </div>
                 <div class="ai-wbr-memory-rule-list">${ruleRows}</div>
                 <div class="ai-wbr-memory-rule-card ai-wbr-memory-rule-blocks">
