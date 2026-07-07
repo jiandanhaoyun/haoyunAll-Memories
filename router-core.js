@@ -3965,6 +3965,27 @@ function isValidMemoryNodeForApply(node) {
     return hasSubstance;
 }
 
+function normalizeMemoryStateScalar(value, maxLength = 80) {
+    const text = String(value || '')
+        .replace(/\s+/gu, ' ')
+        .replace(/^[：:，,。.;；\s]+/gu, '')
+        .trim();
+    if (!text) return '';
+    const firstClause = text
+        .split(/[。！？!?；;\n]/u)
+        .map(part => part.trim())
+        .find(Boolean) || text;
+    return truncateText(firstClause, maxLength);
+}
+
+function normalizeMemoryStateList(value, maxItems = 8, maxLength = 80) {
+    const source = Array.isArray(value) ? value : String(value || '').split(/[,\n;；、，]+/u);
+    return uniqueStrings(source
+        .map(item => normalizeMemoryStateScalar(item, maxLength))
+        .filter(Boolean))
+        .slice(0, maxItems);
+}
+
 function splitMemoryEntityTokens(value) {
     if (Array.isArray(value)) {
         return value.flatMap(splitMemoryEntityTokens);
@@ -4648,6 +4669,8 @@ function buildMemoryExtractionPrompt(recentMessages, graph) {
 12. tags 或 keys 可以显式标注实体，例如 "角色:小开"、"地点:密室入口"、"道具:金属牌"、"任务:调查门后声响"，便于系统稳定拆分。
 13. event 节点描述“发生了什么”；character/location/item/faction/concept/rule/quest 节点描述“长期会再次用到的对象或设定”。不要把人物、地点、道具只藏在 event 内容里。
 14. memory_links_json 应优先连接 event -> character 用 INVOLVES，event -> location 用 HAPPENS_AT，event -> item 用 INVOLVES，event -> quest 用 UPDATES 或 RELATED。
+15. 状态字段只写“当前状态”，不要把角色、地点、道具、势力、设定的完整信息塞进状态字段；这些信息必须进入 memory_nodes_json。
+16. current_location 只写地点名，current_time 只写时间点，protagonist_status 只写主角身体/情绪/处境，current_objective 只写下一步目标，active_topics/open_questions 只写短条目。
 </rules>
 <node_type_guide>
 - character：人物、身份、关系、状态长期变化。
@@ -4852,25 +4875,25 @@ function applyMemoryGraphUpdate(update, context = getContext()) {
 
     const state = update?.state && typeof update.state === 'object' ? update.state : {};
     if (typeof state.current_location === 'string') {
-        graph.state.current_location = truncateText(state.current_location, 120);
+        graph.state.current_location = normalizeMemoryStateScalar(state.current_location, 60);
     }
     if (typeof state.current_time === 'string') {
-        graph.state.current_time = truncateText(state.current_time, 120);
+        graph.state.current_time = normalizeMemoryStateScalar(state.current_time, 60);
     }
     if (typeof state.protagonist_status === 'string') {
-        graph.state.protagonist_status = truncateText(state.protagonist_status, 180);
+        graph.state.protagonist_status = normalizeMemoryStateScalar(state.protagonist_status, 100);
     }
     if (typeof state.current_objective === 'string') {
-        graph.state.current_objective = truncateText(state.current_objective, 180);
+        graph.state.current_objective = normalizeMemoryStateScalar(state.current_objective, 100);
     }
     if (typeof state.current_phase === 'string') {
-        graph.state.current_phase = truncateText(state.current_phase, 120);
+        graph.state.current_phase = normalizeMemoryStateScalar(state.current_phase, 70);
     }
     if (Array.isArray(state.active_topics)) {
-        graph.state.active_topics = uniqueStrings([...state.active_topics]).slice(0, 12);
+        graph.state.active_topics = normalizeMemoryStateList(state.active_topics, 8, 70);
     }
     if (Array.isArray(state.open_questions)) {
-        graph.state.open_questions = uniqueStrings([...state.open_questions]).slice(0, 12);
+        graph.state.open_questions = normalizeMemoryStateList(state.open_questions, 8, 90);
     }
     if (state.custom_state && typeof state.custom_state === 'object' && !Array.isArray(state.custom_state)) {
         const allowedKeys = new Set(getCustomMemoryStateDefinitions(graph).map(definition => definition.key));
@@ -4881,7 +4904,7 @@ function applyMemoryGraphUpdate(update, context = getContext()) {
             if (!allowedKeys.has(key)) {
                 continue;
             }
-            graph.state.custom_values[key] = truncateText(String(rawValue || '').trim(), 220);
+            graph.state.custom_values[key] = normalizeMemoryStateScalar(rawValue, 140);
         }
     }
 
@@ -4893,7 +4916,7 @@ function applyMemoryGraphUpdate(update, context = getContext()) {
 
     const byId = new Map(graph.nodes.map(node => [node.id, node]));
     const incomingNodes = Array.isArray(update?.nodes) ? update.nodes : [];
-    for (const rawNode of incomingNodes.slice(0, 8)) {
+    for (const rawNode of incomingNodes.slice(0, 24)) {
         const node = normalizeMemoryNode(applyMemoryTemporalContext(rawNode, graph, state), byId.size);
         if (!isValidMemoryNodeForApply(node)) {
             continue;
