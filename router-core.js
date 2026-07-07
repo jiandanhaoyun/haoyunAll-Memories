@@ -822,6 +822,9 @@ function saveSetting(key, value) {
         }
     }
     if (key === 'floatingButtonEnabled') {
+        if (value !== false && !$('#ai_wbr_fab').length) {
+            createFloatingMemoryWindow();
+        }
         updateFloatingButtonVisibility();
     }
     saveSettingsDebounced();
@@ -8401,6 +8404,7 @@ function renderStandaloneSettings(container) {
             .append(createStandaloneSettingsToggle('实时整理聊天记忆', 'memoryRealtimeEnabled', '生成结束后自动整理最近消息。'))
             .append(createStandaloneSettingsToggle('间隔归纳整理', 'memorySummaryEnabled', '按消息间隔压缩阶段剧情和关系变化。'))
             .append(createStandaloneSettingsToggle('记忆状态参与路由', 'memoryInjectToRouter', '让图谱摘要辅助世界书路由命中。'))
+            .append(createStandaloneSettingsToggle('显示悬浮图谱按钮', 'floatingButtonEnabled', '控制右侧图谱悬浮按钮是否显示；回到 APP 前台时会自动恢复。'))
             .append(createStandaloneSettingsToggle('启用书架补充召回', 'bookshelfEnabled', '允许书架和记忆书参与向量召回。'))
             .append(createStandaloneSettingsToggle('自动维护当前聊天记忆书', 'bookshelfAutoMemoryBook', '从当前图谱自动生成聊天绑定记忆书。', () => {
                 if (settings.bookshelfAutoMemoryBook) {
@@ -9245,7 +9249,7 @@ function renderMemoryGraphToolbarHtml(graph, displayModel, nodes, edges) {
                     <button id="ai_wbr_memory_graph_fullscreen" class="menu_button ai-wbr-graph-topbar-primary" type="button"><i class="fa-solid fa-expand"></i> ${fullscreenLabel}</button>
                     <button class="menu_button ai-wbr-memory-graph-filter-toggle" type="button" aria-expanded="true" title="查看下方类型与关系权重筛选"><i class="fa-solid fa-sliders"></i> 筛选</button>
                     <button id="ai_wbr_memory_rule_toggle" class="menu_button ai-wbr-memory-rule-toggle${ruleButtonClass}" type="button" aria-expanded="${memoryRuleDrawerOpen ? 'true' : 'false'}"><i class="fa-solid fa-wand-magic-sparkles"></i> 规则</button>
-                    <input class="text_pole ai-wbr-memory-graph-search" type="search" placeholder="搜索节点、关键词" value="${escapeHtml(memoryGraphSearchText)}" />
+                    <input class="text_pole ai-wbr-memory-graph-search" type="search" placeholder="搜索" value="${escapeHtml(memoryGraphSearchText)}" />
                 </div>
             </div>
             <div class="ai-wbr-memory-graph-drawer ai-wbr-memory-graph-drawer-open">
@@ -13153,20 +13157,14 @@ function createFloatingMemoryWindow() {
         fabLastToggleAt = now;
         event?.preventDefault?.();
         event?.stopPropagation?.();
-        openWindow('graph', { mode: 'floating' });
-        setTimeout(() => setMemoryGraphFullscreen(true), 90);
+        openWindow('graph', { mode: 'full' });
+        setMemoryGraphFullscreen(true, { fit: false });
         setTimeout(() => {
             if (!win.hasClass('open') || getStandaloneTabId() !== 'graph') {
-                openWindow('graph', { mode: 'floating' });
+                openWindow('graph', { mode: 'full' });
             }
-            setMemoryGraphFullscreen(true);
-        }, 80);
-        setTimeout(() => {
-            if (!win.hasClass('open') || !$('#ai_wbr_memory_graph').is(':visible')) {
-                openWindow('graph', { mode: 'floating' });
-            }
-            setMemoryGraphFullscreen(true);
-        }, 260);
+            setMemoryGraphFullscreen(true, { fit: true });
+        }, 120);
     }
 
     function openFromFabTouch(event) {
@@ -13390,6 +13388,42 @@ function createFloatingMemoryWindow() {
         clampFloatingFabToViewport();
         if (win.hasClass('open')) clampWindowToViewport(win[0]?.dataset.aiWbrDisplayMode || 'floating');
     }, { passive: true });
+
+    function recoverFloatingFab() {
+        if (settings.floatingButtonEnabled === false) {
+            $('#ai_wbr_fab').hide();
+            return;
+        }
+        if (!$('#ai_wbr_fab').length || !$('#ai_wbr_floating_window').length) {
+            createFloatingMemoryWindow();
+            return;
+        }
+        updateFloatingButtonVisibility();
+    }
+
+    $(window).off('focus.aiWbrFabRecover pageshow.aiWbrFabRecover')
+        .on('focus.aiWbrFabRecover pageshow.aiWbrFabRecover', () => {
+            setTimeout(recoverFloatingFab, 80);
+            setTimeout(recoverFloatingFab, 420);
+        });
+
+    $(document).off('visibilitychange.aiWbrFabRecover')
+        .on('visibilitychange.aiWbrFabRecover', () => {
+            if (document.visibilityState === 'visible') {
+                setTimeout(recoverFloatingFab, 80);
+                setTimeout(recoverFloatingFab, 420);
+            }
+        });
+
+    if (!globalThis.aiWbrFloatingFabObserver) {
+        globalThis.aiWbrFloatingFabObserver = new MutationObserver(() => {
+            if (settings.floatingButtonEnabled === false) return;
+            if (!$('#ai_wbr_fab').length) {
+                setTimeout(recoverFloatingFab, 120);
+            }
+        });
+        globalThis.aiWbrFloatingFabObserver.observe(document.body, { childList: true, subtree: true });
+    }
 
     renderStandaloneConsole('overview');
 }

@@ -4212,13 +4212,15 @@
     align-items: center;
     gap: 0.3rem;
     margin-left: auto;
+    flex-wrap: nowrap;
+    min-width: 0;
 }
 
 .ai-wbr-memory-graph-actions .ai-wbr-memory-graph-search {
-    flex: 0 1 10.5rem;
-    width: clamp(7.8rem, 17vw, 11rem);
-    min-width: 7.2rem;
-    max-width: 11rem;
+    flex: 0 0 4.9rem;
+    width: 4.9rem;
+    min-width: 4.9rem;
+    max-width: 4.9rem;
     min-height: 0;
     height: 1.95rem;
     margin: 0;
@@ -4227,9 +4229,13 @@
 }
 
 .ai-wbr-memory-graph-toolbar-compact .ai-wbr-memory-graph-actions .ai-wbr-memory-graph-search {
-    width: clamp(7.8rem, 17vw, 11rem);
-    min-width: 7.2rem;
-    max-width: 11rem;
+    width: 4.9rem;
+    min-width: 4.9rem;
+    max-width: 4.9rem;
+}
+
+.ai-wbr-memory-graph-actions .ai-wbr-memory-graph-search::placeholder {
+    opacity: 0.78;
 }
 
 .ai-wbr-memory-graph-close-fullscreen {
