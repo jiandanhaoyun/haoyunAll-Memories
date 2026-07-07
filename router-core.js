@@ -163,6 +163,7 @@ const defaultSettings = {
     memoryLastPrompt: '',
     memoryLastRaw: '',
     memoryLastError: '',
+    memoryRuleConfig: null,
     bookshelfEnabled: false,
     bookshelfAutoInject: false,
     bookshelfAutoMemoryBook: true,
@@ -251,6 +252,8 @@ let memoryGraphPreviewRenderKey = '';
 let memoryGraphDragFrame = null;
 let memoryGraphFullscreenActive = false;
 let memoryGraphSuppressNextNodeClick = false;
+let memoryRuleDrawerOpen = false;
+let memoryRuleSaveTimer = null;
 let bookshelfDbPromise = null;
 let selectedBookshelfBookId = '';
 let bookshelfLastTestResults = [];
@@ -785,6 +788,7 @@ function ensureSettings() {
     if (!settings.memoryGraph || typeof settings.memoryGraph !== 'object') {
         settings.memoryGraph = getDefaultMemoryGraph();
     }
+    settings.memoryRuleConfig = normalizeMemoryRuleConfig(settings.memoryRuleConfig);
     Object.assign(extension_settings[MODULE_NAME], settings);
     try {
         globalThis.AIWorldbookRouter?.setEntryDiagnostics?.(!!settings.entryDiagnostics);
@@ -3986,6 +3990,166 @@ function normalizeMemoryStateList(value, maxItems = 8, maxLength = 80) {
         .slice(0, maxItems);
 }
 
+function splitMemoryRuleKeywords(value) {
+    const source = Array.isArray(value) ? value : String(value || '').split(/[\n,，、;；|/]+/u);
+    return uniqueStrings(source
+        .map(item => String(item || '').trim())
+        .filter(Boolean))
+        .slice(0, 32);
+}
+
+function escapeRegex(value) {
+    return String(value ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function getDefaultMemoryRuleConfig() {
+    return {
+        enabled: true,
+        entityRules: [
+            { id: 'character_default', label: '角色卡片', targetType: 'character', enabled: true, keywords: ['角色', '人物', 'NPC', '主角', '配角', '同伴', '敌人', '朋友', '老师', '学生', '姓名', '身份'] },
+            { id: 'location_default', label: '地点卡片', targetType: 'location', enabled: true, keywords: ['地点', '位置', '场景', '房间', '城市', '据点', '学校', '公寓', '宿舍', '家中', '客厅', '卧室'] },
+            { id: 'item_default', label: '道具卡片', targetType: 'item', enabled: true, keywords: ['道具', '物品', '装备', '武器', '线索', '资料', '信件', '钥匙', '令牌', '戒指', '卡片', '药物', '地图', '笔记'] },
+            { id: 'faction_default', label: '势力卡片', targetType: 'faction', enabled: true, keywords: ['势力', '组织', '阵营', '队伍', '家族', '帮派', '集团', '公司', '社团', '教团', '王国', '帝国'] },
+            { id: 'concept_default', label: '设定卡片', targetType: 'concept', enabled: true, keywords: ['设定', '概念', '世界观', '能力', '机制', '系统', '习俗', '背景', '身份设定', '关系设定'] },
+            { id: 'rule_default', label: '规则卡片', targetType: 'rule', enabled: true, keywords: ['规则', '法则', '限制', '禁忌', '协议', '契约', '约定', '承诺', '条件'] },
+            { id: 'quest_default', label: '任务卡片', targetType: 'quest', enabled: true, keywords: ['任务', '目标', '目的', '待办', '悬念', '未解', '问题', '谜团', '调查', '寻找', '解决', '请求'] },
+        ],
+        blockKeywords: ['当前', '目标', '地点', '时间', '状态', '阶段', '问题', '任务', '事件', '摘要', '剧情', '本轮'],
+    };
+}
+
+function normalizeMemoryRuleConfig(config = null) {
+    const defaults = getDefaultMemoryRuleConfig();
+    const raw = config && typeof config === 'object' ? config : {};
+    const byId = new Map(defaults.entityRules.map(rule => [rule.id, rule]));
+    const sourceRules = Array.isArray(raw.entityRules) && raw.entityRules.length ? raw.entityRules : defaults.entityRules;
+    const allowedTypes = new Set(MEMORY_NODE_TYPE_OPTIONS.map(option => option.value).filter(type => type !== 'event'));
+    const entityRules = sourceRules
+        .map((rule, index) => {
+            const rawRule = rule && typeof rule === 'object' ? rule : {};
+            const fallback = byId.get(String(rawRule.id || '')) || defaults.entityRules[index] || defaults.entityRules[0];
+            const targetType = String(rawRule.targetType || rawRule.type || fallback.targetType || '').trim();
+            const safeType = allowedTypes.has(targetType) ? targetType : fallback.targetType;
+            const id = String(rawRule.id || `${safeType}_${Date.now().toString(36)}_${index}`).replace(/[^\w-]+/g, '_');
+            const keywordSource = Object.hasOwn(rawRule, 'keywords') ? rawRule.keywords : fallback.keywords;
+            return {
+                id,
+                label: truncateText(String(rawRule.label || fallback.label || getOptionLabel(MEMORY_NODE_TYPE_OPTIONS, safeType, safeType)).trim(), 32),
+                targetType: safeType,
+                enabled: rawRule.enabled !== false,
+                keywords: splitMemoryRuleKeywords(keywordSource),
+            };
+        })
+        .filter(rule => rule.targetType)
+        .slice(0, 24);
+    const blockKeywordSource = Object.hasOwn(raw, 'blockKeywords') ? raw.blockKeywords : defaults.blockKeywords;
+    return {
+        enabled: raw.enabled !== false,
+        entityRules: entityRules.length ? entityRules : defaults.entityRules,
+        blockKeywords: splitMemoryRuleKeywords(blockKeywordSource).slice(0, 40),
+    };
+}
+
+function getMemoryRuleConfig() {
+    settings.memoryRuleConfig = normalizeMemoryRuleConfig(settings.memoryRuleConfig);
+    return settings.memoryRuleConfig;
+}
+
+function saveMemoryRuleConfig(config) {
+    const normalized = normalizeMemoryRuleConfig(config);
+    saveSetting('memoryRuleConfig', normalized);
+    return normalized;
+}
+
+function collectMemoryRuleConfigFromDrawer() {
+    const drawer = $('#ai_wbr_memory_rule_drawer');
+    const current = getMemoryRuleConfig();
+    if (!drawer.length) {
+        return current;
+    }
+    const entityRules = [];
+    drawer.find('.ai-wbr-memory-rule-card[data-rule-id]').each(function (index) {
+        const card = $(this);
+        const targetType = String(card.find('.ai-wbr-memory-rule-type').val() || '').trim();
+        entityRules.push({
+            id: String(card.data('ruleId') || `${targetType || 'rule'}_${Date.now().toString(36)}_${index}`).replace(/[^\w-]+/g, '_'),
+            label: String(card.find('.ai-wbr-memory-rule-label').val() || '').trim(),
+            targetType,
+            enabled: !!card.find('.ai-wbr-memory-rule-enabled').prop('checked'),
+            keywords: splitMemoryRuleKeywords(card.find('.ai-wbr-memory-rule-keywords').val()),
+        });
+    });
+    return normalizeMemoryRuleConfig({
+        enabled: !!drawer.find('#ai_wbr_memory_rule_enabled').prop('checked'),
+        entityRules,
+        blockKeywords: splitMemoryRuleKeywords(drawer.find('#ai_wbr_memory_rule_block_keywords').val()),
+    });
+}
+
+function saveMemoryRuleConfigFromDrawer({ rerender = false } = {}) {
+    const config = saveMemoryRuleConfig(collectMemoryRuleConfigFromDrawer());
+    if (rerender) {
+        renderMemoryGraphSvg(getMemoryGraph());
+    }
+    return config;
+}
+
+function scheduleMemoryRuleConfigSave() {
+    clearTimeout(memoryRuleSaveTimer);
+    memoryRuleSaveTimer = setTimeout(() => {
+        memoryRuleSaveTimer = null;
+        saveMemoryRuleConfigFromDrawer();
+    }, 220);
+}
+
+function addMemoryRuleConfigRow() {
+    const config = saveMemoryRuleConfigFromDrawer();
+    const type = 'concept';
+    config.entityRules.push({
+        id: `custom_${type}_${Date.now().toString(36)}`,
+        label: '自定义卡片',
+        targetType: type,
+        enabled: true,
+        keywords: ['自定义触发词'],
+    });
+    saveMemoryRuleConfig(config);
+    renderMemoryGraphSvg(getMemoryGraph());
+}
+
+function runMemoryRulePreview() {
+    const drawer = $('#ai_wbr_memory_rule_drawer');
+    const resultBox = drawer.find('#ai_wbr_memory_rule_preview_result');
+    const text = String(drawer.find('#ai_wbr_memory_rule_preview_text').val() || '').trim();
+    const config = saveMemoryRuleConfigFromDrawer();
+    if (!text) {
+        resultBox.text('先输入一段剧情再试跑。');
+        return;
+    }
+    const hints = [];
+    const seen = new Set();
+    const sanitized = sanitizeMemoryMessageText(text);
+    applyCustomMemoryEntityRules(sanitized, hints, seen, config);
+    for (const hint of extractMemoryEntityHintsFromText({ title: '规则试跑', summary: text, content: text }, getMemoryGraph().state)) {
+        addMemoryEntityHint(hints, seen, hint.type, hint.title);
+    }
+    const items = hints.slice(0, 18);
+    if (!items.length) {
+        resultBox.html('<span>未拆出卡片。可以增加触发词，或把触发词写成“规则名：标题”的形式。</span>');
+        return;
+    }
+    resultBox.html(items.map(item => `<span><b>${escapeHtml(getOptionLabel(MEMORY_NODE_TYPE_OPTIONS, item.type, item.type))}</b>${escapeHtml(item.title)}</span>`).join(''));
+}
+
+function buildMemoryRulePromptGuide(config = getMemoryRuleConfig()) {
+    if (!config?.enabled) {
+        return '自定义规则已关闭，仅使用内置拆分规则。';
+    }
+    const lines = (Array.isArray(config.entityRules) ? config.entityRules : [])
+        .filter(rule => rule?.enabled && rule.targetType && splitMemoryRuleKeywords(rule.keywords).length)
+        .map(rule => `- ${rule.label || getOptionLabel(MEMORY_NODE_TYPE_OPTIONS, rule.targetType, rule.targetType)} -> type=${rule.targetType}；触发词：${splitMemoryRuleKeywords(rule.keywords).join('、')}`);
+    return lines.length ? lines.join('\n') : '没有启用的自定义规则。';
+}
+
 function splitMemoryEntityTokens(value) {
     if (Array.isArray(value)) {
         return value.flatMap(splitMemoryEntityTokens);
@@ -4080,6 +4244,41 @@ function stripMemoryEntityTail(value) {
         .replace(/\s*(等|之一|这件事|此事|相关).*$/u, ''));
 }
 
+function isBlockedMemoryEntityTitle(title, config = getMemoryRuleConfig()) {
+    const text = normalizeText(title);
+    if (!text) return true;
+    const defaults = ['当前', '目标', '地点', '时间', '状态', '阶段', '问题', '任务', '特产', '鞋子', '公寓', '大学', '玄关', '客厅'];
+    const blockWords = uniqueStrings([...defaults, ...splitMemoryRuleKeywords(config?.blockKeywords)]);
+    return blockWords.some(word => {
+        const normalized = normalizeText(word);
+        return normalized && (text === normalized || text.includes(normalized));
+    });
+}
+
+function applyCustomMemoryEntityRules(text, hints, seen, config = getMemoryRuleConfig()) {
+    if (!config?.enabled || !text) {
+        return;
+    }
+    const rules = Array.isArray(config.entityRules) ? config.entityRules : [];
+    for (const rule of rules) {
+        if (!rule?.enabled || !rule.targetType) {
+            continue;
+        }
+        for (const keyword of splitMemoryRuleKeywords(rule.keywords)) {
+            const escaped = escapeRegex(keyword);
+            if (!escaped) continue;
+            const pattern = new RegExp(`(?:${escaped})[：:为是叫名在到至]?\\s*([\\p{Script=Han}A-Za-z0-9_·]{2,34})?`, 'giu');
+            for (const match of text.matchAll(pattern)) {
+                const rawTitle = match[1] || (String(match[0] || '').trim().length > String(keyword).trim().length ? match[0] : '');
+                const title = stripMemoryEntityTail(rawTitle);
+                if (!isBlockedMemoryEntityTitle(title, config)) {
+                    addMemoryEntityHint(hints, seen, rule.targetType, title);
+                }
+            }
+        }
+    }
+}
+
 function extractMemoryEntityHintsFromText(rawNode = {}, state = {}) {
     const hints = [];
     const seen = new Set();
@@ -4113,6 +4312,8 @@ function extractMemoryEntityHintsFromText(rawNode = {}, state = {}) {
         }
     }
 
+    applyCustomMemoryEntityRules(text, hints, seen);
+
     const namePatterns = [
         /(?:向|对|给|问|告诉|请求|见到|遇见|认识|确认|说明|跟|和|与)([\p{Script=Han}A-Za-z0-9_·]{2,12})(?:说|问|确认|说明|请求|交谈|解释|赠送|借住|收留|反应)/giu,
         /([\p{Script=Han}A-Za-z0-9_·]{2,12})(?:同意|拒绝|反应|出现|离开|进入|询问|回答|赠送|收留)/giu,
@@ -4120,7 +4321,7 @@ function extractMemoryEntityHintsFromText(rawNode = {}, state = {}) {
     for (const pattern of namePatterns) {
         for (const match of text.matchAll(pattern)) {
             const title = stripMemoryEntityTail(match[1]);
-            if (!/(当前|目标|地点|时间|状态|阶段|问题|任务|特产|鞋子|公寓|大学|玄关|客厅)/u.test(title)) {
+            if (!isBlockedMemoryEntityTitle(title)) {
                 addMemoryEntityHint(hints, seen, 'character', title);
             }
         }
@@ -4651,6 +4852,7 @@ function buildMemoryExtractionPrompt(recentMessages, graph) {
     const customDefinitionLines = customDefinitions.length
         ? customDefinitions.map(definition => `- ${definition.label} (${definition.key}): ${definition.instruction || 'Custom state field'}`).join('\n')
         : '- None';
+    const memoryRuleGuide = buildMemoryRulePromptGuide();
 
     return `<role>你是 SillyTavern 的轻量记忆整理器。你需要把剧情记忆拆成可检索的图谱节点，而不是只写剧情摘要。</role>
 <task>只提取后续角色扮演会继续用到的稳定事实、剧情进展、人物关系、地点、物品、设定和未解决问题。只能返回下方变量块。</task>
@@ -4681,6 +4883,10 @@ function buildMemoryExtractionPrompt(recentMessages, graph) {
 - quest：任务、目标、悬念、未解决问题、待调查事项。
 - event：本轮发生的剧情进展，只记录动作和结果。
 </node_type_guide>
+<memory_card_write_rules>
+以下是用户在图谱规则界面配置的记忆卡片写入规则。命中触发词时，必须优先按 target type 写入或更新对应类型的 memory_nodes_json 节点；不要只塞进 event 或 state。
+${memoryRuleGuide}
+</memory_card_write_rules>
 <custom_state_definitions>
 ${customDefinitionLines}
 </custom_state_definitions>
@@ -7785,6 +7991,72 @@ function renderMemoryGraphTypeFilters(graph) {
     </div>`;
 }
 
+function renderMemoryRuleDrawerHtml() {
+    const config = getMemoryRuleConfig();
+    const ruleRows = config.entityRules.map((rule, index) => `
+        <div class="ai-wbr-memory-rule-card" data-rule-id="${escapeHtml(rule.id)}">
+            <div class="ai-wbr-memory-rule-card-head">
+                <label class="checkbox_label">
+                    <input class="ai-wbr-memory-rule-enabled" type="checkbox" ${rule.enabled ? 'checked' : ''} />
+                    <span>启用</span>
+                </label>
+                <button class="menu_button ai-wbr-memory-rule-delete" type="button" ${config.entityRules.length <= 1 ? 'disabled' : ''}>删除</button>
+            </div>
+            <div class="ai-wbr-memory-rule-grid">
+                <label>规则名称</label>
+                <input class="text_pole ai-wbr-memory-rule-label" type="text" value="${escapeHtml(rule.label)}" placeholder="例如：角色卡片" />
+                <label>写入类型</label>
+                <select class="text_pole ai-wbr-memory-rule-type">
+                    ${MEMORY_NODE_TYPE_OPTIONS
+                        .filter(option => option.value !== 'event')
+                        .map(option => `<option value="${escapeHtml(option.value)}" ${option.value === rule.targetType ? 'selected' : ''}>${escapeHtml(option.label)}</option>`)
+                        .join('')}
+                </select>
+                <label>触发词</label>
+                <textarea class="text_pole ai-wbr-memory-rule-keywords" rows="3" placeholder="每行或逗号分隔">${escapeHtml(rule.keywords.join('\n'))}</textarea>
+            </div>
+            <small>命中这些词时，会把内容拆成 ${escapeHtml(getOptionLabel(MEMORY_NODE_TYPE_OPTIONS, rule.targetType, rule.targetType))} 记忆卡片。</small>
+        </div>
+    `).join('');
+
+    return `
+        <aside id="ai_wbr_memory_rule_drawer" class="ai-wbr-memory-rule-drawer" aria-hidden="${memoryRuleDrawerOpen ? 'false' : 'true'}">
+            <div class="ai-wbr-memory-rule-head">
+                <div>
+                    <div class="ai-wbr-memory-preview-kicker">Memory Rules</div>
+                    <h3>记忆卡片写入规则</h3>
+                    <small>控制角色、地点、道具、势力、设定、规则、任务如何拆卡。</small>
+                </div>
+                <button class="menu_button ai-wbr-memory-rule-close" type="button">关闭</button>
+            </div>
+            <div class="ai-wbr-memory-rule-body">
+                <label class="checkbox_label ai-wbr-memory-rule-master">
+                    <input id="ai_wbr_memory_rule_enabled" type="checkbox" ${config.enabled ? 'checked' : ''} />
+                    <span>启用自定义写入规则</span>
+                </label>
+                <div class="ai-wbr-memory-rule-toolbar">
+                    <button class="menu_button ai-wbr-memory-rule-add" type="button">新增规则</button>
+                    <button class="menu_button ai-wbr-memory-rule-reset" type="button">恢复默认</button>
+                </div>
+                <div class="ai-wbr-memory-rule-list">${ruleRows}</div>
+                <div class="ai-wbr-memory-rule-card ai-wbr-memory-rule-blocks">
+                    <b>误判拦截词</b>
+                    <small>这些词不会被当成实体标题，避免“当前状态 / 任务 / 地点”等被误写成角色。</small>
+                    <textarea id="ai_wbr_memory_rule_block_keywords" class="text_pole" rows="3">${escapeHtml(config.blockKeywords.join('\n'))}</textarea>
+                </div>
+                <div class="ai-wbr-memory-rule-card ai-wbr-memory-rule-preview">
+                    <b>规则试跑</b>
+                    <textarea id="ai_wbr_memory_rule_preview_text" class="text_pole" rows="4" placeholder="粘贴一段剧情，测试会拆出哪些记忆卡片"></textarea>
+                    <div class="ai-wbr-memory-rule-preview-actions">
+                        <button class="menu_button ai-wbr-memory-rule-run-preview" type="button">试跑拆卡</button>
+                    </div>
+                    <div id="ai_wbr_memory_rule_preview_result" class="ai-wbr-memory-rule-preview-result">等待试跑。</div>
+                </div>
+            </div>
+        </aside>
+    `;
+}
+
 function getMemoryPreviewGroupKey(type) {
     return getMemoryGraphCategoryKey(type);
 }
@@ -8040,6 +8312,7 @@ function renderMemoryGraphToolbarHtml(graph, displayModel, nodes, edges) {
     const fullscreenLabel = memoryGraphFullscreenActive ? '退出全屏' : '全屏图谱';
     const hiddenHint = displayModel.hiddenNodes || displayModel.hiddenLinks ? `，收起 ${displayModel.hiddenNodes}/${displayModel.hiddenLinks}` : '';
     const linkHint = memoryGraphLinkSourceId ? ` · 起点：${escapeHtml(truncateText(graph.nodes.find(node => node.id === memoryGraphLinkSourceId)?.title || memoryGraphLinkSourceId, 8))}` : '';
+    const ruleButtonClass = memoryRuleDrawerOpen ? ' active' : '';
     return `
         <div class="ai-wbr-memory-graph-toolbar ai-wbr-memory-graph-toolbar-compact">
             <div class="ai-wbr-memory-graph-row ai-wbr-memory-graph-row-primary">
@@ -8057,6 +8330,7 @@ function renderMemoryGraphToolbarHtml(graph, displayModel, nodes, edges) {
                     <button id="ai_wbr_memory_graph_fit" class="menu_button" type="button" title="适配视图：把所有节点铺满画布"><i class="fa-solid fa-arrows-to-circle"></i> 适配</button>
                     <button id="ai_wbr_memory_graph_fullscreen" class="menu_button ai-wbr-graph-topbar-primary" type="button"><i class="fa-solid fa-expand"></i> ${fullscreenLabel}</button>
                     <button class="menu_button ai-wbr-memory-graph-filter-toggle" type="button" aria-expanded="false"><i class="fa-solid fa-sliders"></i> 筛选</button>
+                    <button id="ai_wbr_memory_rule_toggle" class="menu_button ai-wbr-memory-rule-toggle${ruleButtonClass}" type="button" aria-expanded="${memoryRuleDrawerOpen ? 'true' : 'false'}"><i class="fa-solid fa-wand-magic-sparkles"></i> 规则</button>
                 </div>
             </div>
             <details class="ai-wbr-memory-graph-drawer">
@@ -8166,6 +8440,7 @@ function renderMemoryTimelineView(graph, displayModel) {
             </div>
             <div class="ai-wbr-memory-timeline-rail">${groupsHtml}</div>
         </div>
+        ${renderMemoryRuleDrawerHtml()}
     `);
     bindMemoryGraphSvgInteractions();
 }
@@ -8287,6 +8562,7 @@ function renderMemoryGraphSvg(graph) {
     graph = graph && typeof graph === 'object' ? graph : getDefaultMemoryGraph();
     graph.nodes = Array.isArray(graph.nodes) ? graph.nodes : [];
     graph.links = Array.isArray(graph.links) ? graph.links : [];
+    container.toggleClass('rules-open', memoryRuleDrawerOpen);
 
     let displayModel = buildMemoryGraphDisplayModel(graph);
     if (!displayModel.nodes.length && graph.nodes.length) {
@@ -8309,6 +8585,7 @@ function renderMemoryGraphSvg(graph) {
             <div class="ai-wbr-memory-graph-canvas ai-wbr-memory-graph-empty">
                 <div class="ai-wbr-token-empty">暂无可显示的记忆节点。可以清除搜索/类型筛选，或生成回复后让记忆图谱继续整理。</div>
             </div>
+            ${renderMemoryRuleDrawerHtml()}
         `);
         bindMemoryGraphSvgInteractions();
         return;
@@ -8449,6 +8726,7 @@ function renderMemoryGraphSvg(graph) {
         <div class="ai-wbr-memory-graph-canvas">
             <svg viewBox="${memoryGraphView.x} ${memoryGraphView.y} ${memoryGraphView.width} ${memoryGraphView.height}" preserveAspectRatio="none" role="img" aria-label="记忆图谱">${markerDefs}${categoryPanels}${lines}${cards}</svg>
         </div>
+        ${renderMemoryRuleDrawerHtml()}
     `);
     bindMemoryGraphSvgInteractions();
 }
@@ -9420,6 +9698,47 @@ function bindMemoryGraphSvgInteractions() {
         renderCurrentGraph({ fit: true });
     });
 
+    container.on('input.memoryGraphSvg change.memoryGraphSvg', '#ai_wbr_memory_rule_drawer input, #ai_wbr_memory_rule_drawer textarea, #ai_wbr_memory_rule_drawer select', function (event) {
+        event.stopPropagation();
+        scheduleMemoryRuleConfigSave();
+    });
+
+    container.on('click.memoryGraphSvg', '.ai-wbr-memory-rule-add', function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        addMemoryRuleConfigRow();
+    });
+
+    container.on('click.memoryGraphSvg', '.ai-wbr-memory-rule-delete', function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        const config = saveMemoryRuleConfigFromDrawer();
+        const ruleId = String($(this).closest('[data-rule-id]').data('ruleId') || '');
+        if (!ruleId || config.entityRules.length <= 1) {
+            return;
+        }
+        config.entityRules = config.entityRules.filter(rule => String(rule.id) !== ruleId);
+        saveMemoryRuleConfig(config);
+        renderMemoryGraphSvg(getMemoryGraph());
+    });
+
+    container.on('click.memoryGraphSvg', '.ai-wbr-memory-rule-reset', function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        saveMemoryRuleConfig(getDefaultMemoryRuleConfig());
+        renderMemoryGraphSvg(getMemoryGraph());
+    });
+
+    container.on('click.memoryGraphSvg', '.ai-wbr-memory-rule-run-preview', function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        runMemoryRulePreview();
+    });
+
+    container.on('pointerdown.memoryGraphSvg wheel.memoryGraphSvg click.memoryGraphSvg', '#ai_wbr_memory_rule_drawer', function (event) {
+        event.stopPropagation();
+    });
+
     const svg = container.find('svg')[0];
     if (!svg) {
         return;
@@ -9659,6 +9978,18 @@ function bindMemoryGraphSvgInteractions() {
             event.preventDefault();
             $('#ai_wbr_memory_preview_panel').closest('.ai-wbr-graph-shell').removeClass('preview-open');
             memoryGraphPreviewRenderKey = '';
+            renderMemoryGraphSvg(getMemoryGraph());
+        })
+        .on('click.memoryGraphShellToggles', '#ai_wbr_memory_rule_toggle', function (event) {
+            event.preventDefault();
+            event.stopPropagation();
+            memoryRuleDrawerOpen = !memoryRuleDrawerOpen;
+            $('#ai_wbr_memory_preview_panel').closest('.ai-wbr-graph-shell').removeClass('preview-open');
+            renderMemoryGraphSvg(getMemoryGraph());
+        })
+        .on('click.memoryGraphShellToggles', '.ai-wbr-memory-rule-close', function (event) {
+            event.preventDefault();
+            memoryRuleDrawerOpen = false;
             renderMemoryGraphSvg(getMemoryGraph());
         });
 
