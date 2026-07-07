@@ -7578,7 +7578,9 @@ function renderMemoryPreviewPanel(graph, displayModel = buildMemoryGraphDisplayM
             .append($('<div></div>')
                 .append($('<div class="ai-wbr-memory-preview-kicker"></div>').text('Memory Preview'))
                 .append($('<div class="ai-wbr-memory-preview-title"></div>').text('记忆预览')))
-            .append($('<div class="ai-wbr-memory-preview-count"></div>').text(`${nodes.length}/${displayModel.totalNodes || nodes.length}`)),
+            .append($('<div class="ai-wbr-memory-preview-head-right"></div>')
+                .append($('<div class="ai-wbr-memory-preview-count"></div>').text(`${nodes.length}/${displayModel.totalNodes || nodes.length}`))
+                .append($('<button class="ai-wbr-memory-preview-close" type="button" aria-label="关闭预览"><i class="fa-solid fa-xmark"></i></button>'))),
         $('<input class="text_pole ai-wbr-memory-preview-search" type="search" placeholder="搜索记忆、人物、地点、关键词" />').val(memoryGraphSearchText || ''),
     );
 
@@ -7764,6 +7766,7 @@ function renderMemoryGraphToolbarHtml(graph, displayModel, nodes, edges) {
                 <span class="ai-wbr-memory-graph-divider"></span>
                 <div class="ai-wbr-memory-graph-actions">
                     <button id="ai_wbr_memory_graph_preview_toggle" class="menu_button" type="button"><i class="fa-solid fa-list-ul"></i> 列表</button>
+                    <button id="ai_wbr_memory_graph_fit" class="menu_button" type="button" title="适配视图：把所有节点铺满画布"><i class="fa-solid fa-arrows-to-circle"></i> 适配</button>
                     <button id="ai_wbr_memory_graph_fullscreen" class="menu_button ai-wbr-graph-topbar-primary" type="button"><i class="fa-solid fa-expand"></i> ${fullscreenLabel}</button>
                     <button class="menu_button ai-wbr-memory-graph-filter-toggle" type="button" aria-expanded="false"><i class="fa-solid fa-sliders"></i> 筛选</button>
                 </div>
@@ -8590,9 +8593,13 @@ function zoomMemoryGraphAt(svg, clientX, clientY, factor) {
         return;
     }
     const svgPoint = getMemoryGraphSvgPoint(svg, clientX, clientY);
-    const nextWidth = Math.min(1400, Math.max(120, memoryGraphView.width * factor));
-    const nextHeight = Math.min(900, Math.max(80, memoryGraphView.height * factor));
-    if (Math.abs(nextWidth - memoryGraphView.width) < 0.5 && Math.abs(nextHeight - memoryGraphView.height) < 0.5) {
+    const nextWidth = Math.min(2400, Math.max(80, memoryGraphView.width * factor));
+    const nextHeight = Math.min(1900, Math.max(60, memoryGraphView.height * factor));
+    // At the zoom floor/ceiling, stop the zoom entirely instead of re-anchoring,
+    // which otherwise drifts the view when the finger keeps moving past the limit.
+    const atWidthLimit = (factor < 1 && nextWidth >= memoryGraphView.width) || (factor > 1 && nextWidth <= memoryGraphView.width);
+    const atHeightLimit = (factor < 1 && nextHeight >= memoryGraphView.height) || (factor > 1 && nextHeight <= memoryGraphView.height);
+    if (atWidthLimit && atHeightLimit) {
         return;
     }
     const ratioX = (svgPoint.x - memoryGraphView.x) / memoryGraphView.width;
@@ -9153,6 +9160,42 @@ function bindMemoryGraphSvgInteractions() {
 
     const activePointers = new Map();
     let pinchState = null;
+    let pinchFrame = null;
+
+    const applyPinchFrame = () => {
+        pinchFrame = null;
+        if (!pinchState) {
+            return;
+        }
+        const ps = pinchState;
+        const rect = svg.getBoundingClientRect();
+        if (!rect.width || !rect.height) {
+            return;
+        }
+
+        // Damped scale factor: clamp the per-frame raw ratio to a small band so
+        // finger jitter does not translate into view jumps; smooth toward it.
+        const rawFactor = ps.lastDist / Math.max(1, ps.startDist);
+        const clampedRaw = Math.min(1.18, Math.max(0.82, rawFactor));
+        const factor = ps.appliedFactor + (clampedRaw - ps.appliedFactor) * 0.5;
+        if (Math.abs(factor - 1) > 0.001) {
+            zoomMemoryGraphAt(svg, ps.lastMidX, ps.lastMidY, factor / Math.max(0.001, ps.appliedFactor || 1));
+            ps.appliedFactor = factor;
+        }
+
+        // Two-finger pan: move the view by the midpoint delta, in view units.
+        if (ps.panMoved) {
+            const dx = (ps.startMidX - ps.lastMidX) * (memoryGraphView.width / rect.width);
+            const dy = (ps.startMidY - ps.lastMidY) * (memoryGraphView.height / rect.height);
+            if (Number.isFinite(dx) && Number.isFinite(dy) && (Math.abs(dx) > 0.2 || Math.abs(dy) > 0.2)) {
+                memoryGraphView.x += dx;
+                memoryGraphView.y += dy;
+                updateMemoryGraphViewBox(svg);
+                ps.startMidX = ps.lastMidX;
+                ps.startMidY = ps.lastMidY;
+            }
+        }
+    };
 
     container[0]?.addEventListener('pointerdown', (nativeEvent) => {
         if (!nativeEvent.isTrusted && nativeEvent.pointerType === 'mouse') {
@@ -9161,11 +9204,18 @@ function bindMemoryGraphSvgInteractions() {
         activePointers.set(nativeEvent.pointerId, { x: nativeEvent.clientX, y: nativeEvent.clientY });
         if (activePointers.size === 2) {
             const [a, b] = [...activePointers.values()];
+            const dist = Math.hypot(a.x - b.x, a.y - b.y);
+            const midX = (a.x + b.x) / 2;
+            const midY = (a.y + b.y) / 2;
             pinchState = {
-                startDist: Math.hypot(a.x - b.x, a.y - b.y),
-                midX: (a.x + b.x) / 2,
-                midY: (a.y + b.y) / 2,
-                lastDist: Math.hypot(a.x - b.x, a.y - b.y),
+                startDist: dist,
+                startMidX: midX,
+                startMidY: midY,
+                lastDist: dist,
+                lastMidX: midX,
+                lastMidY: midY,
+                appliedFactor: 1,
+                panMoved: false,
             };
             if (memoryGraphPan) {
                 memoryGraphPan = null;
@@ -9189,13 +9239,17 @@ function bindMemoryGraphSvgInteractions() {
         }
         const [a, b] = [...activePointers.values()];
         const dist = Math.hypot(a.x - b.x, a.y - b.y);
-        const factor = pinchState.lastDist / Math.max(1, dist);
         const midX = (a.x + b.x) / 2;
         const midY = (a.y + b.y) / 2;
-        zoomMemoryGraphAt(svg, midX, midY, factor);
         pinchState.lastDist = dist;
-        pinchState.midX = midX;
-        pinchState.midY = midY;
+        pinchState.lastMidX = midX;
+        pinchState.lastMidY = midY;
+        if (Math.hypot(midX - pinchState.startMidX, midY - pinchState.startMidY) > MEMORY_GRAPH_TOUCH_TAP_THRESHOLD) {
+            pinchState.panMoved = true;
+        }
+        if (!pinchFrame) {
+            pinchFrame = requestAnimationFrame(applyPinchFrame);
+        }
         nativeEvent.preventDefault?.();
     }, { passive: false });
 
@@ -9203,6 +9257,10 @@ function bindMemoryGraphSvgInteractions() {
         activePointers.delete(nativeEvent.pointerId);
         if (activePointers.size < 2) {
             pinchState = null;
+        }
+        if (pinchFrame) {
+            cancelAnimationFrame(pinchFrame);
+            pinchFrame = null;
         }
     };
     container[0]?.addEventListener('pointerup', releasePointer, { passive: true });
@@ -9304,6 +9362,12 @@ function bindMemoryGraphSvgInteractions() {
         .on('click.memoryGraphShellToggles', '#ai_wbr_memory_graph_preview_toggle', function (event) {
             event.preventDefault();
             $('#ai_wbr_memory_preview_panel').closest('.ai-wbr-graph-shell').toggleClass('preview-open');
+            memoryGraphPreviewRenderKey = '';
+            renderMemoryGraphSvg(getMemoryGraph());
+        })
+        .on('click.memoryGraphShellToggles', '.ai-wbr-memory-preview-close', function (event) {
+            event.preventDefault();
+            $('#ai_wbr_memory_preview_panel').closest('.ai-wbr-graph-shell').removeClass('preview-open');
             memoryGraphPreviewRenderKey = '';
             renderMemoryGraphSvg(getMemoryGraph());
         });
@@ -10283,7 +10347,7 @@ function bindMemoryPanelActions() {
 
     $(document)
         .off('.aiWbrGraphWorkspace')
-        .on('click.aiWbrGraphWorkspace', '#ai_wbr_memory_graph_fit', (event) => {
+        .on('click.aiWbrGraphWorkspace', '#ai_wbr_memory_graph_fit, .ai-wbr-graph-fit-trigger', (event) => {
             event.preventDefault();
             const graph = getMemoryGraph();
             fitMemoryGraphToContainer(graph);
