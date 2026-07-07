@@ -4004,6 +4004,15 @@ function escapeRegex(value) {
 
 function getDefaultMemoryRuleConfig() {
     const commonBlocks = ['当前', '状态', '阶段', '摘要', '剧情', '本轮', '字段', '列表', '信息', '内容'];
+    const titleCleaners = {
+        character: ['是否会', '能否', '是否', '想要', '准备', '打算', '需要', '希望', '说', '问', '回答', '表示', '提出', '同意', '拒绝', '解释', '告诉', '询问', '请求', '答应', '反对', '进入', '离开', '出现', '看向', '递给', '收留', '入住', '帮助', '攻击', '带领', '阻止', '会'],
+        location: ['前往', '进入', '来到', '离开', '抵达', '返回', '附近', '里面', '门口', '位于', '到达', '穿过'],
+        item: ['获得', '拿出', '使用', '交给', '递给', '打开', '丢失', '捡起', '发现', '收下', '藏起'],
+        faction: ['派出', '追捕', '加入', '隶属', '敌对', '合作', '控制', '掌控', '效忠', '代表'],
+        concept: ['必须', '不可', '需要', '可以', '依赖', '受到', '称为', '意味着', '分为', '源于'],
+        rule: ['必须', '不可', '需要', '只有', '否则', '禁止', '触发', '生效', '遵守', '违背'],
+        quest: ['调查', '寻找', '解决', '保护', '送达', '确认', '需要', '必须', '准备', '决定', '打算', '请求', '委托', '目标是'],
+    };
     return {
         enabled: true,
         entityRules: [
@@ -4013,7 +4022,7 @@ function getDefaultMemoryRuleConfig() {
                 targetType: 'character',
                 enabled: true,
                 keywords: ['角色', '人物', 'NPC', '主角', '配角', '同伴', '敌人', '朋友', '老师', '学生', '姓名', '身份'],
-                positiveKeywords: ['说', '问', '回答', '出现', '同意', '拒绝', '帮助', '攻击', '带领', '阻止', '告诉', '看向', '递给', '收留', '介绍', '名为', '叫做'],
+                positiveKeywords: ['说', '问', '回答', '表示', '提出', '是否会', '是否', '出现', '同意', '拒绝', '请求', '答应', '解释', '帮助', '攻击', '带领', '阻止', '告诉', '询问', '看向', '递给', '收留', '介绍', '名为', '叫做'],
                 negativeKeywords: ['角色设定', '人物关系', '当前状态', '主角目标', '身份设定', '任务目标', '地点状态', '角色栏', '人物栏'],
                 titleMinLength: 2,
                 titleMaxLength: 12,
@@ -4100,6 +4109,16 @@ function getDefaultMemoryRuleConfig() {
             },
         ],
         blockKeywords: uniqueStrings([...commonBlocks, '当前目标', '当前位置', '地点状态', '任务状态', '角色设定', '人物关系', '道具栏', '势力设定', '事件', '特产', '鞋子', '公寓', '大学', '玄关', '客厅']),
+        titleCleaners,
+        exampleRules: [
+            { id: 'ex_character_statement', enabled: true, source: '林悦提出入住', targetType: 'character', expectedTitle: '林悦' },
+            { id: 'ex_character_question', enabled: true, source: '林悦是否会答应', targetType: 'character', expectedTitle: '林悦' },
+            { id: 'ex_location_move', enabled: true, source: '主角前往旧城区', targetType: 'location', expectedTitle: '旧城区' },
+            { id: 'ex_item_get', enabled: true, source: '获得银钥匙', targetType: 'item', expectedTitle: '银钥匙' },
+            { id: 'ex_faction_action', enabled: true, source: '白塔议会派人追捕主角', targetType: 'faction', expectedTitle: '白塔议会' },
+            { id: 'ex_concept_rule', enabled: true, source: '魔法必须依赖媒介', targetType: 'concept', expectedTitle: '魔法依赖媒介' },
+            { id: 'ex_quest_goal', enabled: true, source: '调查矿洞失踪事件', targetType: 'quest', expectedTitle: '调查矿洞失踪事件' },
+        ],
     };
 }
 
@@ -4117,6 +4136,94 @@ function normalizeMemoryRuleNumber(value, fallback, min, max) {
 function normalizeMemoryRuleLowConfidenceMode(value, fallback = 'skip') {
     const mode = String(value || fallback).trim();
     return ['skip', 'review', 'write'].includes(mode) ? mode : fallback;
+}
+
+function getMemoryRuleTypeLabel(type) {
+    return getOptionLabel(MEMORY_NODE_TYPE_OPTIONS, type, type || '规则');
+}
+
+function getMemoryRuleAllowedTypes() {
+    return MEMORY_NODE_TYPE_OPTIONS.map(option => option.value).filter(type => type !== 'event');
+}
+
+function normalizeMemoryRuleTitleCleaners(value = null, fallback = null) {
+    const allowedTypes = getMemoryRuleAllowedTypes();
+    const fallbackMap = fallback && typeof fallback === 'object' ? fallback : {};
+    const source = value && typeof value === 'object' ? value : {};
+    const result = {};
+    for (const type of allowedTypes) {
+        const raw = Object.hasOwn(source, type) ? source[type] : fallbackMap[type];
+        result[type] = splitMemoryRuleKeywords(raw).slice(0, 48);
+    }
+    return result;
+}
+
+function parseMemoryRuleTitleCleaners(value, fallback = {}) {
+    const result = normalizeMemoryRuleTitleCleaners({}, fallback);
+    const lines = String(value || '').split(/\n+/u).map(line => line.trim()).filter(Boolean);
+    for (const line of lines) {
+        const match = line.match(/^([^:：=]+)\s*[:：=]\s*(.+)$/u);
+        if (!match) continue;
+        const type = getMemoryEntityTypeFromLabel(match[1]) || String(match[1] || '').trim();
+        if (!getMemoryRuleAllowedTypes().includes(type)) continue;
+        result[type] = splitMemoryRuleKeywords(match[2]).slice(0, 48);
+    }
+    return result;
+}
+
+function serializeMemoryRuleTitleCleaners(cleaners = {}) {
+    const normalized = normalizeMemoryRuleTitleCleaners(cleaners);
+    return getMemoryRuleAllowedTypes()
+        .map(type => `${getMemoryRuleTypeLabel(type)}：${(normalized[type] || []).join('、')}`)
+        .join('\n');
+}
+
+function normalizeMemoryRuleExampleRules(value = null, fallback = []) {
+    const allowedTypes = new Set(getMemoryRuleAllowedTypes());
+    const source = Array.isArray(value) && value.length ? value : (Array.isArray(fallback) ? fallback : []);
+    return source
+        .map((item, index) => {
+            const raw = item && typeof item === 'object' ? item : {};
+            const targetType = String(raw.targetType || raw.type || '').trim();
+            const safeType = allowedTypes.has(targetType) ? targetType : '';
+            const sourceText = truncateText(String(raw.source || raw.input || '').trim(), 80);
+            const expectedTitle = normalizeMemoryEntityTitle(raw.expectedTitle || raw.title || raw.output || '');
+            if (!safeType || !sourceText || !expectedTitle) return null;
+            return {
+                id: String(raw.id || `example_${safeType}_${index}`).replace(/[^\w-]+/g, '_'),
+                enabled: raw.enabled !== false,
+                source: sourceText,
+                targetType: safeType,
+                expectedTitle,
+            };
+        })
+        .filter(Boolean)
+        .slice(0, 40);
+}
+
+function parseMemoryRuleExamples(value, fallback = []) {
+    const parsed = [];
+    const lines = String(value || '').split(/\n+/u).map(line => line.trim()).filter(Boolean);
+    for (const line of lines) {
+        const enabled = !/^#/u.test(line);
+        const body = line.replace(/^#\s*/u, '');
+        const match = body.match(/^(.+?)\s*(?:=>|→|->)\s*([^:：=]+)\s*[:：=]\s*(.+)$/u);
+        if (!match) continue;
+        const targetType = getMemoryEntityTypeFromLabel(match[2]) || String(match[2] || '').trim();
+        parsed.push({
+            enabled,
+            source: match[1].trim(),
+            targetType,
+            expectedTitle: match[3].trim(),
+        });
+    }
+    return normalizeMemoryRuleExampleRules(parsed, fallback);
+}
+
+function serializeMemoryRuleExamples(examples = []) {
+    return normalizeMemoryRuleExampleRules(examples)
+        .map(rule => `${rule.enabled ? '' : '# '}${rule.source} => ${getMemoryRuleTypeLabel(rule.targetType)}:${rule.expectedTitle}`)
+        .join('\n');
 }
 
 function normalizeMemoryRuleConfig(config = null) {
@@ -4160,6 +4267,8 @@ function normalizeMemoryRuleConfig(config = null) {
         enabled: raw.enabled !== false,
         entityRules: entityRules.length ? entityRules : defaults.entityRules,
         blockKeywords: splitMemoryRuleKeywords(blockKeywordSource).slice(0, 80),
+        titleCleaners: normalizeMemoryRuleTitleCleaners(raw.titleCleaners, defaults.titleCleaners),
+        exampleRules: normalizeMemoryRuleExampleRules(raw.exampleRules, defaults.exampleRules),
     };
 }
 
@@ -4202,6 +4311,8 @@ function collectMemoryRuleConfigFromDrawer() {
         enabled: !!drawer.find('#ai_wbr_memory_rule_enabled').prop('checked'),
         entityRules,
         blockKeywords: splitMemoryRuleKeywords(drawer.find('#ai_wbr_memory_rule_block_keywords').val()),
+        titleCleaners: parseMemoryRuleTitleCleaners(drawer.find('#ai_wbr_memory_rule_title_cleaners').val(), current.titleCleaners),
+        exampleRules: parseMemoryRuleExamples(drawer.find('#ai_wbr_memory_rule_examples').val(), current.exampleRules),
     });
 }
 
@@ -4256,10 +4367,99 @@ function getMemoryRuleMatchedWords(text, words = []) {
     });
 }
 
-function getMemoryRuleCandidateTitle(rawTitle, rule) {
-    const title = stripMemoryEntityTail(rawTitle);
-    if (!title) return '';
-    return truncateText(title, normalizeMemoryRuleNumber(rule?.titleMaxLength, 24, 2, 60));
+function getExistingMemoryTitleForCandidate(type, title, graph = getMemoryGraph()) {
+    const normalizedTitle = normalizeText(title);
+    if (!type || !normalizedTitle) return '';
+    const nodes = Array.isArray(graph?.nodes) ? graph.nodes : [];
+    const matches = nodes
+        .filter(node => normalizeMemoryNodeType(node) === type)
+        .map(node => String(node?.title || node?.label || '').trim())
+        .filter(Boolean)
+        .filter(existing => {
+            const normalizedExisting = normalizeText(existing);
+            return normalizedExisting
+                && normalizedExisting !== normalizedTitle
+                && (normalizedTitle.startsWith(normalizedExisting) || normalizedTitle.includes(normalizedExisting));
+        })
+        .sort((a, b) => normalizeText(b).length - normalizeText(a).length);
+    return matches[0] || '';
+}
+
+function cleanMemoryRuleTitleByType(rawTitle, type, options = {}) {
+    const config = options.config || getMemoryRuleConfig();
+    const graph = options.graph || getMemoryGraph();
+    const sourceTitle = stripMemoryEntityTail(rawTitle);
+    if (!sourceTitle) {
+        return { title: '', reason: '空标题', originalTitle: String(rawTitle || '') };
+    }
+    const reusedBefore = getExistingMemoryTitleForCandidate(type, sourceTitle, graph);
+    if (reusedBefore) {
+        return { title: reusedBefore, reason: `复用已有卡片：${reusedBefore}`, originalTitle: sourceTitle };
+    }
+    const cleaners = splitMemoryRuleKeywords(config?.titleCleaners?.[type]);
+    let cleaned = sourceTitle;
+    let reason = '';
+    for (const word of cleaners) {
+        const index = cleaned.indexOf(word);
+        if (index < 0) continue;
+        const before = cleaned.slice(0, index).trim();
+        const after = cleaned.slice(index + word.length).trim();
+        if (type === 'character' || type === 'faction') {
+            if (before.length >= 2) {
+                cleaned = before;
+                reason = `标题净化：遇到“${word}”截断`;
+                break;
+            }
+        } else if (type === 'location' || type === 'item') {
+            if (after.length >= 2) {
+                cleaned = after;
+                reason = `标题净化：移除动作“${word}”前缀`;
+                break;
+            }
+            if (before.length >= 2) {
+                cleaned = before;
+                reason = `标题净化：遇到“${word}”截断`;
+                break;
+            }
+        } else if (type === 'concept' || type === 'rule') {
+            if (before.length >= 2 && after.length >= 2) {
+                cleaned = `${before}${after}`;
+                reason = `标题净化：压缩规则词“${word}”`;
+                break;
+            }
+            if (after.length >= 2) {
+                cleaned = after;
+                reason = `标题净化：移除“${word}”前缀`;
+                break;
+            }
+        } else if (type === 'quest') {
+            if (after.length >= 2) {
+                cleaned = after;
+                reason = `标题净化：移除目标动词“${word}”`;
+                break;
+            }
+        }
+    }
+    cleaned = normalizeMemoryEntityTitle(cleaned);
+    const reusedAfter = getExistingMemoryTitleForCandidate(type, cleaned, graph);
+    if (reusedAfter) {
+        return { title: reusedAfter, reason: `复用已有卡片：${reusedAfter}`, originalTitle: sourceTitle };
+    }
+    return {
+        title: cleaned,
+        reason,
+        originalTitle: sourceTitle,
+    };
+}
+
+function getMemoryRuleCandidateTitle(rawTitle, rule, config = getMemoryRuleConfig()) {
+    const cleaned = cleanMemoryRuleTitleByType(rawTitle, rule?.targetType, { config });
+    if (!cleaned.title) return { title: '', originalTitle: String(rawTitle || ''), cleanReason: cleaned.reason || '' };
+    return {
+        title: truncateText(cleaned.title, normalizeMemoryRuleNumber(rule?.titleMaxLength, 24, 2, 60)),
+        originalTitle: cleaned.originalTitle,
+        cleanReason: cleaned.reason || '',
+    };
 }
 
 function scoreMemoryRuleCandidate({ rule, title, contextText = '', explicit = false, keyword = '' }) {
@@ -4317,9 +4517,82 @@ function collectMemoryRuleCandidates(text, config = getMemoryRuleConfig()) {
         return [];
     }
     const candidates = [];
+    for (const example of normalizeMemoryRuleExampleRules(config.exampleRules)) {
+        if (!example.enabled || !text.includes(example.source)) continue;
+        const cleaned = cleanMemoryRuleTitleByType(example.expectedTitle, example.targetType, { config });
+        const title = cleaned.title || example.expectedTitle;
+        const rule = {
+            id: example.id,
+            label: '示例句规则',
+            targetType: example.targetType,
+            minConfidence: 72,
+            titleMinLength: 1,
+            titleMaxLength: 60,
+            positiveKeywords: [],
+            negativeKeywords: [],
+        };
+        candidates.push({
+            rule,
+            type: example.targetType,
+            title,
+            originalTitle: example.source,
+            keyword: '示例句',
+            contextText: example.source,
+            explicit: true,
+            confidence: 96,
+            positiveMatches: ['示例句'],
+            negativeMatches: [],
+            reason: `示例句命中：${example.source} → ${getMemoryRuleTypeLabel(example.targetType)}:${title}`,
+            cleanReason: cleaned.reason || '示例句期望标题',
+        });
+    }
     const rules = (Array.isArray(config.entityRules) ? config.entityRules : [])
         .filter(rule => rule?.enabled && rule.targetType)
         .sort((a, b) => getMemoryRuleTypePriority(b.targetType) - getMemoryRuleTypePriority(a.targetType));
+    const ruleByType = new Map(rules.map(rule => [rule.targetType, rule]));
+    for (const [type, words] of Object.entries(normalizeMemoryRuleTitleCleaners(config.titleCleaners))) {
+        const rule = ruleByType.get(type);
+        if (!rule) continue;
+        const maxLength = normalizeMemoryRuleNumber(rule.titleMaxLength, 24, 2, 60);
+        for (const word of splitMemoryRuleKeywords(words)) {
+            const escaped = escapeRegex(word);
+            if (!escaped) continue;
+            const patterns = [];
+            if (type === 'character' || type === 'faction') {
+                const subjectLength = type === 'character' ? Math.min(maxLength, 8) : Math.min(maxLength, 18);
+                patterns.push(new RegExp(`(?:^|[\\s，。！？；;,.、：:「“])([\\p{Script=Han}A-Za-z0-9_·]{2,${Math.max(2, subjectLength)}})\\s*(?:${escaped})`, 'giu'));
+            } else if (type === 'location' || type === 'item' || type === 'quest') {
+                patterns.push(new RegExp(`(?:${escaped})\\s*([\\p{Script=Han}A-Za-z0-9_·《》“”「」『』]{2,${Math.max(2, maxLength + 4)}})`, 'giu'));
+            } else if (type === 'concept' || type === 'rule') {
+                patterns.push(new RegExp(`([\\p{Script=Han}A-Za-z0-9_·]{2,16})\\s*(?:${escaped})\\s*([\\p{Script=Han}A-Za-z0-9_·]{2,22})`, 'giu'));
+            }
+            for (const pattern of patterns) {
+                for (const match of text.matchAll(pattern)) {
+                    const contextText = getMemoryRuleTextWindow(text, match.index, 42);
+                    const rawTitle = type === 'concept' || type === 'rule'
+                        ? `${match[1] || ''}${word}${match[2] || ''}`
+                        : (type === 'character' || type === 'faction'
+                            ? `${match[1] || ''}${word}`
+                            : `${word}${match[1] || ''}`);
+                    const cleaned = getMemoryRuleCandidateTitle(rawTitle, rule, config);
+                    const scored = scoreMemoryRuleCandidate({ rule, title: cleaned.title, contextText, explicit: false, keyword: word });
+                    scored.confidence = Math.min(100, scored.confidence + 8);
+                    candidates.push({
+                        rule,
+                        type,
+                        title: cleaned.title,
+                        originalTitle: cleaned.originalTitle,
+                        cleanReason: cleaned.cleanReason || `标题净化词触发：${word}`,
+                        keyword: word,
+                        contextText,
+                        explicit: false,
+                        ...scored,
+                        reason: `标题净化词命中：${word}`,
+                    });
+                }
+            }
+        }
+    }
     for (const rule of rules) {
         const maxLength = normalizeMemoryRuleNumber(rule.titleMaxLength, 24, 2, 60);
         for (const keyword of splitMemoryRuleKeywords(rule.keywords)) {
@@ -4328,16 +4601,16 @@ function collectMemoryRuleCandidates(text, config = getMemoryRuleConfig()) {
             const explicitPattern = new RegExp(`(?:${escaped})\\s*[:：\\-为是叫名]\\s*([\\p{Script=Han}A-Za-z0-9_·《》“”「」『』]{2,${Math.max(2, maxLength + 4)}})`, 'giu');
             for (const match of text.matchAll(explicitPattern)) {
                 const contextText = getMemoryRuleTextWindow(text, match.index, 38);
-                const title = getMemoryRuleCandidateTitle(match[1], rule);
-                const scored = scoreMemoryRuleCandidate({ rule, title, contextText, explicit: true, keyword });
-                candidates.push({ rule, type: rule.targetType, title, keyword, contextText, explicit: true, ...scored });
+                const cleaned = getMemoryRuleCandidateTitle(match[1], rule, config);
+                const scored = scoreMemoryRuleCandidate({ rule, title: cleaned.title, contextText, explicit: true, keyword });
+                candidates.push({ rule, type: rule.targetType, title: cleaned.title, originalTitle: cleaned.originalTitle, cleanReason: cleaned.cleanReason, keyword, contextText, explicit: true, ...scored });
             }
             const contextPattern = new RegExp(`([\\p{Script=Han}A-Za-z0-9_·]{2,${Math.max(2, maxLength)}})[^。！？；;,.，]{0,16}(?:${escaped})`, 'giu');
             for (const match of text.matchAll(contextPattern)) {
                 const contextText = getMemoryRuleTextWindow(text, match.index, 42);
-                const title = getMemoryRuleCandidateTitle(match[1], rule);
-                const scored = scoreMemoryRuleCandidate({ rule, title, contextText, explicit: false, keyword });
-                candidates.push({ rule, type: rule.targetType, title, keyword, contextText, explicit: false, ...scored });
+                const cleaned = getMemoryRuleCandidateTitle(match[1], rule, config);
+                const scored = scoreMemoryRuleCandidate({ rule, title: cleaned.title, contextText, explicit: false, keyword });
+                candidates.push({ rule, type: rule.targetType, title: cleaned.title, originalTitle: cleaned.originalTitle, cleanReason: cleaned.cleanReason, keyword, contextText, explicit: false, ...scored });
             }
         }
     }
@@ -4373,8 +4646,11 @@ function runMemoryRulePreview() {
         const accepted = acceptedKeys.has(`${candidate.type}|${normalizeText(candidate.title)}`) && candidate.confidence >= threshold;
         const reason = candidate.negativeMatches.length
             ? `拦截：${candidate.negativeMatches.join('、')}`
-            : `${candidate.reason}；阈值 ${threshold}`;
-        return `<span class="ai-wbr-memory-rule-preview-chip ${accepted ? 'accepted' : 'skipped'}"><b>${escapeHtml(getOptionLabel(MEMORY_NODE_TYPE_OPTIONS, candidate.type, candidate.type))}</b>${escapeHtml(candidate.title)}<em>${candidate.confidence}% · ${escapeHtml(reason)}</em></span>`;
+            : `${candidate.reason}${candidate.cleanReason ? `；${candidate.cleanReason}` : ''}；阈值 ${threshold}`;
+        const titleLine = candidate.originalTitle && normalizeText(candidate.originalTitle) !== normalizeText(candidate.title)
+            ? `${candidate.originalTitle} → ${candidate.title}`
+            : candidate.title;
+        return `<span class="ai-wbr-memory-rule-preview-chip ${accepted ? 'accepted' : 'skipped'}"><b>${escapeHtml(getOptionLabel(MEMORY_NODE_TYPE_OPTIONS, candidate.type, candidate.type))}</b>${escapeHtml(titleLine)}<em>${candidate.confidence}% · ${escapeHtml(reason)}</em></span>`;
     });
     for (const item of hints.slice(0, 18)) {
         const key = `${item.type}|${normalizeText(item.title)}`;
@@ -4395,7 +4671,14 @@ function buildMemoryRulePromptGuide(config = getMemoryRuleConfig()) {
             const negatives = splitMemoryRuleKeywords(rule.negativeKeywords).join('、') || '无';
             return `- ${rule.label || getOptionLabel(MEMORY_NODE_TYPE_OPTIONS, rule.targetType, rule.targetType)} -> type=${rule.targetType}；触发词：${splitMemoryRuleKeywords(rule.keywords).join('、')}；正向上下文：${positives}；排除词：${negatives}；最低置信度：${rule.minConfidence || 64}%。低于阈值不要写入。`;
         });
-    return `${lines.length ? lines.join('\n') : '没有启用的自定义规则。'}\n分类优先级：rule > concept > quest > location > item > faction > character > event。若同一内容可归入更具体类型，不要降级写入 event；若角色/地点/道具/势力/设定/任务证据不足，跳过该类型而不是强行造卡。`;
+    const cleaners = Object.entries(normalizeMemoryRuleTitleCleaners(config.titleCleaners))
+        .filter(([, words]) => words.length)
+        .map(([type, words]) => `- ${getMemoryRuleTypeLabel(type)}：${words.join('、')}`);
+    const examples = normalizeMemoryRuleExampleRules(config.exampleRules)
+        .filter(rule => rule.enabled)
+        .slice(0, 12)
+        .map(rule => `- ${rule.source} => ${getMemoryRuleTypeLabel(rule.targetType)}:${rule.expectedTitle}`);
+    return `${lines.length ? lines.join('\n') : '没有启用的自定义规则。'}\n标题净化词：命中后必须把动作短语净化为实体标题，例如“林悦提出入住”只能写成“林悦”。\n${cleaners.join('\n') || '- 无'}\n示例句规则：\n${examples.join('\n') || '- 无'}\n分类优先级：rule > concept > quest > location > item > faction > character > event。若同一内容可归入更具体类型，不要降级写入 event；若角色/地点/道具/势力/设定/任务证据不足，跳过该类型而不是强行造卡。`;
 }
 
 function splitMemoryEntityTokens(value) {
@@ -4519,7 +4802,7 @@ function applyCustomMemoryEntityRules(text, hints, seen, config = getMemoryRuleC
             positiveMatches: candidate.positiveMatches,
             negativeMatches: candidate.negativeMatches,
             ruleLabel: candidate.rule?.label,
-            reason: candidate.reason,
+            reason: [candidate.reason, candidate.cleanReason].filter(Boolean).join('；'),
         });
     }
 }
@@ -4560,8 +4843,8 @@ function extractMemoryEntityHintsFromText(rawNode = {}, state = {}) {
     applyCustomMemoryEntityRules(text, hints, seen);
 
     const namePatterns = [
-        /(?:向|对|给|问|告诉|请求|见到|遇见|认识|确认|说明|跟|和|与)([\p{Script=Han}A-Za-z0-9_·]{2,12})(?:说|问|确认|说明|请求|交谈|解释|赠送|借住|收留|反应)/giu,
-        /([\p{Script=Han}A-Za-z0-9_·]{2,12})(?:同意|拒绝|反应|出现|离开|进入|询问|回答|赠送|收留)/giu,
+        /(?:向|对|给|问|告诉|请求|见到|遇见|认识|确认|说明|跟|和|与)([\p{Script=Han}A-Za-z0-9_·]{2,12})(?:说|问|确认|说明|请求|交谈|解释|表示|提出|询问|回答|答应|赠送|借住|收留|反应)/giu,
+        /([\p{Script=Han}A-Za-z0-9_·]{2,12})(?:同意|拒绝|反应|出现|离开|进入|询问|回答|表示|提出|是否会|能否|答应|解释|请求|告诉|赠送|收留)/giu,
     ];
     for (const pattern of namePatterns) {
         for (const match of text.matchAll(pattern)) {
@@ -4657,33 +4940,86 @@ function expandMemoryUpdateEntityNodes(update, graph = getMemoryGraph()) {
 
 function sanitizeMemoryUpdateForApply(update) {
     update = expandMemoryUpdateEntityNodes(update);
+    const ruleConfig = getMemoryRuleConfig();
     const sanitized = {
         ...update,
         nodes: [],
         updates: [],
         links: [],
     };
+    const idRedirects = new Map();
+    const rememberRedirect = (from, to) => {
+        const raw = String(from || '').trim();
+        const target = String(to || '').trim();
+        if (!raw || !target) return;
+        idRedirects.set(normalizeText(raw), target);
+        idRedirects.set(createMemoryId(raw), target);
+    };
+    const redirectEndpoint = value => {
+        const raw = String(value || '').trim();
+        if (!raw) return '';
+        return idRedirects.get(normalizeText(raw)) || idRedirects.get(createMemoryId(raw)) || raw;
+    };
     for (const rawNode of (Array.isArray(update?.nodes) ? update.nodes : []).slice(0, 14)) {
-        const title = truncateText(rawNode?.title || rawNode?.label || rawNode?.id || '', 80);
+        const nodeType = normalizeMemoryNodeType(rawNode);
+        const rawTitle = rawNode?.title || rawNode?.label || rawNode?.id || '';
+        const rawId = rawNode?.id || '';
+        const rawLabel = rawNode?.label || '';
+        const cleaned = nodeType && nodeType !== 'event'
+            ? cleanMemoryRuleTitleByType(rawTitle, nodeType, { config: ruleConfig })
+            : { title: stripMemoryEntityTail(rawTitle), originalTitle: rawTitle, reason: '' };
+        const title = truncateText(cleaned.title || rawTitle, 80);
         const summary = truncateText(rawNode?.summary || rawNode?.content || rawNode?.description || '', 240);
         const keys = Array.isArray(rawNode?.keys) ? rawNode.keys.join('') : String(rawNode?.keys || '');
         if (isWeakMemoryTitle(title) || (normalizeText(summary).length < 4 && normalizeText(keys).length < 2)) continue;
-        sanitized.nodes.push(rawNode);
+        const node = { ...rawNode, type: nodeType, title };
+        if (rawNode?.label || normalizeText(rawNode?.label || '') === normalizeText(rawTitle)) {
+            node.label = title;
+        }
+        if (!rawNode?.id || normalizeText(rawNode.id) === normalizeText(rawTitle) || normalizeText(rawNode.id).includes(normalizeText(rawTitle))) {
+            node.id = createMemoryId(`${nodeType}_${title}`);
+        }
+        if (cleaned.reason) {
+            node.tags = uniqueStrings([...(Array.isArray(rawNode?.tags) ? rawNode.tags : []), '标题净化']);
+            node.keys = uniqueStrings([...(Array.isArray(rawNode?.keys) ? rawNode.keys : []), cleaned.originalTitle].filter(Boolean));
+        }
+        rememberRedirect(rawId, node.id || createMemoryId(`${nodeType}_${title}`));
+        rememberRedirect(rawTitle, node.id || createMemoryId(`${nodeType}_${title}`));
+        rememberRedirect(rawLabel, node.id || createMemoryId(`${nodeType}_${title}`));
+        rememberRedirect(cleaned.originalTitle, node.id || createMemoryId(`${nodeType}_${title}`));
+        rememberRedirect(title, node.id || createMemoryId(`${nodeType}_${title}`));
+        sanitized.nodes.push(node);
     }
 
     for (const rawUpdate of (Array.isArray(update?.updates) ? update.updates : []).slice(0, 8)) {
-        const title = rawUpdate?.title || rawUpdate?.titleToUpdate || rawUpdate?.id || '';
+        const updateType = normalizeMemoryNodeType(rawUpdate);
+        const rawTitle = rawUpdate?.title || rawUpdate?.titleToUpdate || rawUpdate?.id || '';
+        const cleaned = updateType && updateType !== 'event'
+            ? cleanMemoryRuleTitleByType(rawTitle, updateType, { config: ruleConfig })
+            : { title: stripMemoryEntityTail(rawTitle), originalTitle: rawTitle, reason: '' };
+        const title = cleaned.title || rawTitle;
         const content = rawUpdate?.content || rawUpdate?.newContent || rawUpdate?.summary || '';
         const keys = Array.isArray(rawUpdate?.keys) ? rawUpdate.keys.join('') : String(rawUpdate?.keys || '');
         if (isWeakMemoryTitle(title) || (normalizeText(content).length < 4 && normalizeText(keys).length < 2)) continue;
-        sanitized.updates.push(rawUpdate);
+        sanitized.updates.push({
+            ...rawUpdate,
+            title,
+            titleToUpdate: rawUpdate?.titleToUpdate ? title : rawUpdate?.titleToUpdate,
+            type: updateType,
+        });
     }
 
     for (const rawLink of (Array.isArray(update?.links) ? update.links : []).slice(0, 12)) {
-        const source = normalizeText(rawLink?.source || rawLink?.sourceId || rawLink?.from || '');
-        const target = normalizeText(rawLink?.target || rawLink?.targetId || rawLink?.to || '');
-        if (!source || !target || source === target) continue;
-        sanitized.links.push(rawLink);
+        const source = redirectEndpoint(rawLink?.source || rawLink?.sourceId || rawLink?.from || '');
+        const target = redirectEndpoint(rawLink?.target || rawLink?.targetId || rawLink?.to || '');
+        const sourceKey = normalizeText(source);
+        const targetKey = normalizeText(target);
+        if (!sourceKey || !targetKey || sourceKey === targetKey) continue;
+        sanitized.links.push({
+            ...rawLink,
+            source,
+            target,
+        });
     }
 
     return sanitized;
@@ -8306,6 +8642,16 @@ function renderMemoryRuleDrawerHtml() {
                     <b>误判拦截词</b>
                     <small>这些词不会被当成实体标题，避免“当前状态 / 任务 / 地点”等被误写成角色。</small>
                     <textarea id="ai_wbr_memory_rule_block_keywords" class="text_pole" rows="3">${escapeHtml(config.blockKeywords.join('\n'))}</textarea>
+                </div>
+                <div class="ai-wbr-memory-rule-card ai-wbr-memory-rule-cleaners">
+                    <b>标题净化词</b>
+                    <small>每行格式：角色：提出、是否会、表示。命中后会把“林悦提出入住”净化成“林悦”，其他类型也会去掉动作前缀或截断动作短语。</small>
+                    <textarea id="ai_wbr_memory_rule_title_cleaners" class="text_pole" rows="7" placeholder="角色：提出、是否会、表示">${escapeHtml(serializeMemoryRuleTitleCleaners(config.titleCleaners))}</textarea>
+                </div>
+                <div class="ai-wbr-memory-rule-card ai-wbr-memory-rule-examples">
+                    <b>示例句规则</b>
+                    <small>每行格式：原句 => 类型:标题。用于教规则识别典型句式，示例越贴近你的剧情，拆卡越准；行首加 # 可临时停用。</small>
+                    <textarea id="ai_wbr_memory_rule_examples" class="text_pole" rows="7" placeholder="林悦提出入住 => 角色:林悦">${escapeHtml(serializeMemoryRuleExamples(config.exampleRules))}</textarea>
                 </div>
                 <div class="ai-wbr-memory-rule-card ai-wbr-memory-rule-preview">
                     <b>规则试跑</b>
