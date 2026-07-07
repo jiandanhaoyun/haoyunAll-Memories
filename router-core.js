@@ -3497,9 +3497,6 @@ function getMemoryGraph(context = getContext()) {
             nodeTypeMigrated = true;
         }
     });
-    if (rebalanceMemoryGraphNodeTypes(graph)) {
-        nodeTypeMigrated = true;
-    }
     graph.links = Array.isArray(graph.links) ? graph.links : [];
     graph.lastSummary = String(graph.lastSummary || '');
     graph.updatedAt = nodeTypeMigrated ? new Date().toISOString() : String(graph.updatedAt || '');
@@ -4306,31 +4303,13 @@ function collectMemoryRuleConfigFromDrawer() {
     if (!drawer.length) {
         return current;
     }
-    const entityRules = [];
-    drawer.find('.ai-wbr-memory-rule-card[data-rule-id]').each(function (index) {
-        const card = $(this);
-        const targetType = String(card.find('.ai-wbr-memory-rule-type').val() || '').trim();
-        entityRules.push({
-            id: String(card.data('ruleId') || `${targetType || 'rule'}_${Date.now().toString(36)}_${index}`).replace(/[^\w-]+/g, '_'),
-            label: String(card.find('.ai-wbr-memory-rule-label').val() || '').trim(),
-            targetType,
-            enabled: !!card.find('.ai-wbr-memory-rule-enabled').prop('checked'),
-            keywords: splitMemoryRuleKeywords(card.find('.ai-wbr-memory-rule-keywords').val()),
-            positiveKeywords: splitMemoryRuleKeywords(card.find('.ai-wbr-memory-rule-positive').val()),
-            negativeKeywords: splitMemoryRuleKeywords(card.find('.ai-wbr-memory-rule-negative').val()),
-            titleMinLength: card.find('.ai-wbr-memory-rule-title-min').val(),
-            titleMaxLength: card.find('.ai-wbr-memory-rule-title-max').val(),
-            minConfidence: card.find('.ai-wbr-memory-rule-confidence').val(),
-            lowConfidenceMode: String(card.find('.ai-wbr-memory-rule-low-mode').val() || 'skip'),
-        });
-    });
     return normalizeMemoryRuleConfig({
         enabled: !!drawer.find('#ai_wbr_memory_rule_enabled').prop('checked'),
-        entityRules,
-        blockKeywords: splitMemoryRuleKeywords(drawer.find('#ai_wbr_memory_rule_block_keywords').val()),
+        entityRules: current.entityRules,
+        blockKeywords: current.blockKeywords,
         aiCardWritingGuide: normalizeMemoryRuleGuideText(drawer.find('#ai_wbr_memory_rule_ai_guide').val(), current.aiCardWritingGuide),
-        titleCleaners: parseMemoryRuleTitleCleaners(drawer.find('#ai_wbr_memory_rule_title_cleaners').val(), current.titleCleaners),
-        exampleRules: parseMemoryRuleExamples(drawer.find('#ai_wbr_memory_rule_examples').val(), current.exampleRules),
+        titleCleaners: current.titleCleaners,
+        exampleRules: current.exampleRules,
     });
 }
 
@@ -4680,24 +4659,10 @@ function runMemoryRulePreview() {
 
 function buildMemoryRulePromptGuide(config = getMemoryRuleConfig()) {
     if (!config?.enabled) {
-        return '自定义 AI 填卡规则已关闭。仍需由 AI 根据默认类型规范输出 memory_cards_json，本地只做校验、净化和合并。';
+        return 'AI 填卡说明已关闭。仍需由 AI 基于上下文直接输出 memory_cards_json；本地只校验 type/title、合并同类型同标题卡片，并做最小标题保护。';
     }
     const aiGuide = normalizeMemoryRuleGuideText(config.aiCardWritingGuide, getDefaultMemoryRuleConfig().aiCardWritingGuide);
-    const lines = (Array.isArray(config.entityRules) ? config.entityRules : [])
-        .filter(rule => rule?.enabled && rule.targetType && splitMemoryRuleKeywords(rule.keywords).length)
-        .map(rule => {
-            const positives = splitMemoryRuleKeywords(rule.positiveKeywords).join('、') || '无';
-            const negatives = splitMemoryRuleKeywords(rule.negativeKeywords).join('、') || '无';
-            return `- ${rule.label || getOptionLabel(MEMORY_NODE_TYPE_OPTIONS, rule.targetType, rule.targetType)} -> memory_cards_json.type=${rule.targetType}；AI 关注词：${splitMemoryRuleKeywords(rule.keywords).join('、')}；应写入场景：${positives}；不要写入：${negatives}；最低置信度：${rule.minConfidence || 64}%。低于阈值不要写入该类型卡片。`;
-        });
-    const cleaners = Object.entries(normalizeMemoryRuleTitleCleaners(config.titleCleaners))
-        .filter(([, words]) => words.length)
-        .map(([type, words]) => `- ${getMemoryRuleTypeLabel(type)}：${words.join('、')}`);
-    const examples = normalizeMemoryRuleExampleRules(config.exampleRules)
-        .filter(rule => rule.enabled)
-        .slice(0, 12)
-        .map(rule => `- ${rule.source} => ${getMemoryRuleTypeLabel(rule.targetType)}:${rule.expectedTitle}`);
-    return `AI 填卡总规则：\n${aiGuide}\n\n分类写入规则：\n${lines.length ? lines.join('\n') : '- 没有启用的自定义分类规则。'}\n\n标题净化词：这些词不能进入实体标题，命中后必须把动作短语净化为实体标题，例如“林悦提出入住”只能写成“林悦”。\n${cleaners.join('\n') || '- 无'}\n\n示例句规则：按这些示例理解剧情，并输出 memory_cards_json；不要把示例原句整体当标题。\n${examples.join('\n') || '- 无'}\n\n分类优先级：rule > concept > quest > location > item > faction > character > event。若同一内容可归入更具体类型，不要降级写入 event；若角色/地点/道具/势力/设定/任务证据不足，跳过该类型而不是强行造卡。`;
+    return `AI 填卡说明：\n${aiGuide}\n\n执行方式：\n- 基于最近剧情、当前状态和已有图谱，直接填写 memory_cards_json。\n- type 由 AI 直接给出，必须是 character/location/item/faction/concept/rule/quest/event 之一。\n- 标题和板块只按 memory_cards_json.type 显示，不要再根据标题或内容重新猜分类。\n- 本地代码只负责保存、校验、合并重复卡片和最小标题保护，不再用关键词/示例句扩展生成新卡。\n- 同类型同标题执行 upsert；证据不足就跳过，不要硬造卡。`;
 }
 
 function splitMemoryEntityTokens(value) {
@@ -4781,7 +4746,8 @@ function normalizeAiMemoryCardToNode(card = {}, state = {}, fallbackIndex = 0) {
     if (operation !== 'upsert') {
         return null;
     }
-    const type = normalizeMemoryNodeType(card);
+    const explicitType = String(card?.type || card?.category || card?.kind || '').trim();
+    const type = getMemoryEntityTypeFromLabel(explicitType) || normalizeMemoryNodeType({ type: explicitType });
     const rawTitle = card?.title || card?.name || card?.label || card?.id || '';
     const cleaned = type && type !== 'event'
         ? cleanMemoryRuleTitleByType(rawTitle, type, { config: getMemoryRuleConfig() })
@@ -5099,7 +5065,6 @@ function expandMemoryUpdateEntityNodes(update, graph = getMemoryGraph()) {
 
 function sanitizeMemoryUpdateForApply(update) {
     update = expandMemoryCardsIntoUpdate(update);
-    update = expandMemoryUpdateEntityNodes(update);
     const ruleConfig = getMemoryRuleConfig();
     const sanitized = {
         ...update,
@@ -8756,97 +8721,28 @@ function renderMemoryGraphTypeFilters(graph) {
 
 function renderMemoryRuleDrawerHtml() {
     const config = getMemoryRuleConfig();
-    const ruleRows = config.entityRules.map((rule, index) => `
-        <div class="ai-wbr-memory-rule-card" data-rule-id="${escapeHtml(rule.id)}">
-            <div class="ai-wbr-memory-rule-card-head">
-                <label class="checkbox_label">
-                    <input class="ai-wbr-memory-rule-enabled" type="checkbox" ${rule.enabled ? 'checked' : ''} />
-                    <span>启用</span>
-                </label>
-                <button class="menu_button ai-wbr-memory-rule-delete" type="button" ${config.entityRules.length <= 1 ? 'disabled' : ''}>删除</button>
-            </div>
-            <div class="ai-wbr-memory-rule-grid">
-                <label>规则名称</label>
-                <input class="text_pole ai-wbr-memory-rule-label" type="text" value="${escapeHtml(rule.label)}" placeholder="例如：角色卡片" />
-                <label>写入类型</label>
-                <select class="text_pole ai-wbr-memory-rule-type">
-                    ${MEMORY_NODE_TYPE_OPTIONS
-                        .filter(option => option.value !== 'event')
-                        .map(option => `<option value="${escapeHtml(option.value)}" ${option.value === rule.targetType ? 'selected' : ''}>${escapeHtml(option.label)}</option>`)
-                        .join('')}
-                </select>
-                <label>触发词</label>
-                <textarea class="text_pole ai-wbr-memory-rule-keywords" rows="3" placeholder="每行或逗号分隔">${escapeHtml(rule.keywords.join('\n'))}</textarea>
-                <label>正向上下文</label>
-                <textarea class="text_pole ai-wbr-memory-rule-positive" rows="2" placeholder="例如：说、进入、获得、加入">${escapeHtml((rule.positiveKeywords || []).join('\n'))}</textarea>
-                <label>排除词</label>
-                <textarea class="text_pole ai-wbr-memory-rule-negative" rows="2" placeholder="例如：角色设定、任务状态">${escapeHtml((rule.negativeKeywords || []).join('\n'))}</textarea>
-                <label>标题长度</label>
-                <div class="ai-wbr-memory-rule-inline">
-                    <input class="text_pole ai-wbr-memory-rule-title-min" type="number" min="1" max="20" value="${escapeHtml(rule.titleMinLength)}" />
-                    <span>到</span>
-                    <input class="text_pole ai-wbr-memory-rule-title-max" type="number" min="2" max="60" value="${escapeHtml(rule.titleMaxLength)}" />
-                </div>
-                <label>最低置信度</label>
-                <input class="text_pole ai-wbr-memory-rule-confidence" type="number" min="1" max="100" value="${escapeHtml(rule.minConfidence)}" />
-                <label>低置信处理</label>
-                <select class="text_pole ai-wbr-memory-rule-low-mode">
-                    <option value="skip" ${rule.lowConfidenceMode === 'skip' ? 'selected' : ''}>跳过</option>
-                    <option value="review" ${rule.lowConfidenceMode === 'review' ? 'selected' : ''}>待确认</option>
-                    <option value="write" ${rule.lowConfidenceMode === 'write' ? 'selected' : ''}>仍写入</option>
-                </select>
-            </div>
-            <small>命中触发词后，会结合上下文、排除词和置信度决定是否写成 ${escapeHtml(getOptionLabel(MEMORY_NODE_TYPE_OPTIONS, rule.targetType, rule.targetType))} 记忆卡片。</small>
-        </div>
-    `).join('');
-
     return `
         <aside id="ai_wbr_memory_rule_drawer" class="ai-wbr-memory-rule-drawer" aria-hidden="${memoryRuleDrawerOpen ? 'false' : 'true'}">
             <div class="ai-wbr-memory-rule-head">
                 <div>
                     <div class="ai-wbr-memory-preview-kicker">Memory Rules</div>
-                    <h3>记忆卡片写入规则</h3>
-                    <small>控制角色、地点、道具、势力、设定、规则、任务如何拆卡。</small>
+                    <h3>AI 填卡说明</h3>
+                    <small>只告诉 AI 怎么基于上下文填写记忆卡片；分类、标题和内容由 AI 直接给出。</small>
                 </div>
                 <button class="menu_button ai-wbr-memory-rule-close" type="button">关闭</button>
             </div>
             <div class="ai-wbr-memory-rule-body">
                 <label class="checkbox_label ai-wbr-memory-rule-master">
                     <input id="ai_wbr_memory_rule_enabled" type="checkbox" ${config.enabled ? 'checked' : ''} />
-                    <span>启用自定义写入规则</span>
+                    <span>启用 AI 填卡说明</span>
                 </label>
-                <div class="ai-wbr-memory-rule-toolbar">
-                    <button class="menu_button ai-wbr-memory-rule-add" type="button">新增规则</button>
-                    <button class="menu_button ai-wbr-memory-rule-reset" type="button">恢复默认</button>
-                </div>
                 <div class="ai-wbr-memory-rule-card ai-wbr-memory-rule-ai-guide">
-                    <b>AI 填卡规则</b>
-                    <small>这里写给 AI 的记忆卡片写入规范。AI 会在每回合实时更新时优先输出 memory_cards_json，本地只做标题净化、合并和兜底。</small>
-                    <textarea id="ai_wbr_memory_rule_ai_guide" class="text_pole" rows="9" placeholder="例如：角色标题只能写人名；任务标题写未完成目标；证据不足时跳过。">${escapeHtml(config.aiCardWritingGuide || '')}</textarea>
-                </div>
-                <div class="ai-wbr-memory-rule-list">${ruleRows}</div>
-                <div class="ai-wbr-memory-rule-card ai-wbr-memory-rule-blocks">
-                    <b>误判拦截词</b>
-                    <small>这些词不会被当成实体标题，避免“当前状态 / 任务 / 地点”等被误写成角色。</small>
-                    <textarea id="ai_wbr_memory_rule_block_keywords" class="text_pole" rows="3">${escapeHtml(config.blockKeywords.join('\n'))}</textarea>
-                </div>
-                <div class="ai-wbr-memory-rule-card ai-wbr-memory-rule-cleaners">
-                    <b>标题净化词</b>
-                    <small>每行格式：角色：提出、是否会、表示。命中后会把“林悦提出入住”净化成“林悦”，其他类型也会去掉动作前缀或截断动作短语。</small>
-                    <textarea id="ai_wbr_memory_rule_title_cleaners" class="text_pole" rows="7" placeholder="角色：提出、是否会、表示">${escapeHtml(serializeMemoryRuleTitleCleaners(config.titleCleaners))}</textarea>
-                </div>
-                <div class="ai-wbr-memory-rule-card ai-wbr-memory-rule-examples">
-                    <b>示例句规则</b>
-                    <small>每行格式：原句 => 类型:标题。用于教规则识别典型句式，示例越贴近你的剧情，拆卡越准；行首加 # 可临时停用。</small>
-                    <textarea id="ai_wbr_memory_rule_examples" class="text_pole" rows="7" placeholder="林悦提出入住 => 角色:林悦">${escapeHtml(serializeMemoryRuleExamples(config.exampleRules))}</textarea>
-                </div>
-                <div class="ai-wbr-memory-rule-card ai-wbr-memory-rule-preview">
-                    <b>规则试跑</b>
-                    <textarea id="ai_wbr_memory_rule_preview_text" class="text_pole" rows="4" placeholder="粘贴一段剧情，测试会拆出哪些记忆卡片"></textarea>
+                    <b>AI 填卡说明</b>
+                    <small>这里写自然语言说明即可。实时更新时 AI 会基于最近剧情、当前状态和已有图谱直接输出 memory_cards_json；本地只校验 type、title、合并重复卡和做最小标题保护。</small>
+                    <textarea id="ai_wbr_memory_rule_ai_guide" class="text_pole" rows="14" placeholder="例如：角色标题只写人名；任务标题写未完成目标；证据不足时跳过。">${escapeHtml(config.aiCardWritingGuide || '')}</textarea>
                     <div class="ai-wbr-memory-rule-preview-actions">
-                        <button class="menu_button ai-wbr-memory-rule-run-preview" type="button">试跑拆卡</button>
+                        <button class="menu_button ai-wbr-memory-rule-reset" type="button">恢复默认说明</button>
                     </div>
-                    <div id="ai_wbr_memory_rule_preview_result" class="ai-wbr-memory-rule-preview-result">等待试跑。</div>
                 </div>
             </div>
         </aside>
@@ -10499,36 +10395,11 @@ function bindMemoryGraphSvgInteractions() {
         scheduleMemoryRuleConfigSave();
     });
 
-    container.on('click.memoryGraphSvg', '.ai-wbr-memory-rule-add', function (event) {
-        event.preventDefault();
-        event.stopPropagation();
-        addMemoryRuleConfigRow();
-    });
-
-    container.on('click.memoryGraphSvg', '.ai-wbr-memory-rule-delete', function (event) {
-        event.preventDefault();
-        event.stopPropagation();
-        const config = saveMemoryRuleConfigFromDrawer();
-        const ruleId = String($(this).closest('[data-rule-id]').data('ruleId') || '');
-        if (!ruleId || config.entityRules.length <= 1) {
-            return;
-        }
-        config.entityRules = config.entityRules.filter(rule => String(rule.id) !== ruleId);
-        saveMemoryRuleConfig(config);
-        renderMemoryGraphSvg(getMemoryGraph());
-    });
-
     container.on('click.memoryGraphSvg', '.ai-wbr-memory-rule-reset', function (event) {
         event.preventDefault();
         event.stopPropagation();
         saveMemoryRuleConfig(getDefaultMemoryRuleConfig());
         renderMemoryGraphSvg(getMemoryGraph());
-    });
-
-    container.on('click.memoryGraphSvg', '.ai-wbr-memory-rule-run-preview', function (event) {
-        event.preventDefault();
-        event.stopPropagation();
-        runMemoryRulePreview();
     });
 
     container.on('click.memoryGraphSvg pointerup.memoryGraphSvg touchend.memoryGraphSvg', '.ai-wbr-memory-rule-close', function (event) {
