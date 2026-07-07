@@ -7761,7 +7761,12 @@ function renderMemoryGraphToolbarHtml(graph, displayModel, nodes, edges) {
                 </div>
                 <input class="text_pole ai-wbr-memory-graph-search" type="search" placeholder="搜索节点、关键词" value="${escapeHtml(memoryGraphSearchText)}" />
                 <div class="ai-wbr-memory-graph-summary">显示 ${nodes.length}/${displayModel.totalNodes} · ${edges.length}/${displayModel.totalLinks}${hiddenHint}${linkHint}</div>
-                <button class="menu_button ai-wbr-memory-graph-filter-toggle" type="button" aria-expanded="false">筛选</button>
+                <span class="ai-wbr-memory-graph-divider"></span>
+                <div class="ai-wbr-memory-graph-actions">
+                    <button id="ai_wbr_memory_graph_preview_toggle" class="menu_button" type="button"><i class="fa-solid fa-list-ul"></i> 列表</button>
+                    <button id="ai_wbr_memory_graph_fullscreen" class="menu_button ai-wbr-graph-topbar-primary" type="button"><i class="fa-solid fa-expand"></i> ${fullscreenLabel}</button>
+                    <button class="menu_button ai-wbr-memory-graph-filter-toggle" type="button" aria-expanded="false"><i class="fa-solid fa-sliders"></i> 筛选</button>
+                </div>
             </div>
             <details class="ai-wbr-memory-graph-drawer">
                 <summary class="ai-wbr-memory-graph-drawer-hint">类型 / 关系权重筛选（点击展开）</summary>
@@ -8019,8 +8024,8 @@ function renderMemoryGraphSvg(graph) {
     }
 
     const viewport = getMemoryGraphViewportMetrics(container[0]);
-    const width = viewport.layoutWidth;
-    const height = viewport.layoutHeight;
+    const width = Math.max(viewport.baseWidth, Math.round(viewport.pixelWidth * 1.3));
+    const height = Math.max(viewport.baseHeight, Math.round(viewport.pixelHeight * 1.3));
     const positions = new Map();
     const usedPreviewLayout = applyMemoryGraphPreviewLayout(displayModel, width, height);
     let layoutChanged = false;
@@ -8617,6 +8622,8 @@ function getMemoryGraphViewportMetrics(containerEl) {
         baseHeight,
         layoutWidth: baseWidth,
         layoutHeight: baseHeight,
+        pixelWidth,
+        pixelHeight,
     };
 }
 
@@ -8651,18 +8658,22 @@ function fitMemoryGraphToNodes(nodes, containerEl) {
         return;
     }
 
-    const padding = MEMORY_GRAPH_LAYOUT_PADDING;
-    let viewWidth = Math.max(320, bounds.width + padding * 2);
-    let viewHeight = Math.max(220, bounds.height + padding * 2);
+    const padding = MEMORY_GRAPH_SAFE_PADDING;
+    let viewWidth = Math.max(bounds.width + padding * 2, MEMORY_GRAPH_NODE_WIDTH);
+    let viewHeight = Math.max(bounds.height + padding * 2, MEMORY_GRAPH_NODE_HEIGHT);
+
+    // Match the container aspect so the canvas fills edge-to-edge without
+    // letterboxing. Grow the shorter axis rather than shrinking the bounds,
+    // so dense graphs keep their cards large instead of being zoomed out.
     const currentAspect = viewWidth / viewHeight;
     if (currentAspect < viewport.aspect) {
         viewWidth = viewHeight * viewport.aspect;
-    } else {
+    } else if (currentAspect > viewport.aspect) {
         viewHeight = viewWidth / viewport.aspect;
     }
 
-    viewWidth = Math.min(1600, Math.max(260, viewWidth));
-    viewHeight = Math.min(1400, Math.max(180, viewHeight));
+    viewWidth = Math.min(2200, Math.max(260, viewWidth));
+    viewHeight = Math.min(1800, Math.max(180, viewHeight));
     const centerX = bounds.x + bounds.width / 2;
     const centerY = bounds.y + bounds.height / 2;
     memoryGraphView = {
@@ -8778,8 +8789,8 @@ function normalizeMemoryGraphLayout(nodes, links = [], canvasWidth = MEMORY_GRAP
             const ringCount = Math.min(maxPerRing, ranked.length - ringStart);
             const indexInRing = index - ringStart;
             const angle = (-Math.PI / 2) + (Math.PI * 2 * indexInRing / Math.max(1, ringCount)) + (ringIndex * 0.28);
-            const radiusX = Math.min(canvasWidth * 0.38, 190 + ringIndex * 130);
-            const radiusY = Math.min(canvasHeight * 0.34, 150 + ringIndex * 110);
+            const radiusX = Math.max(MEMORY_GRAPH_NODE_WIDTH * 0.8, canvasWidth * (0.36 + ringIndex * 0.16));
+            const radiusY = Math.max(MEMORY_GRAPH_NODE_HEIGHT * 0.8, canvasHeight * (0.34 + ringIndex * 0.14));
             x = centerX + Math.cos(angle) * radiusX - MEMORY_GRAPH_NODE_WIDTH / 2;
             y = centerY + Math.sin(angle) * radiusY - MEMORY_GRAPH_NODE_HEIGHT / 2;
         }

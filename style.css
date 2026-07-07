@@ -3819,3 +3819,51 @@
     touch-action: none;
     -webkit-tap-highlight-color: transparent;
 }
+
+/* ===== Graph: topbar removed, actions grouped in toolbar ===== */
+.ai-wbr-memory-graph-divider {
+    flex: 0 0 auto;
+    width: 1px;
+    height: 1.4rem;
+    background: rgba(176, 225, 255, 0.22);
+    margin: 0 0.15rem;
+}
+
+.ai-wbr-memory-graph-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    margin-left: auto;
+}
+
+.ai-wbr-memory-graph-actions .menu_button i,
+.ai-wbr-memory-graph-filter-toggle i {
+    opacity: 0.78;
+}
+
+/* push actions group to the right when summary wraps */
+.ai-wbr-memory-graph-toolbar-compact .ai-wbr-memory-graph-row-primary {
+    row-gap: 0.35rem;
+}
+
+@media (max-width: 640px) {
+    .ai-wbr-memory-graph-actions {
+        margin-left: 0;
+        flex-wrap: wrap;
+    }
+    .ai-wbr-memory-graph-divider {
+        display: none;
+    }
+}
+
+/* card polish: softer corners + emphasis glow */
+.ai-wbr-memory-node-card {
+    rx: 16;
+    ry: 16;
+}
+
+.ai-wbr-memory-node-emphasis .ai-wbr-memory-node-card {
+    stroke-width: 2.2;
+    filter: drop-shadow(0 0 6px color-mix(in srgb, var(--memory-node-accent) 55%, transparent))
+            drop-shadow(0 3px 7px rgba(0, 0, 0, 0.42));
+}
