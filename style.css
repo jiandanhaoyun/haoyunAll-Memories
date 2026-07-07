@@ -3015,21 +3015,29 @@
 .ai-wbr-bookshelf-reader-overlay {
     position: fixed;
     inset: 0;
-    z-index: 10030;
+    z-index: 2147483647;
+    box-sizing: border-box;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: min(3vh, 1.5rem);
+    width: 100vw;
+    height: 100dvh;
+    padding: clamp(0.75rem, 2.4vh, 1.5rem);
+    overflow: hidden;
     background: rgba(6, 8, 15, 0.78);
     backdrop-filter: blur(14px);
 }
 
 .ai-wbr-bookshelf-reader-shell {
+    box-sizing: border-box;
     display: grid;
     grid-template-rows: auto auto minmax(0, 1fr);
     gap: 0.9rem;
-    width: min(74rem, 96vw);
-    height: min(52rem, 94vh);
+    width: min(74rem, calc(100vw - 2rem));
+    height: min(52rem, calc(100dvh - 2rem));
+    max-width: calc(100vw - 2rem);
+    max-height: calc(100dvh - 2rem);
+    min-height: 0;
     overflow: hidden;
     border: 1px solid rgba(255, 127, 80, 0.22);
     border-radius: 18px;
@@ -3046,11 +3054,23 @@
     align-items: center;
     justify-content: space-between;
     gap: 1rem;
+    min-width: 0;
+}
+
+.ai-wbr-bookshelf-reader-top > div {
+    min-width: 0;
+}
+
+.ai-wbr-bookshelf-reader-top .menu_button {
+    flex: 0 0 auto;
 }
 
 .ai-wbr-bookshelf-reader-top b,
 .ai-wbr-bookshelf-reader-top small {
     display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .ai-wbr-bookshelf-reader-top b {
@@ -3064,9 +3084,10 @@
 
 .ai-wbr-bookshelf-reader-hero {
     display: grid;
-    grid-template-columns: minmax(8rem, 0.22fr) minmax(0, 1fr);
+    grid-template-columns: minmax(8rem, 13rem) minmax(0, 1fr);
     gap: 0.9rem;
     align-items: stretch;
+    min-height: 0;
     border-radius: 16px;
     padding: 0.9rem;
     background:
@@ -3077,7 +3098,7 @@
 .ai-wbr-bookshelf-reader-cover {
     position: relative;
     display: flex;
-    min-height: 11rem;
+    min-height: clamp(8rem, 19vh, 11rem);
     flex-direction: column;
     justify-content: flex-end;
     overflow: hidden;
@@ -3144,12 +3165,14 @@
     grid-template-columns: minmax(11rem, 0.26fr) minmax(0, 1fr);
     gap: 0.9rem;
     min-height: 0;
+    overflow: hidden;
 }
 
 .ai-wbr-bookshelf-reader-toc,
 .ai-wbr-bookshelf-reader-pages {
     min-height: 0;
     overflow: auto;
+    overscroll-behavior: contain;
 }
 
 .ai-wbr-bookshelf-reader-toc {
@@ -3160,6 +3183,7 @@
     border-radius: 14px;
     padding: 0.75rem;
     background: rgba(255, 255, 255, 0.035);
+    overflow-x: hidden;
 }
 
 .ai-wbr-bookshelf-reader-toc > b {
@@ -3195,6 +3219,8 @@
     flex-direction: column;
     gap: 0.75rem;
     padding-right: 0.25rem;
+    overflow-x: hidden;
+    overflow-y: auto;
 }
 
 .ai-wbr-bookshelf-reader-page {
@@ -3232,6 +3258,7 @@
     font-size: 1rem;
     line-height: 1.78;
     white-space: pre-wrap;
+    overflow-wrap: anywhere;
 }
 
 .ai-wbr-bookshelf-novel-reader {
@@ -3453,16 +3480,20 @@
     }
 
     .ai-wbr-bookshelf-reader-overlay {
-        padding: 0.45rem;
+        padding: 0;
     }
 
     .ai-wbr-bookshelf-reader-shell {
-        height: 96vh;
+        width: 100vw;
+        height: 100dvh;
+        max-width: 100vw;
+        max-height: 100dvh;
+        border-radius: 0;
         padding: 0.75rem;
     }
 
     .ai-wbr-bookshelf-reader-toc {
-        max-height: 12rem;
+        max-height: 10rem;
     }
 }
 

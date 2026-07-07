@@ -1,4 +1,4 @@
-import { extension_settings, getContext, renderExtensionTemplateAsync } from '../../../extensions.js';
+﻿import { extension_settings, getContext, renderExtensionTemplateAsync } from '../../../extensions.js';
 import {
     eventSource,
     event_types,
@@ -388,8 +388,8 @@ if (typeof window !== 'undefined') {
 function clearMemoryUiForScopeSwitch() {
     memoryScopeDebugLog('clearMemoryUiForScopeSwitch');
     $('#ai_wbr_memory_node_popover').hide();
-    $('#ai_wbr_memory_graph').html('<div class="ai-wbr-token-empty">正在切换聊天记忆...</div>');
-    $('#ai_wbr_memory_node_editor').empty().append('<div class="ai-wbr-token-empty">点击上方图谱节点后，这里会显示该节点的可编辑信息。</div>');
+    $('#ai_wbr_memory_graph').html('<div class="ai-wbr-token-empty">姝ｅ湪鍒囨崲鑱婂ぉ璁板繂...</div>');
+    $('#ai_wbr_memory_node_editor').empty().append('<div class="ai-wbr-token-empty">鐐瑰嚮涓婃柟鍥捐氨鑺傜偣鍚庯紝杩欓噷浼氭樉绀鸿鑺傜偣鐨勫彲缂栬緫淇℃伅銆?/div>');
     $('#ai_wbr_memory_nodes').empty();
     $('#ai_wbr_memory_links').empty();
     $('#ai_wbr_memory_json').val('');
@@ -935,9 +935,9 @@ function getMemoryBurstLabel(entry) {
     }
     const content = String(entry?.content || '').trim();
     if (content) {
-        return truncateText(content.split(/[。.!?\n]/u)[0], 22);
+        return truncateText(content.split(/[銆?!?\n]/u)[0], 22);
     }
-    return truncateText(String(entry?.id || '记忆更新'), 22);
+    return truncateText(String(entry?.id || '璁板繂鏇存柊'), 22);
 }
 
 function playEntryBurst(entries, {
@@ -1079,18 +1079,18 @@ function getActiveWorldbookBindings(context = getContext()) {
     };
 
     for (const worldName of selected_world_info || []) {
-        addWorld(worldName, '全局');
+        addWorld(worldName, '鍏ㄥ眬');
     }
 
-    addWorld(context.chatMetadata?.[METADATA_KEY], '聊天绑定');
-    addWorld(character?.data?.extensions?.world, '角色绑定');
-    addWorld(context.powerUserSettings?.persona_description_lorebook, '人格绑定');
+    addWorld(context.chatMetadata?.[METADATA_KEY], '鑱婂ぉ缁戝畾');
+    addWorld(character?.data?.extensions?.world, '瑙掕壊缁戝畾');
+    addWorld(context.powerUserSettings?.persona_description_lorebook, '浜烘牸缁戝畾');
 
     try {
         const fileName = context.characterId !== undefined ? getCharaFilename(context.characterId) : '';
         const extraCharLore = world_info.charLore?.find(entry => entry.name === fileName);
         for (const worldName of extraCharLore?.extraBooks || []) {
-            addWorld(worldName, '角色额外');
+            addWorld(worldName, '瑙掕壊棰濆');
         }
     } catch (error) {
         debugLog('Could not read active worldbook bindings', error);
@@ -1098,7 +1098,7 @@ function getActiveWorldbookBindings(context = getContext()) {
 
     const embeddedBook = character?.data?.character_book;
     if (embeddedBook?.entries?.length) {
-        addWorld(embeddedBook.name || character?.name || 'embedded', '角色内嵌');
+        addWorld(embeddedBook.name || character?.name || 'embedded', '瑙掕壊鍐呭祵');
     }
 
     return worldBindings;
@@ -1360,7 +1360,7 @@ function installFetchFallbackHook() {
         const context = getContext();
         const recentMessages = buildFetchFallbackMessages(context, payload);
         const trimResult = trimMainGenerationMessages(payload.messages);
-        const shouldSkipRouting = body.includes('[本轮相关世界书]') || Date.now() - lastRouteCompletedAt < 3000;
+        const shouldSkipRouting = body.includes('[鏈疆鐩稿叧涓栫晫涔') || Date.now() - lastRouteCompletedAt < 3000;
 
         if (shouldSkipRouting) {
             if (trimResult.changed) {
@@ -1768,14 +1768,14 @@ function getBookshelfScope(context = getContext()) {
     const { scopeParts, stableChatParts } = getStableChatScopeParts(context);
     const characterKey = scopeParts.length ? `character:${scopeParts.join('|')}` : 'character:default';
     const chatKey = getCurrentChatMemoryKey(context);
-    const characterName = String(context?.name2 || context?.character?.name || context?.characterName || '当前角色').trim();
+    const characterName = String(context?.name2 || context?.character?.name || context?.characterName || '褰撳墠瑙掕壊').trim();
     const chatName = String(
         context?.chatName
         || context?.chat_name
         || context?.chatMetadata?.chat_name
         || context?.chatMetadata?.name
         || stableChatParts[0]
-        || '当前聊天',
+        || '褰撳墠鑱婂ぉ',
     ).trim();
     return { characterKey, chatKey, characterName, chatName };
 }
@@ -1831,7 +1831,7 @@ function renderBookshelfApiModelOptions() {
         if (current && !models.includes(current)) {
             select.append($('<option></option>', {
                 value: current,
-                text: `${current}（手动）`,
+                text: `${current}锛堟墜鍔級`,
                 selected: true,
             }));
         }
@@ -1908,7 +1908,7 @@ function readBookshelfTextFile(file) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(String(reader.result || ''));
-        reader.onerror = () => reject(reader.error || new Error('TXT 读取失败'));
+        reader.onerror = () => reject(reader.error || new Error('TXT 璇诲彇澶辫触'));
         reader.readAsText(file);
     });
 }
@@ -1938,7 +1938,7 @@ function splitTextIntoBookshelfChunks(text, options = {}) {
         const content = current.trim();
         if (!content) return;
         chunks.push({
-            title: currentTitle || detectBookshelfChunkTitle(content, `片段 ${chunks.length + 1}`),
+            title: currentTitle || detectBookshelfChunkTitle(content, `鐗囨 ${chunks.length + 1}`),
             text: content,
         });
         current = '';
@@ -1951,7 +1951,7 @@ function splitTextIntoBookshelfChunks(text, options = {}) {
         while (start < clean.length && chunks.length < BOOKSHELF_MAX_IMPORT_CHUNKS) {
             const part = clean.slice(start, start + chunkSize).trim();
             if (part) {
-                chunks.push({ title: title || `片段 ${chunks.length + 1}`, text: part });
+                chunks.push({ title: title || `鐗囨 ${chunks.length + 1}`, text: part });
             }
             if (start + chunkSize >= clean.length) break;
             start += Math.max(1, chunkSize - overlap);
@@ -1983,15 +1983,15 @@ function splitTextIntoBookshelfChunks(text, options = {}) {
 function getMemoryBookTypeConfig(type) {
     const normalized = String(type || 'other').toLowerCase();
     if (['character', 'person', 'npc', 'role'].includes(normalized)) {
-        return { key: 'character', type: 'character', title: '自动记忆书：人物档案' };
+        return { key: 'character', type: 'character', title: '鑷姩璁板繂涔︼細浜虹墿妗ｆ' };
     }
     if (['event', 'plot', 'quest', 'scene', 'timeline'].includes(normalized)) {
-        return { key: 'plot', type: 'plot', title: '自动记忆书：剧情时间线' };
+        return { key: 'plot', type: 'plot', title: '鑷姩璁板繂涔︼細鍓ф儏鏃堕棿绾? };
     }
     if (['rule', 'concept', 'world', 'faction', 'location', 'place', 'item'].includes(normalized)) {
-        return { key: 'world', type: normalized === 'rule' ? 'rule' : 'world', title: '自动记忆书：世界设定' };
+        return { key: 'world', type: normalized === 'rule' ? 'rule' : 'world', title: '鑷姩璁板繂涔︼細涓栫晫璁惧畾' };
     }
-    return { key: 'memory', type: 'memory', title: '自动记忆书：综合记忆' };
+    return { key: 'memory', type: 'memory', title: '鑷姩璁板繂涔︼細缁煎悎璁板繂' };
 }
 
 function formatMemoryBookNodeChunk(node, graph = getMemoryGraph()) {
@@ -2006,17 +2006,17 @@ function formatMemoryBookNodeChunk(node, graph = getMemoryGraph()) {
     const parts = [];
     const push = (label, value) => {
         const text = String(value || '').trim();
-        if (text) parts.push(`${label}：${text}`);
+        if (text) parts.push(`${label}锛?{text}`);
     };
-    push('标题', node?.title || node?.id);
-    push('类型', node?.type);
-    push('摘要', node?.summary);
-    push('内容', node?.content);
-    push('地点', node?.location);
-    push('时间', node?.timeSpan);
-    if (Array.isArray(node?.tags) && node.tags.length) push('标签', node.tags.join('、'));
-    if (Array.isArray(node?.keys) && node.keys.length) push('关键词', node.keys.join('、'));
-    if (relatedLinks.length) push('关联', relatedLinks.join('；'));
+    push('鏍囬', node?.title || node?.id);
+    push('绫诲瀷', node?.type);
+    push('鎽樿', node?.summary);
+    push('鍐呭', node?.content);
+    push('鍦扮偣', node?.location);
+    push('鏃堕棿', node?.timeSpan);
+    if (Array.isArray(node?.tags) && node.tags.length) push('鏍囩', node.tags.join('銆?));
+    if (Array.isArray(node?.keys) && node.keys.length) push('鍏抽敭璇?, node.keys.join('銆?));
+    if (relatedLinks.length) push('鍏宠仈', relatedLinks.join('锛?));
     return parts.join('\n').trim();
 }
 
@@ -2025,13 +2025,13 @@ function buildMemoryGraphBookshelfDefinitions(graph = getMemoryGraph(), context 
         .filter(node => node?.id && formatMemoryBookNodeChunk(node, graph));
     const scope = getBookshelfScope(context);
     const chapters = new Map([
-        ['prologue', { title: '序章：最近摘要', chunks: [] }],
-        ['character', { title: '第一章：人物档案', chunks: [] }],
-        ['plot', { title: '第二章：剧情时间线', chunks: [] }],
-        ['world', { title: '第三章：世界设定', chunks: [] }],
-        ['relations', { title: '第四章：关系网络', chunks: [] }],
-        ['state', { title: '第五章：当前状态', chunks: [] }],
-        ['memory', { title: '附录：综合记忆', chunks: [] }],
+        ['prologue', { title: '搴忕珷锛氭渶杩戞憳瑕?, chunks: [] }],
+        ['character', { title: '绗竴绔狅細浜虹墿妗ｆ', chunks: [] }],
+        ['plot', { title: '绗簩绔狅細鍓ф儏鏃堕棿绾?, chunks: [] }],
+        ['world', { title: '绗笁绔狅細涓栫晫璁惧畾', chunks: [] }],
+        ['relations', { title: '绗洓绔狅細鍏崇郴缃戠粶', chunks: [] }],
+        ['state', { title: '绗簲绔狅細褰撳墠鐘舵€?, chunks: [] }],
+        ['memory', { title: '闄勫綍锛氱患鍚堣蹇?, chunks: [] }],
     ]);
 
     const pushChapterChunk = (chapterKey, title, text, extra = {}) => {
@@ -2048,7 +2048,7 @@ function buildMemoryGraphBookshelfDefinitions(graph = getMemoryGraph(), context 
     };
 
     if (graph?.lastSummary) {
-        pushChapterChunk('prologue', '最近剧情摘要', `最近摘要：${truncateText(graph.lastSummary, 1200)}`, { sourceType: 'summary' });
+        pushChapterChunk('prologue', '鏈€杩戝墽鎯呮憳瑕?, `鏈€杩戞憳瑕侊細${truncateText(graph.lastSummary, 1200)}`, { sourceType: 'summary' });
     }
 
     for (const node of nodes) {
@@ -2071,7 +2071,7 @@ function buildMemoryGraphBookshelfDefinitions(graph = getMemoryGraph(), context 
             const relationText = relationLines.join('\n');
             splitTextIntoBookshelfChunks(relationText, { chunkSize: 520, overlap: 60 })
                 .forEach((chunk, index) => {
-                    pushChapterChunk('relations', chunk.title || `关系摘要 ${index + 1}`, chunk.text, { sourceType: 'relations' });
+                    pushChapterChunk('relations', chunk.title || `鍏崇郴鎽樿 ${index + 1}`, chunk.text, { sourceType: 'relations' });
                 });
         }
     }
@@ -2080,12 +2080,12 @@ function buildMemoryGraphBookshelfDefinitions(graph = getMemoryGraph(), context 
     const stateValues = graph?.state?.custom_values || graph?.custom_values || {};
     for (const [key, value] of Object.entries(stateValues || {})) {
         const text = String(value ?? '').trim();
-        if (text) stateParts.push(`${key}：${text}`);
+        if (text) stateParts.push(`${key}锛?{text}`);
     }
     if (stateParts.length) {
         splitTextIntoBookshelfChunks(stateParts.join('\n'), { chunkSize: 520, overlap: 60 })
             .forEach((chunk, index) => {
-                pushChapterChunk('state', chunk.title || `状态摘要 ${index + 1}`, chunk.text, { sourceType: 'state' });
+                pushChapterChunk('state', chunk.title || `鐘舵€佹憳瑕?${index + 1}`, chunk.text, { sourceType: 'state' });
             });
     }
 
@@ -2096,7 +2096,7 @@ function buildMemoryGraphBookshelfDefinitions(graph = getMemoryGraph(), context 
                 ...chunk,
                 chapterKey,
                 chapterTitle: chapter.title,
-                title: `${chapter.title} · ${chunk.title || `片段 ${index + 1}`}`,
+                title: `${chapter.title} 路 ${chunk.title || `鐗囨 ${index + 1}`}`,
             });
         });
     }
@@ -2104,7 +2104,7 @@ function buildMemoryGraphBookshelfDefinitions(graph = getMemoryGraph(), context 
     return [{
         key: 'chat_novel',
         type: 'memory',
-        title: `记忆书：${scope.chatName || '当前聊天'}`,
+        title: `璁板繂涔︼細${scope.chatName || '褰撳墠鑱婂ぉ'}`,
         chapters: Array.from(chapters.values())
             .map(chapter => ({ title: chapter.title, count: chapter.chunks.length }))
             .filter(chapter => chapter.count),
@@ -2158,7 +2158,7 @@ async function syncMemoryGraphBookshelfBooks(graph = getMemoryGraph(), context =
             autoChatKey: chatKey,
             autoScope: 'chat',
             chapters: definition.chapters || [],
-            sourceSummary: `当前聊天专属记忆书：${definition.chapters?.length || 0} 章，${definition.chunks.length} 个摘要片段`,
+            sourceSummary: `褰撳墠鑱婂ぉ涓撳睘璁板繂涔︼細${definition.chapters?.length || 0} 绔狅紝${definition.chunks.length} 涓憳瑕佺墖娈礰,
             embeddingMode: options.vectorize ? provider.mode : '',
             embeddingModel: options.vectorize ? provider.model : '',
             embeddingDim: 0,
@@ -2239,8 +2239,8 @@ function scheduleBookshelfMemoryBookSync(context = getContext(), options = {}) {
             const deletedCount = Number(result.deleted || 0) + Number(orphanDeleted || 0);
             if (!options.silent) {
                 setBookshelfStatus(result.books
-                    ? `记忆书已自动刷新：${result.books} 本，${result.chunks} 个小节。`
-                    : `当前聊天暂无图谱内容，已清理旧记忆书 ${deletedCount} 本。`);
+                    ? `璁板繂涔﹀凡鑷姩鍒锋柊锛?{result.books} 鏈紝${result.chunks} 涓皬鑺傘€俙
+                    : `褰撳墠鑱婂ぉ鏆傛棤鍥捐氨鍐呭锛屽凡娓呯悊鏃ц蹇嗕功 ${deletedCount} 鏈€俙);
             }
             if ($('#ai_wbr_bookshelf_panel').length) {
                 renderBookshelfPanel();
@@ -2248,7 +2248,7 @@ function scheduleBookshelfMemoryBookSync(context = getContext(), options = {}) {
         } catch (error) {
             console.warn(`${LOG_PREFIX} Auto memory book sync failed`, error);
             if (!options.silent) {
-                setBookshelfStatus(`记忆书自动刷新失败：${error?.message || error}`);
+                setBookshelfStatus(`璁板繂涔﹁嚜鍔ㄥ埛鏂板け璐ワ細${error?.message || error}`);
             }
         }
     }, clampNumber(options.delayMs, 900, 100, 8000));
@@ -2379,7 +2379,7 @@ async function getBookshelfLocalEmbeddingPipeline() {
             .catch((error) => {
                 bookshelfLocalPipelinePromise = null;
                 saveSetting('bookshelfLocalModelStatus', 'failed');
-                throw new Error(`浏览器本地模型加载失败：${error?.message || error}`);
+                throw new Error(`娴忚鍣ㄦ湰鍦版ā鍨嬪姞杞藉け璐ワ細${error?.message || error}`);
             });
     }
     return bookshelfLocalPipelinePromise;
@@ -2470,10 +2470,10 @@ function tagRecallCandidate(item, sourceType) {
     const keywordScore = Number(item.keywordScore || 0);
     const matchedKeys = Array.isArray(item.matchedKeys) ? item.matchedKeys : [];
     const reason = item.reason
-        || (sourceType === 'memory-vector' ? `图谱向量命中：语义 ${semanticScore.toFixed(2)}，关键词 ${keywordScore.toFixed(2)}` : '')
-        || (sourceType === 'bookshelf' ? `书架向量命中：语义 ${semanticScore.toFixed(2)}，关键词 ${keywordScore.toFixed(2)}` : '')
-        || (matchedKeys.length ? `关键词命中：${matchedKeys.join(', ')}` : '')
-        || `候选分数 ${score.toFixed(2)}`;
+        || (sourceType === 'memory-vector' ? `鍥捐氨鍚戦噺鍛戒腑锛氳涔?${semanticScore.toFixed(2)}锛屽叧閿瘝 ${keywordScore.toFixed(2)}` : '')
+        || (sourceType === 'bookshelf' ? `涔︽灦鍚戦噺鍛戒腑锛氳涔?${semanticScore.toFixed(2)}锛屽叧閿瘝 ${keywordScore.toFixed(2)}` : '')
+        || (matchedKeys.length ? `鍏抽敭璇嶅懡涓細${matchedKeys.join(', ')}` : '')
+        || `鍊欓€夊垎鏁?${score.toFixed(2)}`;
     return {
         ...item,
         sourceType,
@@ -2518,7 +2518,7 @@ function mergeSelectedMemoryVectors(selectedMemories = [], selectedVectors = [])
         if (!key || seen.has(key)) continue;
         merged.push({
             ...item,
-            reason: item.reason || `向量召回命中，分数 ${Number(item.score || 0).toFixed(2)}`,
+            reason: item.reason || `鍚戦噺鍙洖鍛戒腑锛屽垎鏁?${Number(item.score || 0).toFixed(2)}`,
         });
         seen.add(key);
     }
@@ -2600,7 +2600,7 @@ function buildMemoryVectorRecord(node, graph = getMemoryGraph(), context = getCo
         id: `memory:${chatKey}:${node.id}`,
         chatKey,
         nodeId: String(node.id || ''),
-        title: String(node.title || node.id || '记忆节点'),
+        title: String(node.title || node.id || '璁板繂鑺傜偣'),
         memoryType: String(node.type || 'event'),
         text,
         textHash,
@@ -2718,7 +2718,7 @@ async function recallMemoryVectorChunks(query, memoryGraph = getMemoryGraph(), c
                 uid: String(item.nodeId || item.id),
                 source: 'memory-vector',
                 world: 'memory-vector',
-                comment: item.title || node.title || '图谱记忆',
+                comment: item.title || node.title || '鍥捐氨璁板繂',
                 content: node.content || node.summary || item.text,
                 keys: {
                     primary: uniqueStrings([item.title, node.title].filter(Boolean)),
@@ -2744,7 +2744,7 @@ async function recallMemoryVectorChunks(query, memoryGraph = getMemoryGraph(), c
                 memoryType: item.memoryType || node.type || 'event',
                 nodeRef: node,
                 vectorRecord: item,
-                reason: `向量召回：语义 ${semanticScore.toFixed(2)}，关键词 ${keywordScore.toFixed(2)}`,
+                reason: `鍚戦噺鍙洖锛氳涔?${semanticScore.toFixed(2)}锛屽叧閿瘝 ${keywordScore.toFixed(2)}`,
             };
         })
         .filter(item => item.score >= minScore)
@@ -2767,7 +2767,7 @@ async function recallVectorMemoryAndBookshelf(query, memoryGraph = getMemoryGrap
     }
     if (bookshelfResult.error) {
         console.warn(`${LOG_PREFIX} Bookshelf recall skipped.`, bookshelfResult.error);
-        setBookshelfStatus(`向量召回跳过：${bookshelfResult.error?.message || bookshelfResult.error}`);
+        setBookshelfStatus(`鍚戦噺鍙洖璺宠繃锛?{bookshelfResult.error?.message || bookshelfResult.error}`);
     }
     return {
         memoryCandidates: memoryResult.candidates || [],
@@ -2812,7 +2812,7 @@ async function buildUnifiedRecallBundle(context, recentMessages, options = {}) {
     } catch (error) {
         vectorErrors = [error];
         console.warn(`${LOG_PREFIX} Vector recall skipped.`, error);
-        setBookshelfStatus(`向量召回跳过：${error?.message || error}`);
+        setBookshelfStatus(`鍚戦噺鍙洖璺宠繃锛?{error?.message || error}`);
     }
 
     return {
@@ -3168,7 +3168,7 @@ function cloneMemoryGraph(graph) {
 function normalizeMemoryStateDefinition(definition, index = 0) {
     const rawLabel = String(definition?.label || definition?.name || '').trim();
     const rawInstruction = String(definition?.instruction || definition?.desc || definition?.description || '').trim();
-    const label = truncateText(rawLabel || `自定义字段${index + 1}`, 40);
+    const label = truncateText(rawLabel || `鑷畾涔夊瓧娈?{index + 1}`, 40);
     const keyBase = String(definition?.key || createMemoryId(rawLabel || rawInstruction || `custom_state_${index + 1}`, 'custom_state')).trim();
     const key = keyBase.startsWith('custom_') ? keyBase : `custom_${keyBase}`;
     return {
@@ -3545,7 +3545,7 @@ function acceptMemoryReviewItem(id, context = getContext()) {
             ? { ...entry, status: 'stale', staleReason: entry.staleReason || 'source_changed' }
             : entry);
         persistChatMemoryContainer(container, context);
-        setMemoryStatus('记忆来源楼层已变化，本条待确认已失效', context);
+        setMemoryStatus('璁板繂鏉ユ簮妤煎眰宸插彉鍖栵紝鏈潯寰呯‘璁ゅ凡澶辨晥', context);
         return null;
     }
     const container = getChatMemoryContainer(context);
@@ -3599,7 +3599,7 @@ function createMemoryId(title, fallback = 'memory') {
 }
 
 function normalizeMemoryNode(rawNode, fallbackIndex = 0) {
-    const title = truncateText(rawNode?.title || rawNode?.label || rawNode?.id || `记忆 ${fallbackIndex + 1}`, 80);
+    const title = truncateText(rawNode?.title || rawNode?.label || rawNode?.id || `璁板繂 ${fallbackIndex + 1}`, 80);
     return {
         id: createMemoryId(rawNode?.id || title, `node_${fallbackIndex + 1}`),
         title,
@@ -3642,7 +3642,7 @@ function normalizeMemoryLink(rawLink, nodeIds, fallbackIndex = 0) {
 function isWeakMemoryTitle(title) {
     const text = normalizeText(title);
     if (!text || text.length < 2) return true;
-    return /^(本轮关键事件|关键事件|记忆|事件|摘要|本轮摘要|未命名|unknown|memory|event)$/iu.test(text);
+    return /^(鏈疆鍏抽敭浜嬩欢|鍏抽敭浜嬩欢|璁板繂|浜嬩欢|鎽樿|鏈疆鎽樿|鏈懡鍚峾unknown|memory|event)$/iu.test(text);
 }
 
 function isValidMemoryNodeForApply(node) {
@@ -3708,7 +3708,7 @@ function createMemoryFallbackSummaryFromMessages(messages, mode = 'realtime') {
     if (!usefulMessages.length) {
         return '';
     }
-    const label = mode === 'summary' || mode === 'history' ? '阶段整理' : '实时整理';
+    const label = mode === 'summary' || mode === 'history' ? '闃舵鏁寸悊' : '瀹炴椂鏁寸悊';
     return truncateText(`${label}: ${usefulMessages.map(text => truncateText(text, 180)).join('\n')}`, 900);
 }
 
@@ -3725,11 +3725,11 @@ function ensureMemoryUpdateHasVisibleFallback(update, messages, mode = 'realtime
         summary,
         nodes: [{
             id: `event_${Date.now().toString(36)}`,
-            title: mode === 'summary' || mode === 'history' ? '阶段剧情整理' : '最新剧情进展',
+            title: mode === 'summary' || mode === 'history' ? '闃舵鍓ф儏鏁寸悊' : '鏈€鏂板墽鎯呰繘灞?,
             type: 'event',
             summary: truncateText(summary, 160),
             content: summary,
-            tags: ['自动记忆'],
+            tags: ['鑷姩璁板繂'],
             importance: 0.55,
             credibility: 0.75,
         }],
@@ -3739,9 +3739,9 @@ function ensureMemoryUpdateHasVisibleFallback(update, messages, mode = 'realtime
 function createMemoryFallbackNodeFromSummary(summary, fallbackIndex = 0) {
     const text = String(summary || '').trim();
     if (normalizeText(text).length < 8) return null;
-    let title = truncateText(text.split(/[。.!?\n]/u).find(part => normalizeText(part).length >= 4) || text, 48);
+    let title = truncateText(text.split(/[銆?!?\n]/u).find(part => normalizeText(part).length >= 4) || text, 48);
     if (isWeakMemoryTitle(title)) {
-        title = `剧情进展 ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+        title = `鍓ф儏杩涘睍 ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
     }
     return normalizeMemoryNode({
         id: `event_${Date.now().toString(36)}_${fallbackIndex}`,
@@ -3749,7 +3749,7 @@ function createMemoryFallbackNodeFromSummary(summary, fallbackIndex = 0) {
         type: 'event',
         summary: title,
         content: text,
-        tags: ['自动摘要'],
+        tags: ['鑷姩鎽樿'],
         importance: 0.52,
         credibility: 0.72,
     }, fallbackIndex);
@@ -4017,28 +4017,28 @@ function buildMemoryRouterSummary() {
         .map(link => {
             const source = graph.nodes.find(node => node.id === link.source)?.title || link.source;
             const target = graph.nodes.find(node => node.id === link.target)?.title || link.target;
-            return `- ${source} ${link.type || 'RELATED'} ${target}${link.description ? `：${truncateText(link.description, 90)}` : ''}`;
+            return `- ${source} ${link.type || 'RELATED'} ${target}${link.description ? `锛?{truncateText(link.description, 90)}` : ''}`;
         })
         .join('\n');
     const customStateLines = getCustomMemoryStateDefinitions(graph)
         .map(definition => {
             const value = String(state.custom_values?.[definition.key] || '').trim();
-            return value ? `${definition.label}：${value}` : '';
+            return value ? `${definition.label}锛?{value}` : '';
         })
         .filter(Boolean)
         .join('\n');
 
     const parts = [
-        '[轻量记忆状态]',
-        state.current_location ? `当前地点：${state.current_location}` : '',
-        state.current_objective ? `当前目标：${state.current_objective}` : '',
-        state.active_topics?.length ? `活跃主题：${state.active_topics.join('、')}` : '',
-        state.open_questions?.length ? `未解问题：${state.open_questions.join('、')}` : '',
+        '[杞婚噺璁板繂鐘舵€乚',
+        state.current_location ? `褰撳墠鍦扮偣锛?{state.current_location}` : '',
+        state.current_objective ? `褰撳墠鐩爣锛?{state.current_objective}` : '',
+        state.active_topics?.length ? `娲昏穬涓婚锛?{state.active_topics.join('銆?)}` : '',
+        state.open_questions?.length ? `鏈В闂锛?{state.open_questions.join('銆?)}` : '',
         customStateLines,
-        graph.lastSummary ? `最近摘要：${truncateText(graph.lastSummary, 420)}` : '',
-        topNodes ? `关键记忆节点：\n${topNodes}` : '',
-        topLinks ? `关键关系：\n${topLinks}` : '',
-        '[/轻量记忆状态]',
+        graph.lastSummary ? `鏈€杩戞憳瑕侊細${truncateText(graph.lastSummary, 420)}` : '',
+        topNodes ? `鍏抽敭璁板繂鑺傜偣锛歕n${topNodes}` : '',
+        topLinks ? `鍏抽敭鍏崇郴锛歕n${topLinks}` : '',
+        '[/杞婚噺璁板繂鐘舵€乚',
     ].filter(Boolean);
 
     return parts.length > 2 ? truncateText(parts.join('\n'), MAX_MVU_CHARS) : '';
@@ -4070,7 +4070,7 @@ function getMemoryExtractionSchema() {
 
 function buildMemoryExtractionPrompt(recentMessages, graph) {
     const chatText = recentMessages
-        .map(message => `${message.isUser ? '用户' : '助手'} #${message.floor}: ${sanitizeMemoryMessageText(message.text)}`)
+        .map(message => `${message.isUser ? '鐢ㄦ埛' : '鍔╂墜'} #${message.floor}: ${sanitizeMemoryMessageText(message.text)}`)
         .join('\n\n');
     const currentGraph = truncateText(JSON.stringify({
         state: graph.state,
@@ -4083,15 +4083,10 @@ function buildMemoryExtractionPrompt(recentMessages, graph) {
         ? customDefinitions.map(definition => `- ${definition.label} (${definition.key}): ${definition.instruction || 'Custom state field'}`).join('\n')
         : '- None';
 
-    return `<role>你是 SillyTavern 的轻量记忆整理器。</role>
-<task>只提取后续角色扮演会继续用到的稳定事实、剧情进展、人物关系、地点、物品、设定和未解决问题。只能返回下方变量块。</task>
+    return `<role>浣犳槸 SillyTavern 鐨勮交閲忚蹇嗘暣鐞嗗櫒銆?/role>
+<task>鍙彁鍙栧悗缁鑹叉壆婕斾細缁х画鐢ㄥ埌鐨勭ǔ瀹氫簨瀹炪€佸墽鎯呰繘灞曘€佷汉鐗╁叧绯汇€佸湴鐐广€佺墿鍝併€佽瀹氬拰鏈В鍐抽棶棰樸€傚彧鑳借繑鍥炰笅鏂瑰彉閲忓潡銆?/task>
 <rules>
-1. 除指定变量块外，不要返回任何 JSON、Markdown、解释或寒暄。
-2. 所有 title、summary、content、location、timeSpan、tags、keys、state 字段必须优先使用中文；只有专有名词、角色原名、英文地名或用户原文明确为英文时才保留英文。
-3. node id 保持稳定，使用小写 snake_case；id 可以是英文/拼音，但展示给用户的标题和摘要必须是中文。
-4. 优先更新已有节点，避免重复创建含义相同的节点。
-5. 如果有可用剧情内容，至少生成 1 个中文 event 节点；只有完全没有有效记忆时才返回空数组。
-</rules>
+1. 闄ゆ寚瀹氬彉閲忓潡澶栵紝涓嶈杩斿洖浠讳綍 JSON銆丮arkdown銆佽В閲婃垨瀵掓殑銆?2. 鎵€鏈?title銆乻ummary銆乧ontent銆乴ocation銆乼imeSpan銆乼ags銆乲eys銆乻tate 瀛楁蹇呴』浼樺厛浣跨敤涓枃锛涘彧鏈変笓鏈夊悕璇嶃€佽鑹插師鍚嶃€佽嫳鏂囧湴鍚嶆垨鐢ㄦ埛鍘熸枃鏄庣‘涓鸿嫳鏂囨椂鎵嶄繚鐣欒嫳鏂囥€?3. node id 淇濇寔绋冲畾锛屼娇鐢ㄥ皬鍐?snake_case锛沬d 鍙互鏄嫳鏂?鎷奸煶锛屼絾灞曠ず缁欑敤鎴风殑鏍囬鍜屾憳瑕佸繀椤绘槸涓枃銆?4. 浼樺厛鏇存柊宸叉湁鑺傜偣锛岄伩鍏嶉噸澶嶅垱寤哄惈涔夌浉鍚岀殑鑺傜偣銆?5. 濡傛灉鏈夊彲鐢ㄥ墽鎯呭唴瀹癸紝鑷冲皯鐢熸垚 1 涓腑鏂?event 鑺傜偣锛涘彧鏈夊畬鍏ㄦ病鏈夋湁鏁堣蹇嗘椂鎵嶈繑鍥炵┖鏁扮粍銆?</rules>
 <custom_state_definitions>
 ${customDefinitionLines}
 </custom_state_definitions>
@@ -4124,8 +4119,7 @@ function buildMemoryExtractionRetryPrompt(recentMessages, graph) {
     return `${basePrompt}
 
 <retry_instruction>
-上一次返回无法解析。请只返回完整的 AIWBR 变量块，不要包含 Markdown、解释、注释或额外 JSON 包装。除 id 外，所有可读内容继续使用中文。
-</retry_instruction>`;
+涓婁竴娆¤繑鍥炴棤娉曡В鏋愩€傝鍙繑鍥炲畬鏁寸殑 AIWBR 鍙橀噺鍧楋紝涓嶈鍖呭惈 Markdown銆佽В閲娿€佹敞閲婃垨棰濆 JSON 鍖呰銆傞櫎 id 澶栵紝鎵€鏈夊彲璇诲唴瀹圭户缁娇鐢ㄤ腑鏂囥€?</retry_instruction>`;
 }
 function getRouterRequestMaxTokens() {
     return clampNumber(settings.routerRequestMaxTokens, defaultSettings.routerRequestMaxTokens, 32, 100000);
@@ -4480,7 +4474,7 @@ async function runHistoryMemoryImport() {
     buildHistoryImportPreview(rangeInfo, context);
 
     if (recentMessages.length < 2) {
-        setMemoryStatus('历史补录失败：所选楼层不足 2 条可整理消息', context);
+        setMemoryStatus('鍘嗗彶琛ュ綍澶辫触锛氭墍閫夋ゼ灞備笉瓒?2 鏉″彲鏁寸悊娑堟伅', context);
         toastr?.warning?.('Please try again later.', 'AI Worldbook Router');
         return false;
     }
@@ -4640,13 +4634,13 @@ async function runHistoryMemoryImport() {
 
 async function runMemoryGraphUpdate(reason = 'realtime', options = {}) {
     if (!settings.memoryEnabled) {
-        setMemoryStatus('实时整理未运行：记忆功能未启用。');
+        setMemoryStatus('瀹炴椂鏁寸悊鏈繍琛岋細璁板繂鍔熻兘鏈惎鐢ㄣ€?);
         return false;
     }
     if (isMemoryWorkerRunning) {
         const busyMs = Date.now() - Number(memoryWorkerStartedAt || 0);
         if (!options.force || busyMs < 120000) {
-            setMemoryStatus('实时整理跳过：上一轮记忆整理仍在运行。');
+            setMemoryStatus('瀹炴椂鏁寸悊璺宠繃锛氫笂涓€杞蹇嗘暣鐞嗕粛鍦ㄨ繍琛屻€?);
             return false;
         }
         console.warn(`${LOG_PREFIX} Reset stale memory worker lock`, { busyMs });
@@ -4654,7 +4648,7 @@ async function runMemoryGraphUpdate(reason = 'realtime', options = {}) {
         memoryWorkerStartedAt = 0;
     }
     if (isRouterSelectionRequest && !options.force) {
-        setMemoryStatus('实时整理跳过：路由请求正在使用模型。');
+        setMemoryStatus('瀹炴椂鏁寸悊璺宠繃锛氳矾鐢辫姹傛鍦ㄤ娇鐢ㄦā鍨嬨€?);
         return false;
     }
 
@@ -4670,7 +4664,7 @@ async function runMemoryGraphUpdate(reason = 'realtime', options = {}) {
     );
     const recentMessages = getMemoryRelevantMessages(chat, scanMessages);
     if (recentMessages.length < 2) {
-        setMemoryStatus('实时整理跳过：可整理消息不足 2 条。');
+        setMemoryStatus('瀹炴椂鏁寸悊璺宠繃锛氬彲鏁寸悊娑堟伅涓嶈冻 2 鏉°€?);
         return false;
     }
 
@@ -4681,14 +4675,14 @@ async function runMemoryGraphUpdate(reason = 'realtime', options = {}) {
         scanMessages,
     };
     if (mode === 'realtime' && reason !== 'manual' && !options.force && signature && signature === getCurrentMemoryLastTurnSignature(context)) {
-        setMemoryStatus('实时整理跳过：当前聊天图谱已是最新。');
+        setMemoryStatus('瀹炴椂鏁寸悊璺宠繃锛氬綋鍓嶈亰澶╁浘璋卞凡鏄渶鏂般€?);
         return false;
     }
 
     isMemoryWorkerRunning = true;
     memoryWorkerStartedAt = Date.now();
     startMemoryAnimation();
-    setMemoryStatus(mode === 'summary' ? '间隔归纳整理中...' : '实时记忆整理中...');
+    setMemoryStatus(mode === 'summary' ? '闂撮殧褰掔撼鏁寸悊涓?..' : '瀹炴椂璁板繂鏁寸悊涓?..');
 
     try {
         const graph = getMemoryGraph();
@@ -4782,7 +4776,7 @@ async function runMemoryGraphUpdate(reason = 'realtime', options = {}) {
                         updatedContainer.lastAutoMessageCount = messageCount;
                     }
                     persistChatMemoryContainer(updatedContainer, context);
-                    setMemoryStatus(`已生成待确认记忆更新：${getMemoryReviewQueue(context).length} 条。确认后才会写入图谱。`, context);
+                    setMemoryStatus(`宸茬敓鎴愬緟纭璁板繂鏇存柊锛?{getMemoryReviewQueue(context).length} 鏉°€傜‘璁ゅ悗鎵嶄細鍐欏叆鍥捐氨銆俙, context);
                     playStatusBurst('ok', 'memory');
                     toastr?.info?.('Done.', 'AI Worldbook Router');
                     stopMemoryAnimation(true);
@@ -4802,7 +4796,7 @@ async function runMemoryGraphUpdate(reason = 'realtime', options = {}) {
                 persistChatMemoryContainer(updatedContainer, context);
                 const nodeCount = memoryResult.graph.nodes.length;
                 const linkCount = memoryResult.graph.links.length;
-                setMemoryStatus(`记忆图谱已更新：${nodeCount} 个节点，${linkCount} 条关系。`, context);
+                setMemoryStatus(`璁板繂鍥捐氨宸叉洿鏂帮細${nodeCount} 涓妭鐐癸紝${linkCount} 鏉″叧绯汇€俙, context);
                 if (memoryResult.touchedEntries.length) {
                     playEntryBurst(memoryResult.touchedEntries, {
                         variant: 'memory',
@@ -4833,7 +4827,7 @@ async function runMemoryGraphUpdate(reason = 'realtime', options = {}) {
         if (error?.routerPrompt && !getCurrentMemoryLastPrompt(context)) {
             setCurrentMemoryLastPrompt(error.routerPrompt, context);
         }
-        setMemoryStatus(`记忆失败：${truncateText(error?.message || error, 80)}`);
+        setMemoryStatus(`璁板繂澶辫触锛?{truncateText(error?.message || error, 80)}`);
         playStatusBurst('fail', 'fail');
         stopMemoryAnimation(false);
         return false;
@@ -4846,7 +4840,7 @@ async function runMemoryGraphUpdate(reason = 'realtime', options = {}) {
 
 function scheduleMemoryGraphUpdate() {
     if (!settings.memoryEnabled) {
-        setMemoryStatus('实时整理未运行：记忆功能未启用。');
+        setMemoryStatus('瀹炴椂鏁寸悊鏈繍琛岋細璁板繂鍔熻兘鏈惎鐢ㄣ€?);
         return;
     }
 
@@ -4860,7 +4854,7 @@ function scheduleMemoryGraphUpdate() {
 
     if (!shouldRunRealtime && !shouldRunSummary) {
         debugLog('Memory update skipped', { currentCount, lastSummaryCount, summaryInterval });
-        setMemoryStatus(`实时整理跳过：实时整理关闭，或摘要还差 ${Math.max(0, summaryInterval - (currentCount - lastSummaryCount))} 条消息。`);
+        setMemoryStatus(`瀹炴椂鏁寸悊璺宠繃锛氬疄鏃舵暣鐞嗗叧闂紝鎴栨憳瑕佽繕宸?${Math.max(0, summaryInterval - (currentCount - lastSummaryCount))} 鏉℃秷鎭€俙);
         return;
     }
 
@@ -5126,7 +5120,7 @@ function scoreEntry(entry, matchText, lastUserText, recentText) {
         score += term.length >= 3 ? 2 : 1;
     }
 
-    if (!matchedKeys.size && matchedSignals.size && lowerLastUserText.includes('魔法') && haystack.includes('魔法')) {
+    if (!matchedKeys.size && matchedSignals.size && lowerLastUserText.includes('榄旀硶') && haystack.includes('榄旀硶')) {
         score += 2;
     }
 
@@ -5166,51 +5160,40 @@ function buildAiPrompt(recentMessages, mvuSummary, candidates, maxSelectCount = 
         .map(message => `${message.name || (message.isUser ? 'User' : 'Assistant')}: ${truncateText(message.text, MAX_ROUTER_CONTEXT_PREVIEW)}`)
         .join('\n\n');
     const candidateText = candidates.map(entry => {
-        const keys = entry.keys.all.length ? entry.keys.all.join(' / ') : '(无 keys)';
+        const keys = entry.keys.all.length ? entry.keys.all.join(' / ') : '(鏃?keys)';
         return `- ${keys}`;
     }).join('\n');
 
     return `<task>
-从候选 keys 中选择最多 ${maxSelectCount} 条“本轮真正相关”的条目（世界书、动态记忆或资料片段）。
-</task>
+浠庡€欓€?keys 涓€夋嫨鏈€澶?${maxSelectCount} 鏉♀€滄湰杞湡姝ｇ浉鍏斥€濈殑鏉＄洰锛堜笘鐣屼功銆佸姩鎬佽蹇嗘垨璧勬枡鐗囨锛夈€?</task>
 
 <rules>
-1. 只能从候选 keys 中选。
-2. 只输出严格 JSON。
-3. 禁止 Markdown、禁止解释、禁止 reasoning、禁止额外字段。
-4. 不要返回标题，不要返回 id，只返回命中的 key。
-5. 如果没有合适条目，输出 {"selected":[]}。
-</rules>
+1. 鍙兘浠庡€欓€?keys 涓€夈€?2. 鍙緭鍑轰弗鏍?JSON銆?3. 绂佹 Markdown銆佺姝㈣В閲娿€佺姝?reasoning銆佺姝㈤澶栧瓧娈点€?4. 涓嶈杩斿洖鏍囬锛屼笉瑕佽繑鍥?id锛屽彧杩斿洖鍛戒腑鐨?key銆?5. 濡傛灉娌℃湁鍚堥€傛潯鐩紝杈撳嚭 {"selected":[]}銆?</rules>
 
 <output_format>
-{"selected":[{"key":"命中的 key","reason":"简短原因"}]}
+{"selected":[{"key":"鍛戒腑鐨?key","reason":"绠€鐭師鍥?}]}
 </output_format>
 
 <example>
-输入：
-最后用户消息：我想偷偷补完魔法阵然后逃跑
-候选 keys：
-- 魔法 / 魔法阵 / 画魔法
-- 奇夫利 / 老师
-- 魔法商品 / 魔法器
-输出：
-{"selected":[{"key":"魔法阵","reason":"用户正在补画魔法阵"},{"key":"奇夫利","reason":"当前互动对象是奇夫利"}]}
+杈撳叆锛?鏈€鍚庣敤鎴锋秷鎭細鎴戞兂鍋峰伔琛ュ畬榄旀硶闃电劧鍚庨€冭窇
+鍊欓€?keys锛?- 榄旀硶 / 榄旀硶闃?/ 鐢婚瓟娉?- 濂囧か鍒?/ 鑰佸笀
+- 榄旀硶鍟嗗搧 / 榄旀硶鍣?杈撳嚭锛?{"selected":[{"key":"榄旀硶闃?,"reason":"鐢ㄦ埛姝ｅ湪琛ョ敾榄旀硶闃?},{"key":"濂囧か鍒?,"reason":"褰撳墠浜掑姩瀵硅薄鏄澶埄"}]}
 </example>
 
 <last_user_message>
-${lastUserMessage || '(空)'}
+${lastUserMessage || '(绌?'}
 </last_user_message>
 
 <recent_context>
-${recentContext || '(空)'}
+${recentContext || '(绌?'}
 </recent_context>
 
 <state_summary>
-${mvuSummary || '(未启用或未读取到)'}
+${mvuSummary || '(鏈惎鐢ㄦ垨鏈鍙栧埌)'}
 </state_summary>
 
 <candidate_keys>
-${candidateText || '(无)'}
+${candidateText || '(鏃?'}
 </candidate_keys>`;
 }
 
@@ -5223,17 +5206,17 @@ function buildCompactAiPrompt(recentMessages, mvuSummary, candidates, maxSelectC
     const compactSummary = truncateText(String(mvuSummary || ''), 320);
     const candidateText = candidates
         .slice(0, Math.min(candidates.length, 14))
-        .map(entry => `- ${(entry.keys.all.length ? entry.keys.all.join(' / ') : '(无 keys)')}`)
+        .map(entry => `- ${(entry.keys.all.length ? entry.keys.all.join(' / ') : '(鏃?keys)')}`)
         .join('\n');
 
-    return `<task>从候选 keys 中选择最多 ${maxSelectCount} 条本轮相关条目（世界书、动态记忆或资料片段）。</task>
-<rules>只输出严格 JSON；禁止解释；禁止 reasoning；禁止额外字段；如果没有合适条目，输出 {"selected":[]}。</rules>
-<output>{"selected":[{"key":"命中的 key","reason":"简短原因"}]}</output>
-<last_user_message>${lastUserMessage || '(空)'}</last_user_message>
-<recent_context>${compactContext || '(空)'}</recent_context>
-<state_summary>${compactSummary || '(无)'}</state_summary>
+    return `<task>浠庡€欓€?keys 涓€夋嫨鏈€澶?${maxSelectCount} 鏉℃湰杞浉鍏虫潯鐩紙涓栫晫涔︺€佸姩鎬佽蹇嗘垨璧勬枡鐗囨锛夈€?/task>
+<rules>鍙緭鍑轰弗鏍?JSON锛涚姝㈣В閲婏紱绂佹 reasoning锛涚姝㈤澶栧瓧娈碉紱濡傛灉娌℃湁鍚堥€傛潯鐩紝杈撳嚭 {"selected":[]}銆?/rules>
+<output>{"selected":[{"key":"鍛戒腑鐨?key","reason":"绠€鐭師鍥?}]}</output>
+<last_user_message>${lastUserMessage || '(绌?'}</last_user_message>
+<recent_context>${compactContext || '(绌?'}</recent_context>
+<state_summary>${compactSummary || '(鏃?'}</state_summary>
 <candidate_keys>
-${candidateText || '(无)'}
+${candidateText || '(鏃?'}
 </candidate_keys>`;
 }
 
@@ -5281,7 +5264,7 @@ function getEntrySelectionKeys(entry) {
 
 function splitSelectionKey(value) {
     return uniqueStrings(String(value ?? '')
-        .split(/[\/|,，、；;\n]+/u)
+        .split(/[\/|,锛屻€侊紱;\n]+/u)
         .map(part => part.trim())
         .filter(Boolean));
 }
@@ -5438,12 +5421,12 @@ function extractSelectionFromText(rawText, candidates) {
     const positiveMarkers = [
         'this is it', 'that is the answer', 'that\'s the answer', 'bingo', 'perfect match',
         'exact match', 'exactly', 'direct answer', 'most relevant', 'best match',
-        '正是', '就是这个', '答案', '最相关', '完全匹配', '直接回答',
+        '姝ｆ槸', '灏辨槸杩欎釜', '绛旀', '鏈€鐩稿叧', '瀹屽叏鍖归厤', '鐩存帴鍥炵瓟',
     ];
     const negativeMarkers = [
         'irrelevant', 'not relevant', 'no,', ' no ', 'not the answer', 'indirectly relevant',
         'just a natural event', 'not what happens after', 'not about', 'irrelevant', 'not an answer',
-        '不是这个', '无关', '只是', '不对',
+        '涓嶆槸杩欎釜', '鏃犲叧', '鍙槸', '涓嶅',
     ];
     const recovered = [];
 
@@ -5816,8 +5799,8 @@ function selectWithFallback(candidates) {
     return candidates.slice(0, settings.maxSelected).map(entry => ({
         ...entry,
         reason: entry.matchedKeys?.length
-            ? `关键词命中：${entry.matchedKeys.join(', ')}`
-            : `关键词评分 fallback：${entry.score}`,
+            ? `鍏抽敭璇嶅懡涓細${entry.matchedKeys.join(', ')}`
+            : `鍏抽敭璇嶈瘎鍒?fallback锛?{entry.score}`,
     }));
 }
 
@@ -5858,7 +5841,7 @@ function collectMemoryKeywords(node) {
     }
 
     const snippets = String(node.content || '')
-        .split(/[，,。.!?\n；;：:]/u)
+        .split(/[锛?銆?!?\n锛?锛?]/u)
         .map(part => part.trim())
         .filter(part => part.length >= 2 && part.length <= 18)
         .slice(0, 8);
@@ -5878,7 +5861,7 @@ function buildMemoryCandidates(graph) {
             uid: node.id,
             source: 'memory',
             world: 'memory',
-            comment: node.title || `记忆 ${index + 1}`,
+            comment: node.title || `璁板繂 ${index + 1}`,
             content: node.content || node.title || '',
             order: index,
             constant: false,
@@ -5946,8 +5929,8 @@ function selectMemoryWithFallback(candidates) {
     return candidates.slice(0, MAX_MEMORY_SELECTED).map(entry => ({
         ...entry,
         reason: entry.matchedKeys?.length
-            ? `记忆关键词命中：${entry.matchedKeys.join(', ')}`
-            : `近期记忆 fallback：${entry.score}`,
+            ? `璁板繂鍏抽敭璇嶅懡涓細${entry.matchedKeys.join(', ')}`
+            : `杩戞湡璁板繂 fallback锛?{entry.score}`,
     }));
 }
 
@@ -5959,28 +5942,28 @@ function buildMemoryInjection(graph, selectedMemories) {
         return '';
     }
 
-    const parts = ['[本轮相关记忆]\n以下内容来自当前聊天的动态记忆，仅用于本轮回复保持剧情连续性。\n'];
+    const parts = ['[鏈疆鐩稿叧璁板繂]\n浠ヤ笅鍐呭鏉ヨ嚜褰撳墠鑱婂ぉ鐨勫姩鎬佽蹇嗭紝浠呯敤浜庢湰杞洖澶嶄繚鎸佸墽鎯呰繛缁€с€俓n'];
 
     if (String(state.current_location || '').trim()) {
-        parts.push(`\n当前地点：${state.current_location.trim()}\n`);
+        parts.push(`\n褰撳墠鍦扮偣锛?{state.current_location.trim()}\n`);
     }
     if (String(state.current_time || '').trim()) {
-        parts.push(`当前时间：${state.current_time.trim()}\n`);
+        parts.push(`褰撳墠鏃堕棿锛?{state.current_time.trim()}\n`);
     }
     if (String(state.protagonist_status || '').trim()) {
-        parts.push(`主角状态：${state.protagonist_status.trim()}\n`);
+        parts.push(`涓昏鐘舵€侊細${state.protagonist_status.trim()}\n`);
     }
     if (String(state.current_objective || '').trim()) {
-        parts.push(`当前目标：${state.current_objective.trim()}\n`);
+        parts.push(`褰撳墠鐩爣锛?{state.current_objective.trim()}\n`);
     }
     if (String(state.current_phase || '').trim()) {
-        parts.push(`当前阶段：${state.current_phase.trim()}\n`);
+        parts.push(`褰撳墠闃舵锛?{state.current_phase.trim()}\n`);
     }
     if (Array.isArray(state.active_topics) && state.active_topics.length) {
-        parts.push(`活跃主题：${state.active_topics.join('、')}\n`);
+        parts.push(`娲昏穬涓婚锛?{state.active_topics.join('銆?)}\n`);
     }
     if (Array.isArray(state.open_questions) && state.open_questions.length) {
-        parts.push('未解问题：\n');
+        parts.push('鏈В闂锛歕n');
         for (const question of state.open_questions.slice(0, 6)) {
             parts.push(`- ${question}\n`);
         }
@@ -5990,19 +5973,19 @@ function buildMemoryInjection(graph, selectedMemories) {
         if (!value) {
             continue;
         }
-        parts.push(`${definition.label}：${value}\n`);
+        parts.push(`${definition.label}锛?{value}\n`);
     }
 
     if (memoryItems.length) {
-        parts.push('\n近期相关记忆：\n');
+        parts.push('\n杩戞湡鐩稿叧璁板繂锛歕n');
         for (const entry of memoryItems) {
             const node = entry.nodeRef || {};
             const prefix = [node.timeSpan, node.location].filter(Boolean).join(' | ');
-            parts.push(`- ${entry.comment || node.title || entry.uid}${prefix ? ` [${prefix}]` : ''}：${truncateText(node.summary || node.content || entry.content || '', 220)}\n`);
+            parts.push(`- ${entry.comment || node.title || entry.uid}${prefix ? ` [${prefix}]` : ''}锛?{truncateText(node.summary || node.content || entry.content || '', 220)}\n`);
         }
     }
 
-    parts.push('[/本轮相关记忆]');
+    parts.push('[/鏈疆鐩稿叧璁板繂]');
     return parts.join('');
 }
 
@@ -6012,15 +5995,15 @@ function buildBookshelfInjection(selectedBookshelf = []) {
         return '';
     }
 
-    const header = '[本轮相关资料]\n以下片段来自向量书架召回，仅用于补充本轮回复需要的外部资料。\n';
-    const footer = '\n[/本轮相关资料]';
+    const header = '[鏈疆鐩稿叧璧勬枡]\n浠ヤ笅鐗囨鏉ヨ嚜鍚戦噺涔︽灦鍙洖锛屼粎鐢ㄤ簬琛ュ厖鏈疆鍥炲闇€瑕佺殑澶栭儴璧勬枡銆俓n';
+    const footer = '\n[/鏈疆鐩稿叧璧勬枡]';
     const parts = [header];
     let used = header.length + footer.length;
     const maxChars = Math.max(600, Math.floor(clampNumber(settings.maxChars, defaultSettings.maxChars, 500, 50000) * 0.35));
 
     for (const item of items) {
-        const bookTitle = item.book?.title || item.book?.fileName || item.bookTitle || '未命名资料';
-        const chunkTitle = item.title || item.chunk?.title || `片段 ${Number(item.index ?? item.chunk?.index ?? 0) + 1}`;
+        const bookTitle = item.book?.title || item.book?.fileName || item.bookTitle || '鏈懡鍚嶈祫鏂?;
+        const chunkTitle = item.title || item.chunk?.title || `鐗囨 ${Number(item.index ?? item.chunk?.index ?? 0) + 1}`;
         const score = Number(item.score || 0);
         const text = String(item.content || item.text || item.chunk?.text || '').trim();
         if (!text) continue;
@@ -6046,8 +6029,8 @@ function buildInjection(selectedEntries, memoryGraph = null, selectedMemories = 
             return '';
         }
 
-        const header = '[本轮相关世界书]\n以下条目由前置路由器按当前用户消息、最近上下文和可选状态筛选，仅用于本轮回复保持设定一致。\n';
-        const footer = '\n[/本轮相关世界书]';
+        const header = '[鏈疆鐩稿叧涓栫晫涔\n浠ヤ笅鏉＄洰鐢卞墠缃矾鐢卞櫒鎸夊綋鍓嶇敤鎴锋秷鎭€佹渶杩戜笂涓嬫枃鍜屽彲閫夌姸鎬佺瓫閫夛紝浠呯敤浜庢湰杞洖澶嶄繚鎸佽瀹氫竴鑷淬€俓n';
+        const footer = '\n[/鏈疆鐩稿叧涓栫晫涔';
         const parts = [header];
         let used = header.length + footer.length;
 
@@ -6085,8 +6068,8 @@ function renderDebugPanel() {
     const selectedBookshelf = Array.isArray(lastRun?.selectedBookshelf) ? lastRun.selectedBookshelf : [];
     const pipeline = lastRun?.pipeline && typeof lastRun.pipeline === 'object' ? lastRun.pipeline : null;
     const summary = lastRun.error
-        ? `失败：${lastRun.error}`
-        : `世界书候选 ${candidates.length} 条，选择 ${selected.length} 条；记忆候选 ${memoryCandidates.length} 条，选择 ${selectedMemories.length} 条；书架候选 ${bookshelfCandidates.length} 条，选择 ${selectedBookshelf.length} 条；注入 ${lastRun.injectedChars} 字符，来源：${lastRun.source}`;
+        ? `澶辫触锛?{lastRun.error}`
+        : `涓栫晫涔﹀€欓€?${candidates.length} 鏉★紝閫夋嫨 ${selected.length} 鏉★紱璁板繂鍊欓€?${memoryCandidates.length} 鏉★紝閫夋嫨 ${selectedMemories.length} 鏉★紱涔︽灦鍊欓€?${bookshelfCandidates.length} 鏉★紝閫夋嫨 ${selectedBookshelf.length} 鏉★紱娉ㄥ叆 ${lastRun.injectedChars} 瀛楃锛屾潵婧愶細${lastRun.source}`;
     $('#ai_wbr_last_summary').text(summary);
 
     const pipelineItems = [];
@@ -6099,24 +6082,24 @@ function renderDebugPanel() {
         const selectedStats = pipeline.selected || {};
         const injection = pipeline.injection || {};
         const preLabel = pre.attempted
-            ? (pre.timedOut ? `预刷新超时，后台继续整理 · ${pre.durationMs || 0}ms` : `预刷新${pre.updated ? '已更新' : '无变化'} · ${pre.durationMs || 0}ms`)
-            : `预刷新跳过：${pre.skippedReason || 'not-needed'}`;
+            ? (pre.timedOut ? `棰勫埛鏂拌秴鏃讹紝鍚庡彴缁х画鏁寸悊 路 ${pre.durationMs || 0}ms` : `棰勫埛鏂?{pre.updated ? '宸叉洿鏂? : '鏃犲彉鍖?} 路 ${pre.durationMs || 0}ms`)
+            : `棰勫埛鏂拌烦杩囷細${pre.skippedReason || 'not-needed'}`;
         pipelineItems.push(
             $('<div class="ai-wbr-last-item ai-wbr-pipeline-item"></div>')
-                .append($('<div></div>').text('[流水线] 记忆预刷新'))
+                .append($('<div></div>').text('[娴佹按绾縘 璁板繂棰勫埛鏂?))
                 .append($('<small></small>').text(preLabel)),
             $('<div class="ai-wbr-last-item ai-wbr-pipeline-item"></div>')
-                .append($('<div></div>').text('[流水线] 图谱状态'))
-                .append($('<small></small>').text(`节点 ${graph.nodes || 0} · 关系 ${graph.links || 0} · 状态 ${graph.hasState ? '有' : '无'}${graph.updatedAt ? ` · 更新 ${graph.updatedAt}` : ''}`)),
+                .append($('<div></div>').text('[娴佹按绾縘 鍥捐氨鐘舵€?))
+                .append($('<small></small>').text(`鑺傜偣 ${graph.nodes || 0} 路 鍏崇郴 ${graph.links || 0} 路 鐘舵€?${graph.hasState ? '鏈? : '鏃?}${graph.updatedAt ? ` 路 鏇存柊 ${graph.updatedAt}` : ''}`)),
             $('<div class="ai-wbr-last-item ai-wbr-pipeline-item"></div>')
-                .append($('<div></div>').text('[流水线] 召回候选'))
-                .append($('<small></small>').text(`世界书 ${recall.worldbook || 0} · 记忆 ${recall.memory || 0} · 书架 ${recall.bookshelf || 0} · 合计 ${recall.combined || 0}`)),
+                .append($('<div></div>').text('[娴佹按绾縘 鍙洖鍊欓€?))
+                .append($('<small></small>').text(`涓栫晫涔?${recall.worldbook || 0} 路 璁板繂 ${recall.memory || 0} 路 涔︽灦 ${recall.bookshelf || 0} 路 鍚堣 ${recall.combined || 0}`)),
             $('<div class="ai-wbr-last-item ai-wbr-pipeline-item"></div>')
-                .append($('<div></div>').text('[流水线] 向量同步'))
-                .append($('<small></small>').text(sync.skipped ? '跳过' : `总 ${sync.total || 0} · ready ${sync.ready || 0} · pending ${sync.pending || 0} · failed ${sync.failed || 0}${vector.errors?.length ? ` · 错误 ${vector.errors.join(' | ')}` : ''}`)),
+                .append($('<div></div>').text('[娴佹按绾縘 鍚戦噺鍚屾'))
+                .append($('<small></small>').text(sync.skipped ? '璺宠繃' : `鎬?${sync.total || 0} 路 ready ${sync.ready || 0} 路 pending ${sync.pending || 0} 路 failed ${sync.failed || 0}${vector.errors?.length ? ` 路 閿欒 ${vector.errors.join(' | ')}` : ''}`)),
             $('<div class="ai-wbr-last-item ai-wbr-pipeline-item"></div>')
-                .append($('<div></div>').text('[流水线] 最终注入'))
-                .append($('<small></small>').text(`世界书 ${selectedStats.worldbook || 0} · 记忆 ${selectedStats.memory || 0} · 资料 ${selectedStats.bookshelf || 0} · 字符 ${injection.chars || lastRun.injectedChars || 0}`)),
+                .append($('<div></div>').text('[娴佹按绾縘 鏈€缁堟敞鍏?))
+                .append($('<small></small>').text(`涓栫晫涔?${selectedStats.worldbook || 0} 路 璁板繂 ${selectedStats.memory || 0} 路 璧勬枡 ${selectedStats.bookshelf || 0} 路 瀛楃 ${injection.chars || lastRun.injectedChars || 0}`)),
         );
     }
 
@@ -6125,27 +6108,27 @@ function renderDebugPanel() {
         const keys = entry.matchedKeys?.length ? ` | keys: ${entry.matchedKeys.join(', ')}` : '';
         return $('<div class="ai-wbr-last-item"></div>')
             .append($('<div></div>').text(`${title} (${entry.world || entry.source}#${entry.uid})`))
-            .append($('<small></small>').text(`${entry.reason || entry.recallReason || ''}${keys}${entry.sourceType ? ` · ${entry.sourceType}` : ''}`));
+            .append($('<small></small>').text(`${entry.reason || entry.recallReason || ''}${keys}${entry.sourceType ? ` 路 ${entry.sourceType}` : ''}`));
     });
 
     const memoryItems = selectedMemories.map(entry => {
         const title = entry.comment || entry.uid;
         const keys = entry.matchedKeys?.length ? ` | keys: ${entry.matchedKeys.join(', ')}` : '';
         return $('<div class="ai-wbr-last-item"></div>')
-            .append($('<div></div>').text(`[记忆] ${title} (${entry.memoryType || 'memory'}#${entry.uid})`))
-            .append($('<small></small>').text(`${entry.reason || entry.recallReason || ''}${keys}${entry.sourceType ? ` · ${entry.sourceType}` : ''}`));
+            .append($('<div></div>').text(`[璁板繂] ${title} (${entry.memoryType || 'memory'}#${entry.uid})`))
+            .append($('<small></small>').text(`${entry.reason || entry.recallReason || ''}${keys}${entry.sourceType ? ` 路 ${entry.sourceType}` : ''}`));
     });
 
     const bookshelfItems = selectedBookshelf.map(entry => (
         $('<div class="ai-wbr-last-item"></div>')
-            .append($('<div></div>').text(`[书架] 《${entry.book?.title || entry.book?.fileName || '书架'}》 / ${entry.title || entry.uid}`))
-            .append($('<small></small>').text(`${entry.recallReason || `分数 ${Number(entry.score || 0).toFixed(2)}`} · ${truncateText(entry.text || entry.content || '', 120)}`))
+            .append($('<div></div>').text(`[涔︽灦] 銆?{entry.book?.title || entry.book?.fileName || '涔︽灦'}銆?/ ${entry.title || entry.uid}`))
+            .append($('<small></small>').text(`${entry.recallReason || `鍒嗘暟 ${Number(entry.score || 0).toFixed(2)}`} 路 ${truncateText(entry.text || entry.content || '', 120)}`))
     ));
 
     $('#ai_wbr_last_items').empty().append([...pipelineItems, ...worldbookItems, ...memoryItems, ...bookshelfItems]);
-    $('#ai_wbr_injection_text').text(lastRun.injectionText || '尚无本轮注入记录');
-    $('#ai_wbr_router_prompt').text(lastRun.routerPrompt || '尚无前置 AI Prompt 记录');
-    $('#ai_wbr_router_raw').text(lastRun.routerRaw || '尚无前置 AI 返回记录');
+    $('#ai_wbr_injection_text').text(lastRun.injectionText || '灏氭棤鏈疆娉ㄥ叆璁板綍');
+    $('#ai_wbr_router_prompt').text(lastRun.routerPrompt || '灏氭棤鍓嶇疆 AI Prompt 璁板綍');
+    $('#ai_wbr_router_raw').text(lastRun.routerRaw || '灏氭棤鍓嶇疆 AI 杩斿洖璁板綍');
     renderStandaloneConsole();
 }
 
@@ -6200,9 +6183,9 @@ function createStandaloneEntryCard(entry = {}, type = 'worldbook', selected = fa
         .toggleClass('selected', !!selected)
         .append($('<div class="ai-wbr-console-entry-head"></div>')
             .append($('<b></b>').text(title))
-            .append($('<span></span>').text(selected ? '已注入' : '候选')))
+            .append($('<span></span>').text(selected ? '宸叉敞鍏? : '鍊欓€?)))
         .append($('<div class="ai-wbr-console-entry-meta"></div>').text(source))
-        .append(keys ? $('<div class="ai-wbr-console-entry-keys"></div>').text(`关键词：${truncateText(keys, 160)}`) : '')
+        .append(keys ? $('<div class="ai-wbr-console-entry-keys"></div>').text(`鍏抽敭璇嶏細${truncateText(keys, 160)}`) : '')
         .append(reason ? $('<small></small>').text(reason) : '')
         .append(body ? $('<p></p>').text(truncateText(body, 320)) : '');
 }
@@ -6217,9 +6200,9 @@ function appendStandaloneEntryCard(list, entry, type, selected) {
             .toggleClass('selected', !!selected)
             .append($('<div class="ai-wbr-console-entry-head"></div>')
                 .append($('<b></b>').text(title))
-                .append($('<span></span>').text(selected ? '已注入' : '候选')))
+                .append($('<span></span>').text(selected ? '宸叉敞鍏? : '鍊欓€?)))
             .append($('<div class="ai-wbr-console-entry-meta"></div>').text(`${type}#${entry?.uid || entry?.id || ''}`))
-            .append($('<small></small>').text(`候选字段不完整，已跳过部分详情：${error?.message || error}`)));
+            .append($('<small></small>').text(`鍊欓€夊瓧娈典笉瀹屾暣锛屽凡璺宠繃閮ㄥ垎璇︽儏锛?{error?.message || error}`)));
     }
 }
 function getStandaloneTabId() {
@@ -6230,32 +6213,32 @@ function createBookshelfStandaloneFold() {
     return $(`
         <details class="ai-wbr-memory-fold ai-wbr-bookshelf-fold" open>
             <summary>
-                <span>书架</span>
-                <small>导入 TXT，向量化后按当前剧情语义召回。</small>
+                <span>涔︽灦</span>
+                <small>瀵煎叆 TXT锛屽悜閲忓寲鍚庢寜褰撳墠鍓ф儏璇箟鍙洖銆?/small>
             </summary>
             <div id="ai_wbr_bookshelf_panel" class="ai-wbr-memory-fold-body ai-wbr-bookshelf-panel">
                 <div class="ai-wbr-bookshelf-app">
                     <div class="ai-wbr-bookshelf-top">
-                        <div class="ai-wbr-bookshelf-title">书架</div>
-                        <button id="ai_wbr_bookshelf_open_settings" class="ai-wbr-bookshelf-more" type="button" title="书架设置">•••</button>
+                        <div class="ai-wbr-bookshelf-title">涔︽灦</div>
+                        <button id="ai_wbr_bookshelf_open_settings" class="ai-wbr-bookshelf-more" type="button" title="涔︽灦璁剧疆">鈥⑩€⑩€?/button>
                     </div>
                     <div class="ai-wbr-bookshelf-tabs">
-                        <span class="ai-wbr-bookshelf-read-badge">向量召回</span>
-                        <button id="ai_wbr_bookshelf_import" class="ai-wbr-bookshelf-link" type="button">导入TXT</button>
-                            <button id="ai_wbr_bookshelf_build_memory_books" class="ai-wbr-bookshelf-link" type="button">刷新记忆书</button>
-                        <button id="ai_wbr_bookshelf_test_open" class="ai-wbr-bookshelf-link" type="button">召回测试</button>
+                        <span class="ai-wbr-bookshelf-read-badge">鍚戦噺鍙洖</span>
+                        <button id="ai_wbr_bookshelf_import" class="ai-wbr-bookshelf-link" type="button">瀵煎叆TXT</button>
+                            <button id="ai_wbr_bookshelf_build_memory_books" class="ai-wbr-bookshelf-link" type="button">鍒锋柊璁板繂涔?/button>
+                        <button id="ai_wbr_bookshelf_test_open" class="ai-wbr-bookshelf-link" type="button">鍙洖娴嬭瘯</button>
                     </div>
 
                     <input id="ai_wbr_bookshelf_file" type="file" accept=".txt,text/plain" multiple hidden />
-                    <div id="ai_wbr_bookshelf_status" class="ai-wbr-bookshelf-status">书架待命。导入 TXT 后点击书籍向量化。</div>
+                    <div id="ai_wbr_bookshelf_status" class="ai-wbr-bookshelf-status">涔︽灦寰呭懡銆傚鍏?TXT 鍚庣偣鍑讳功绫嶅悜閲忓寲銆?/div>
                     <div id="ai_wbr_bookshelf_books" class="ai-wbr-bookshelf-books"></div>
                     <div id="ai_wbr_bookshelf_detail" class="ai-wbr-bookshelf-detail"></div>
 
                     <div class="ai-wbr-bookshelf-test" id="ai_wbr_bookshelf_test_panel">
-                        <div class="ai-wbr-memory-subtitle"><b>召回测试</b></div>
-                        <textarea id="ai_wbr_bookshelf_test_query" class="text_pole" rows="3" placeholder="输入一句当前剧情问题，测试向量书架会召回哪些片段。"></textarea>
+                        <div class="ai-wbr-memory-subtitle"><b>鍙洖娴嬭瘯</b></div>
+                        <textarea id="ai_wbr_bookshelf_test_query" class="text_pole" rows="3" placeholder="杈撳叆涓€鍙ュ綋鍓嶅墽鎯呴棶棰橈紝娴嬭瘯鍚戦噺涔︽灦浼氬彫鍥炲摢浜涚墖娈点€?></textarea>
                         <div class="ai-wbr-bookshelf-actions">
-                            <button id="ai_wbr_bookshelf_test" class="menu_button" type="button">测试召回</button>
+                            <button id="ai_wbr_bookshelf_test" class="menu_button" type="button">娴嬭瘯鍙洖</button>
                         </div>
                         <div id="ai_wbr_bookshelf_results" class="ai-wbr-bookshelf-results"></div>
                     </div>
@@ -6264,65 +6247,65 @@ function createBookshelfStandaloneFold() {
                     <aside class="ai-wbr-bookshelf-settings-drawer" id="ai_wbr_bookshelf_settings_drawer" aria-hidden="true">
                         <div class="ai-wbr-bookshelf-drawer-head">
                             <div>
-                                <b>书架设置</b>
-                                <small id="ai_wbr_bookshelf_model_status">未测试</small>
+                                <b>涔︽灦璁剧疆</b>
+                                <small id="ai_wbr_bookshelf_model_status">鏈祴璇?/small>
                             </div>
-                            <button id="ai_wbr_bookshelf_close_settings" class="menu_button" type="button">关闭</button>
+                            <button id="ai_wbr_bookshelf_close_settings" class="menu_button" type="button">鍏抽棴</button>
                         </div>
                         <div id="ai_wbr_bookshelf_scope" class="ai-wbr-bookshelf-scope"></div>
                         <div class="ai-wbr-bookshelf-import-options">
-                            <label for="ai_wbr_bookshelf_import_type">导入分类</label>
+                            <label for="ai_wbr_bookshelf_import_type">瀵煎叆鍒嗙被</label>
                             <select id="ai_wbr_bookshelf_import_type" class="text_pole">
-                                <option value="plot">剧情记录</option>
-                                <option value="character">人物档案</option>
-                                <option value="world">世界观</option>
-                                <option value="rule">规则设定</option>
-                                <option value="other">其他资料</option>
+                                <option value="plot">鍓ф儏璁板綍</option>
+                                <option value="character">浜虹墿妗ｆ</option>
+                                <option value="world">涓栫晫瑙?/option>
+                                <option value="rule">瑙勫垯璁惧畾</option>
+                                <option value="other">鍏朵粬璧勬枡</option>
                             </select>
                             <label>\u7ed1\u5b9a\u903b\u8f91</label>
                             <div class="ai-wbr-bookshelf-bind-note">\u5bfc\u5165 TXT \u53ea\u5165\u5e93\uff1b\u5b8c\u6210\u5206\u5272\u5411\u91cf\u5316\u540e\uff0c\u624b\u52a8\u7ed1\u5b9a\u5f53\u524d\u89d2\u8272\u5361\u5373\u53ef\u5728\u8be5\u89d2\u8272\u7684\u5404\u4e2a\u804a\u5929\u4e2d\u81ea\u52a8\u751f\u6548\uff0c\u4e5f\u53ef\u8bbe\u4e3a\u5168\u5c40\u6216\u968f\u65f6\u53d6\u6d88\u7ed1\u5b9a\u3002</div>
                         </div>
                         <div class="ai-wbr-bookshelf-switches">
-                            <label class="checkbox_label" for="ai_wbr_bookshelf_enabled"><input id="ai_wbr_bookshelf_enabled" type="checkbox" />启用向量召回</label>
-                            <label class="checkbox_label" for="ai_wbr_bookshelf_auto_inject"><input id="ai_wbr_bookshelf_auto_inject" type="checkbox" />生成前自动注入</label>
-                            <label class="checkbox_label" for="ai_wbr_bookshelf_auto_memory_book"><input id="ai_wbr_bookshelf_auto_memory_book" type="checkbox" />自动维护当前聊天记忆书</label>
-                            <label class="checkbox_label" for="ai_wbr_bookshelf_memory_vector"><input id="ai_wbr_bookshelf_memory_vector" type="checkbox" />图谱记忆参与召回</label>
-                            <label class="checkbox_label" for="ai_wbr_bookshelf_only_bound"><input id="ai_wbr_bookshelf_only_bound" type="checkbox" />仅召回绑定书籍</label>
-                            <label class="checkbox_label" for="ai_wbr_bookshelf_allow_global"><input id="ai_wbr_bookshelf_allow_global" type="checkbox" />允许全局书籍</label>
+                            <label class="checkbox_label" for="ai_wbr_bookshelf_enabled"><input id="ai_wbr_bookshelf_enabled" type="checkbox" />鍚敤鍚戦噺鍙洖</label>
+                            <label class="checkbox_label" for="ai_wbr_bookshelf_auto_inject"><input id="ai_wbr_bookshelf_auto_inject" type="checkbox" />鐢熸垚鍓嶈嚜鍔ㄦ敞鍏?/label>
+                            <label class="checkbox_label" for="ai_wbr_bookshelf_auto_memory_book"><input id="ai_wbr_bookshelf_auto_memory_book" type="checkbox" />鑷姩缁存姢褰撳墠鑱婂ぉ璁板繂涔?/label>
+                            <label class="checkbox_label" for="ai_wbr_bookshelf_memory_vector"><input id="ai_wbr_bookshelf_memory_vector" type="checkbox" />鍥捐氨璁板繂鍙備笌鍙洖</label>
+                            <label class="checkbox_label" for="ai_wbr_bookshelf_only_bound"><input id="ai_wbr_bookshelf_only_bound" type="checkbox" />浠呭彫鍥炵粦瀹氫功绫?/label>
+                            <label class="checkbox_label" for="ai_wbr_bookshelf_allow_global"><input id="ai_wbr_bookshelf_allow_global" type="checkbox" />鍏佽鍏ㄥ眬涔︾睄</label>
                         </div>
                         <div class="ai-wbr-grid ai-wbr-bookshelf-config">
-                            <label for="ai_wbr_bookshelf_embedding_mode">Embedding 模式</label>
+                            <label for="ai_wbr_bookshelf_embedding_mode">Embedding 妯″紡</label>
                             <select id="ai_wbr_bookshelf_embedding_mode" class="text_pole">
-                                <option value="api">API 向量模型</option>
-                                <option value="browser-local">浏览器本地模型</option>
+                                <option value="api">API 鍚戦噺妯″瀷</option>
+                                <option value="browser-local">娴忚鍣ㄦ湰鍦版ā鍨?/option>
                             </select>
-                            <label for="ai_wbr_bookshelf_api_url">API 地址</label>
-                            <input id="ai_wbr_bookshelf_api_url" class="text_pole" type="text" placeholder="https://example.com/v1 或 /v1/embeddings" />
+                            <label for="ai_wbr_bookshelf_api_url">API 鍦板潃</label>
+                            <input id="ai_wbr_bookshelf_api_url" class="text_pole" type="text" placeholder="https://example.com/v1 鎴?/v1/embeddings" />
                             <label for="ai_wbr_bookshelf_api_key">API Key</label>
                             <input id="ai_wbr_bookshelf_api_key" class="text_pole" type="password" placeholder="sk-..." />
-                            <label for="ai_wbr_bookshelf_api_model">API 模型</label>
+                            <label for="ai_wbr_bookshelf_api_model">API 妯″瀷</label>
                             <select id="ai_wbr_bookshelf_api_model" class="text_pole">
-                                <option value="">先点击“获取模型”</option>
+                                <option value="">鍏堢偣鍑烩€滆幏鍙栨ā鍨嬧€?/option>
                             </select>
                             <label></label>
-                            <button id="ai_wbr_bookshelf_fetch_models" class="menu_button" type="button">获取模型</button>
-                            <label for="ai_wbr_bookshelf_local_model">本地模型 ID</label>
+                            <button id="ai_wbr_bookshelf_fetch_models" class="menu_button" type="button">鑾峰彇妯″瀷</button>
+                            <label for="ai_wbr_bookshelf_local_model">鏈湴妯″瀷 ID</label>
                             <input id="ai_wbr_bookshelf_local_model" class="text_pole" type="text" placeholder="Xenova/paraphrase-multilingual-MiniLM-L12-v2" />
-                            <label for="ai_wbr_bookshelf_memory_vector_max">图谱召回数量</label>
+                            <label for="ai_wbr_bookshelf_memory_vector_max">鍥捐氨鍙洖鏁伴噺</label>
                             <input id="ai_wbr_bookshelf_memory_vector_max" class="text_pole" type="number" min="1" max="12" step="1" />
-                            <label for="ai_wbr_bookshelf_max_chunks">TXT 召回数量</label>
+                            <label for="ai_wbr_bookshelf_max_chunks">TXT 鍙洖鏁伴噺</label>
                             <input id="ai_wbr_bookshelf_max_chunks" class="text_pole" type="number" min="1" max="12" step="1" />
-                            <label for="ai_wbr_bookshelf_max_chars">每段最大字数</label>
+                            <label for="ai_wbr_bookshelf_max_chars">姣忔鏈€澶у瓧鏁?/label>
                             <input id="ai_wbr_bookshelf_max_chars" class="text_pole" type="number" min="120" max="2000" step="20" />
-                            <label for="ai_wbr_bookshelf_min_score">最低相似度</label>
+                            <label for="ai_wbr_bookshelf_min_score">鏈€浣庣浉浼煎害</label>
                             <input id="ai_wbr_bookshelf_min_score" class="text_pole" type="number" min="0" max="1" step="0.05" />
                         </div>
                         <div class="ai-wbr-bookshelf-actions">
-                            <button id="ai_wbr_bookshelf_test_provider" class="menu_button" type="button">测试向量模型</button>
-                            <button id="ai_wbr_bookshelf_load_local" class="menu_button" type="button">下载/加载本地模型</button>
-                            <button id="ai_wbr_bookshelf_build_memory_books" class="menu_button" type="button">刷新当前聊天记忆书</button>
-                            <button id="ai_wbr_bookshelf_vectorize_memory" class="menu_button" type="button">同步图谱向量</button>
-                            <button id="ai_wbr_bookshelf_reset_memory_vectors" class="menu_button" type="button">重置图谱向量</button>
+                            <button id="ai_wbr_bookshelf_test_provider" class="menu_button" type="button">娴嬭瘯鍚戦噺妯″瀷</button>
+                            <button id="ai_wbr_bookshelf_load_local" class="menu_button" type="button">涓嬭浇/鍔犺浇鏈湴妯″瀷</button>
+                            <button id="ai_wbr_bookshelf_build_memory_books" class="menu_button" type="button">鍒锋柊褰撳墠鑱婂ぉ璁板繂涔?/button>
+                            <button id="ai_wbr_bookshelf_vectorize_memory" class="menu_button" type="button">鍚屾鍥捐氨鍚戦噺</button>
+                            <button id="ai_wbr_bookshelf_reset_memory_vectors" class="menu_button" type="button">閲嶇疆鍥捐氨鍚戦噺</button>
                         </div>
                     </aside>
                 </div>
@@ -6344,34 +6327,34 @@ function ensureBookshelfStandaloneControls(section) {
         switches.find('#ai_wbr_bookshelf_auto_inject').closest('label').after(
             $('<label class="checkbox_label" for="ai_wbr_bookshelf_memory_vector"></label>')
                 .append('<input id="ai_wbr_bookshelf_memory_vector" type="checkbox" />')
-                .append('图谱记忆参与向量召回'),
+                .append('鍥捐氨璁板繂鍙備笌鍚戦噺鍙洖'),
         );
     }
     if (switches.length && !panel.find('#ai_wbr_bookshelf_auto_memory_book').length) {
         switches.find('#ai_wbr_bookshelf_auto_inject').closest('label').after(
             $('<label class="checkbox_label" for="ai_wbr_bookshelf_auto_memory_book"></label>')
                 .append('<input id="ai_wbr_bookshelf_auto_memory_book" type="checkbox" />')
-                .append('自动维护当前聊天记忆书'),
+                .append('鑷姩缁存姢褰撳墠鑱婂ぉ璁板繂涔?),
         );
     }
     const config = panel.find('.ai-wbr-bookshelf-config').first();
     if (config.length && !panel.find('#ai_wbr_bookshelf_memory_vector_max').length) {
-        config.find('#ai_wbr_bookshelf_max_chunks').prev('label').before('<label for="ai_wbr_bookshelf_memory_vector_max">图谱召回数量</label>');
+        config.find('#ai_wbr_bookshelf_max_chunks').prev('label').before('<label for="ai_wbr_bookshelf_memory_vector_max">鍥捐氨鍙洖鏁伴噺</label>');
         config.find('#ai_wbr_bookshelf_max_chunks').before('<input id="ai_wbr_bookshelf_memory_vector_max" class="text_pole" type="number" min="1" max="12" step="1" />');
     }
     const actions = panel.find('.ai-wbr-bookshelf-actions').first();
     const tabs = panel.find('.ai-wbr-bookshelf-tabs').first();
     if (tabs.length && !panel.find('#ai_wbr_bookshelf_build_memory_books').length) {
-        tabs.find('#ai_wbr_bookshelf_import').after('<button id="ai_wbr_bookshelf_build_memory_books" class="ai-wbr-bookshelf-link" type="button">刷新记忆书</button>');
+        tabs.find('#ai_wbr_bookshelf_import').after('<button id="ai_wbr_bookshelf_build_memory_books" class="ai-wbr-bookshelf-link" type="button">鍒锋柊璁板繂涔?/button>');
     }
     if (actions.length && !panel.find('#ai_wbr_bookshelf_build_memory_books').length) {
-        actions.find('#ai_wbr_bookshelf_load_local').after('<button id="ai_wbr_bookshelf_build_memory_books" class="menu_button" type="button">刷新当前聊天记忆书</button>');
+        actions.find('#ai_wbr_bookshelf_load_local').after('<button id="ai_wbr_bookshelf_build_memory_books" class="menu_button" type="button">鍒锋柊褰撳墠鑱婂ぉ璁板繂涔?/button>');
     }
     if (actions.length && !panel.find('#ai_wbr_bookshelf_vectorize_memory').length) {
-        actions.find('#ai_wbr_bookshelf_load_local').after('<button id="ai_wbr_bookshelf_vectorize_memory" class="menu_button" type="button">同步图谱向量</button>');
+        actions.find('#ai_wbr_bookshelf_load_local').after('<button id="ai_wbr_bookshelf_vectorize_memory" class="menu_button" type="button">鍚屾鍥捐氨鍚戦噺</button>');
     }
     if (actions.length && !panel.find('#ai_wbr_bookshelf_reset_memory_vectors').length) {
-        actions.find('#ai_wbr_bookshelf_vectorize_memory').after('<button id="ai_wbr_bookshelf_reset_memory_vectors" class="menu_button" type="button">重置图谱向量</button>');
+        actions.find('#ai_wbr_bookshelf_vectorize_memory').after('<button id="ai_wbr_bookshelf_reset_memory_vectors" class="menu_button" type="button">閲嶇疆鍥捐氨鍚戦噺</button>');
     }
     if (panel.find('#ai_wbr_bookshelf_api_model').is('input')) {
         const currentValue = String(panel.find('#ai_wbr_bookshelf_api_model').val() || settings.bookshelfApiModel || '').trim();
@@ -6382,7 +6365,7 @@ function ensureBookshelfStandaloneControls(section) {
     }
     if (!panel.find('#ai_wbr_bookshelf_fetch_models').length) {
         const modelField = panel.find('#ai_wbr_bookshelf_api_model');
-        modelField.after('<button id="ai_wbr_bookshelf_fetch_models" class="menu_button" type="button">获取模型</button>');
+        modelField.after('<button id="ai_wbr_bookshelf_fetch_models" class="menu_button" type="button">鑾峰彇妯″瀷</button>');
     }
 }
 
@@ -6493,33 +6476,33 @@ function renderStandaloneOverview(container) {
     container.append($('<div class="ai-wbr-console-hero"></div>')
         .append($('<div></div>')
             .append($('<div class="ai-wbr-console-kicker"></div>').text('AI Worldbook Router'))
-            .append($('<h3></h3>').text('世界书读取控制台'))
-            .append($('<p></p>').text('生成前自动筛选相关世界书、记忆和状态，再注入当前提示词。')))
+            .append($('<h3></h3>').text('涓栫晫涔﹁鍙栨帶鍒跺彴'))
+            .append($('<p></p>').text('鐢熸垚鍓嶈嚜鍔ㄧ瓫閫夌浉鍏充笘鐣屼功銆佽蹇嗗拰鐘舵€侊紝鍐嶆敞鍏ュ綋鍓嶆彁绀鸿瘝銆?)))
         .append($('<div class="ai-wbr-console-status-pill"></div>')
             .addClass(status.className)
             .append($(`<i class="fa-solid ${status.icon}"></i>`))
             .append($('<span></span>').text(status.label))));
 
     container.append($('<div class="ai-wbr-console-stats"></div>')
-        .append(createStandaloneStat('世界书候选', candidates.length))
-        .append(createStandaloneStat('世界书命中', selected.length))
-        .append(createStandaloneStat('记忆候选', memoryCandidates.length))
-        .append(createStandaloneStat('记忆命中', selectedMemories.length))
-        .append(createStandaloneStat('注入字符', lastRun.injectedChars || 0))
-        .append(createStandaloneStat('路由来源', lastRun.source || 'none')));
+        .append(createStandaloneStat('涓栫晫涔﹀€欓€?, candidates.length))
+        .append(createStandaloneStat('涓栫晫涔﹀懡涓?, selected.length))
+        .append(createStandaloneStat('璁板繂鍊欓€?, memoryCandidates.length))
+        .append(createStandaloneStat('璁板繂鍛戒腑', selectedMemories.length))
+        .append(createStandaloneStat('娉ㄥ叆瀛楃', lastRun.injectedChars || 0))
+        .append(createStandaloneStat('璺敱鏉ユ簮', lastRun.source || 'none')));
 
     container.append($('<div class="ai-wbr-console-actions"></div>')
-        .append($('<button class="menu_button" type="button"></button>').text(settings.enabled ? '关闭路由' : '启用路由').on('click', () => {
+        .append($('<button class="menu_button" type="button"></button>').text(settings.enabled ? '鍏抽棴璺敱' : '鍚敤璺敱').on('click', () => {
             saveSetting('enabled', !settings.enabled);
             $('#ai_wbr_enabled').prop('checked', !!settings.enabled);
             renderStandaloneConsole();
         }))
-        .append($('<button class="menu_button" type="button">刷新状态</button>').on('click', () => {
+        .append($('<button class="menu_button" type="button">鍒锋柊鐘舵€?/button>').on('click', () => {
             renderActiveWorldbookSelector();
             renderDebugPanel();
             renderMemoryPanel();
         }))
-        .append($('<button class="menu_button" type="button">复制注入文本</button>').on('click', async () => {
+        .append($('<button class="menu_button" type="button">澶嶅埗娉ㄥ叆鏂囨湰</button>').on('click', async () => {
             await navigator.clipboard?.writeText?.(lastRun.injectionText || '');
             toastr?.success?.('Done.', 'AI Worldbook Router');
         })));
@@ -6538,9 +6521,9 @@ function renderStandaloneRoutes(container) {
     const bookshelfCandidates = Array.isArray(lastRun.bookshelfCandidates) ? lastRun.bookshelfCandidates : [];
     const list = $('<div class="ai-wbr-console-entry-list"></div>');
 
-    container.append($('<div class="ai-wbr-console-section-title"></div>').text('世界书路由结果'));
+    container.append($('<div class="ai-wbr-console-section-title"></div>').text('涓栫晫涔﹁矾鐢辩粨鏋?));
     if (!candidates.length && !memoryCandidates.length && !bookshelfCandidates.length) {
-        list.append($('<div class="ai-wbr-console-empty"></div>').text('尚无路由记录。下一次生成后会显示候选与命中条目。'));
+        list.append($('<div class="ai-wbr-console-empty"></div>').text('灏氭棤璺敱璁板綍銆備笅涓€娆＄敓鎴愬悗浼氭樉绀哄€欓€変笌鍛戒腑鏉＄洰銆?));
     }
     for (const entry of candidates) {
         appendStandaloneEntryCard(list, entry, 'worldbook', selectedIds.has(getEntryId(entry, entry.uid)));
@@ -6556,16 +6539,16 @@ function renderStandaloneRoutes(container) {
 
 function renderStandaloneInjection(container) {
     container.append($('<div class="ai-wbr-console-section-head"></div>')
-        .append($('<div class="ai-wbr-console-section-title"></div>').text('本轮最终注入文本'))
-        .append($('<button class="menu_button" type="button">复制</button>').on('click', async () => {
+        .append($('<div class="ai-wbr-console-section-title"></div>').text('鏈疆鏈€缁堟敞鍏ユ枃鏈?))
+        .append($('<button class="menu_button" type="button">澶嶅埗</button>').on('click', async () => {
             await navigator.clipboard?.writeText?.(lastRun.injectionText || '');
             toastr?.success?.('Done.', 'AI Worldbook Router');
         })));
-    container.append($('<pre class="ai-wbr-console-pre"></pre>').text(lastRun.injectionText || '尚无本轮注入记录'));
+    container.append($('<pre class="ai-wbr-console-pre"></pre>').text(lastRun.injectionText || '灏氭棤鏈疆娉ㄥ叆璁板綍'));
 }
 
 function renderStandaloneModel(container) {
-    container.append($('<div class="ai-wbr-console-section-title"></div>').text('独立路由模型'));
+    container.append($('<div class="ai-wbr-console-section-title"></div>').text('鐙珛璺敱妯″瀷'));
     const panel = $('<div class="ai-wbr-console-form"></div>');
     panel.append($('<label class="checkbox_label"></label>')
         .append($('<input type="checkbox" />').prop('checked', !!settings.routerUseSeparateModel).on('input', function () {
@@ -6573,7 +6556,7 @@ function renderStandaloneModel(container) {
             $('#ai_wbr_router_use_separate_model').prop('checked', !!settings.routerUseSeparateModel);
             renderStandaloneConsole();
         }))
-        .append($('<span></span>').text('启用独立路由模型')));
+        .append($('<span></span>').text('鍚敤鐙珛璺敱妯″瀷')));
     panel.append($('<label></label>').text('API URL'));
     panel.append($('<input class="text_pole" type="text" />').val(settings.routerApiUrl || '').on('input', function () {
         saveSetting('routerApiUrl', normalizeUrl($(this).val()));
@@ -6584,22 +6567,22 @@ function renderStandaloneModel(container) {
         saveSetting('routerApiKey', String($(this).val() || '').trim());
         $('#ai_wbr_router_api_key').val(settings.routerApiKey);
     }));
-    panel.append($('<label></label>').text('路由模型'));
+    panel.append($('<label></label>').text('璺敱妯″瀷'));
 
-    const select = $('<select class="text_pole"></select>').append('<option value="">未选择</option>');
+    const select = $('<select class="text_pole"></select>').append('<option value="">鏈€夋嫨</option>');
     for (const modelId of settings.routerModels || []) {
         select.append($('<option></option>', { value: modelId, text: modelId, selected: modelId === settings.routerModel }));
     }
     if (settings.routerModel && !(settings.routerModels || []).includes(settings.routerModel)) {
-        select.append($('<option></option>', { value: settings.routerModel, text: `${settings.routerModel} (手动)`, selected: true }));
+        select.append($('<option></option>', { value: settings.routerModel, text: `${settings.routerModel} (鎵嬪姩)`, selected: true }));
     }
     panel.append(select.on('change', function () {
         saveSetting('routerModel', String($(this).val() || ''));
         $('#ai_wbr_router_model').val(settings.routerModel);
     }));
     panel.append($('<div class="ai-wbr-console-actions"></div>')
-        .append($('<button class="menu_button" type="button">拉取模型</button>').on('click', fetchRouterModels))
-        .append($('<span class="ai-wbr-status"></span>').text(settings.routerStatus || '未连接')));
+        .append($('<button class="menu_button" type="button">鎷夊彇妯″瀷</button>').on('click', fetchRouterModels))
+        .append($('<span class="ai-wbr-status"></span>').text(settings.routerStatus || '鏈繛鎺?)));
     container.append(panel);
 }
 
@@ -6629,44 +6612,44 @@ function renderStandaloneSettings(container) {
     const originalSections = settingsContent.find('.ai-wbr-section').length;
     container.append($('<div class="ai-wbr-console-alert"></div>').text(
         originalSections
-            ? '完整设置仍保留在扩展设置页；这里提供常用开关和分区快捷入口。'
-            : '如果完整设置页未显示，请关闭并重新打开扩展设置，插件会自动还原被独立窗口临时移动的面板。',
+            ? '瀹屾暣璁剧疆浠嶄繚鐣欏湪鎵╁睍璁剧疆椤碉紱杩欓噷鎻愪緵甯哥敤寮€鍏冲拰鍒嗗尯蹇嵎鍏ュ彛銆?
+            : '濡傛灉瀹屾暣璁剧疆椤垫湭鏄剧ず锛岃鍏抽棴骞堕噸鏂版墦寮€鎵╁睍璁剧疆锛屾彃浠朵細鑷姩杩樺師琚嫭绔嬬獥鍙ｄ复鏃剁Щ鍔ㄧ殑闈㈡澘銆?,
     ));
-    container.append($('<div class="ai-wbr-console-section-title"></div>').text('核心设置'));
+    container.append($('<div class="ai-wbr-console-section-title"></div>').text('鏍稿績璁剧疆'));
     container.append(
         $('<div class="ai-wbr-console-form"></div>')
-            .append(createStandaloneSettingsToggle('启用前置 AI 世界书路由', 'enabled', '控制正式生成前是否筛选并注入世界书。'))
-            .append(createStandaloneSettingsToggle('启用记忆存储', 'memoryEnabled', '开启后才会整理聊天记忆和刷新图谱。'))
-            .append(createStandaloneSettingsToggle('实时整理聊天记忆', 'memoryRealtimeEnabled', '生成结束后自动整理最近消息。'))
-            .append(createStandaloneSettingsToggle('间隔归纳整理', 'memorySummaryEnabled', '按消息间隔压缩阶段剧情和关系变化。'))
-            .append(createStandaloneSettingsToggle('记忆状态参与路由', 'memoryInjectToRouter', '让图谱摘要辅助世界书路由命中。'))
-            .append(createStandaloneSettingsToggle('启用书架补充召回', 'bookshelfEnabled', '允许书架和记忆书参与向量召回。'))
-            .append(createStandaloneSettingsToggle('自动维护当前聊天记忆书', 'bookshelfAutoMemoryBook', '从当前图谱自动生成聊天绑定记忆书。', () => {
+            .append(createStandaloneSettingsToggle('鍚敤鍓嶇疆 AI 涓栫晫涔﹁矾鐢?, 'enabled', '鎺у埗姝ｅ紡鐢熸垚鍓嶆槸鍚︾瓫閫夊苟娉ㄥ叆涓栫晫涔︺€?))
+            .append(createStandaloneSettingsToggle('鍚敤璁板繂瀛樺偍', 'memoryEnabled', '寮€鍚悗鎵嶄細鏁寸悊鑱婂ぉ璁板繂鍜屽埛鏂板浘璋便€?))
+            .append(createStandaloneSettingsToggle('瀹炴椂鏁寸悊鑱婂ぉ璁板繂', 'memoryRealtimeEnabled', '鐢熸垚缁撴潫鍚庤嚜鍔ㄦ暣鐞嗘渶杩戞秷鎭€?))
+            .append(createStandaloneSettingsToggle('闂撮殧褰掔撼鏁寸悊', 'memorySummaryEnabled', '鎸夋秷鎭棿闅斿帇缂╅樁娈靛墽鎯呭拰鍏崇郴鍙樺寲銆?))
+            .append(createStandaloneSettingsToggle('璁板繂鐘舵€佸弬涓庤矾鐢?, 'memoryInjectToRouter', '璁╁浘璋辨憳瑕佽緟鍔╀笘鐣屼功璺敱鍛戒腑銆?))
+            .append(createStandaloneSettingsToggle('鍚敤涔︽灦琛ュ厖鍙洖', 'bookshelfEnabled', '鍏佽涔︽灦鍜岃蹇嗕功鍙備笌鍚戦噺鍙洖銆?))
+            .append(createStandaloneSettingsToggle('鑷姩缁存姢褰撳墠鑱婂ぉ璁板繂涔?, 'bookshelfAutoMemoryBook', '浠庡綋鍓嶅浘璋辫嚜鍔ㄧ敓鎴愯亰澶╃粦瀹氳蹇嗕功銆?, () => {
                 if (settings.bookshelfAutoMemoryBook) {
                     scheduleBookshelfMemoryBookSync(getContext(), { force: true, silent: false, delayMs: 100 });
                 }
             })),
     );
 
-    container.append($('<div class="ai-wbr-console-section-title"></div>').text('设置分区'));
+    container.append($('<div class="ai-wbr-console-section-title"></div>').text('璁剧疆鍒嗗尯'));
     container.append(
         $('<div class="ai-wbr-console-actions ai-wbr-console-settings-nav"></div>')
-            .append(createStandaloneSettingsNav('记忆设置', 'memory', '整理、历史补录、JSON 和调试。'))
-            .append(createStandaloneSettingsNav('图谱视图', 'graph', '全屏图谱、布局和详情面板。'))
-            .append(createStandaloneSettingsNav('书架设置', 'bookshelf', '记忆书、向量模型和召回测试。'))
-            .append(createStandaloneSettingsNav('调试信息', 'debug', '查看前置 Prompt、返回和错误。')),
+            .append(createStandaloneSettingsNav('璁板繂璁剧疆', 'memory', '鏁寸悊銆佸巻鍙茶ˉ褰曘€丣SON 鍜岃皟璇曘€?))
+            .append(createStandaloneSettingsNav('鍥捐氨瑙嗗浘', 'graph', '鍏ㄥ睆鍥捐氨銆佸竷灞€鍜岃鎯呴潰鏉裤€?))
+            .append(createStandaloneSettingsNav('涔︽灦璁剧疆', 'bookshelf', '璁板繂涔︺€佸悜閲忔ā鍨嬪拰鍙洖娴嬭瘯銆?))
+            .append(createStandaloneSettingsNav('璋冭瘯淇℃伅', 'debug', '鏌ョ湅鍓嶇疆 Prompt銆佽繑鍥炲拰閿欒銆?)),
     );
 
     renderStandaloneModel(container);
 }
 
 function renderStandaloneDebug(container) {
-    container.append($('<div class="ai-wbr-console-section-title"></div>').text('前置 AI Prompt'));
-    container.append($('<pre class="ai-wbr-console-pre"></pre>').text(lastRun.routerPrompt || '尚无前置 AI Prompt 记录'));
-    container.append($('<div class="ai-wbr-console-section-title"></div>').text('前置 AI 原始返回'));
-    container.append($('<pre class="ai-wbr-console-pre"></pre>').text(lastRun.routerRaw || '尚无前置 AI 返回记录'));
+    container.append($('<div class="ai-wbr-console-section-title"></div>').text('鍓嶇疆 AI Prompt'));
+    container.append($('<pre class="ai-wbr-console-pre"></pre>').text(lastRun.routerPrompt || '灏氭棤鍓嶇疆 AI Prompt 璁板綍'));
+    container.append($('<div class="ai-wbr-console-section-title"></div>').text('鍓嶇疆 AI 鍘熷杩斿洖'));
+    container.append($('<pre class="ai-wbr-console-pre"></pre>').text(lastRun.routerRaw || '灏氭棤鍓嶇疆 AI 杩斿洖璁板綍'));
     if (lastRun.error) {
-        container.append($('<div class="ai-wbr-console-section-title"></div>').text('错误'));
+        container.append($('<div class="ai-wbr-console-section-title"></div>').text('閿欒'));
         container.append($('<pre class="ai-wbr-console-pre error"></pre>').text(lastRun.error));
     }
 }
@@ -6720,7 +6703,7 @@ function renderStandaloneConsole(tabId = getStandaloneTabId()) {
     }
 
     const status = getStandaloneStatusMeta();
-    $('#ai_wbr_fab').removeClass('idle ready active ok warn error').addClass(status.className).attr('title', `世界书读取：${status.label}`);
+    $('#ai_wbr_fab').removeClass('idle ready active ok warn error').addClass(status.className).attr('title', `涓栫晫涔﹁鍙栵細${status.label}`);
     $('#ai_wbr_console_status').removeClass('idle ready active ok warn error').addClass(status.className).text(status.label);
 }
 
@@ -6754,6 +6737,44 @@ function getMemoryGraphSearchHaystack(node) {
         ...(Array.isArray(node?.keys) ? node.keys : []),
         ...(Array.isArray(node?.tags) ? node.tags : []),
     ].map(value => String(value || '').toLowerCase()).join('\n');
+}
+
+function splitMemoryGraphSvgText(value, maxChars = 14, maxLines = 1) {
+    const text = String(value || '').replace(/\s+/g, ' ').trim();
+    if (!text) {
+        return [];
+    }
+
+    const lines = [];
+    let cursor = text;
+    while (cursor && lines.length < maxLines) {
+        if (cursor.length <= maxChars) {
+            lines.push(cursor);
+            cursor = '';
+            break;
+        }
+        let cut = cursor.lastIndexOf(' ', maxChars);
+        if (cut < Math.floor(maxChars * 0.55)) {
+            cut = maxChars;
+        }
+        lines.push(cursor.slice(0, cut).trim());
+        cursor = cursor.slice(cut).trim();
+    }
+
+    if (cursor && lines.length) {
+        const lastIndex = lines.length - 1;
+        lines[lastIndex] = `${lines[lastIndex].slice(0, Math.max(0, maxChars - 1)).trim()}鈥;
+    }
+
+    return lines.filter(Boolean);
+}
+
+function renderMemoryGraphSvgTextLines(lines, className, x, y, lineHeight = 14) {
+    const safeLines = Array.isArray(lines) && lines.length ? lines : ['鏆傛棤鎽樿'];
+    const tspans = safeLines.map((line, index) => (
+        `<tspan x="${x}" dy="${index === 0 ? 0 : lineHeight}">${escapeHtml(line)}</tspan>`
+    )).join('');
+    return `<text class="${className}" x="${x}" y="${y}">${tspans}</text>`;
 }
 
 function getMemoryGraphNodeScore(node, degree = 0, index = 0) {
@@ -6909,12 +6930,12 @@ function getMemoryPreviewGroupKey(type) {
 
 function getMemoryPreviewGroupLabel(group) {
     return ({
-        character: '人物',
-        event: '事件',
-        location: '地点',
-        item: '物品',
-        setting: '设定',
-        other: '其他',
+        character: '浜虹墿',
+        event: '浜嬩欢',
+        location: '鍦扮偣',
+        item: '鐗╁搧',
+        setting: '璁惧畾',
+        other: '鍏朵粬',
     })[group] || group;
 }
 
@@ -6973,10 +6994,10 @@ function renderMemoryPreviewPanel(graph, displayModel = buildMemoryGraphDisplayM
             .toggleClass('selected', selected)
             .attr('data-memory-node-id', node.id)
             .append($('<b></b>').text(node.title || node.id))
-            .append($('<small></small>').text(truncateText(summary, 96) || '暂无摘要'))
+            .append($('<small></small>').text(truncateText(summary, 96) || '鏆傛棤鎽樿'))
             .append($('<div class="ai-wbr-memory-preview-meta"></div>')
                 .append($('<span></span>').text(typeLabel))
-                .append($('<span></span>').text(`${score}% · ${degree.get(String(node.id)) || 0} 关系`)))
+                .append($('<span></span>').text(`${score}% 路 ${degree.get(String(node.id)) || 0} 鍏崇郴`)))
             .append(tags.length
                 ? $('<div class="ai-wbr-memory-preview-tags"></div>').append(tags.map(tag => $('<span></span>').text(tag)))
                 : '');
@@ -6986,13 +7007,13 @@ function renderMemoryPreviewPanel(graph, displayModel = buildMemoryGraphDisplayM
         $('<div class="ai-wbr-memory-preview-head"></div>')
             .append($('<div></div>')
                 .append($('<div class="ai-wbr-memory-preview-kicker"></div>').text('Memory Preview'))
-                .append($('<div class="ai-wbr-memory-preview-title"></div>').text('记忆预览')))
+                .append($('<div class="ai-wbr-memory-preview-title"></div>').text('璁板繂棰勮')))
             .append($('<div class="ai-wbr-memory-preview-count"></div>').text(`${nodes.length}/${displayModel.totalNodes || nodes.length}`)),
-        $('<input class="text_pole ai-wbr-memory-preview-search" type="search" placeholder="搜索记忆、人物、地点、关键词" />').val(memoryGraphSearchText || ''),
+        $('<input class="text_pole ai-wbr-memory-preview-search" type="search" placeholder="鎼滅储璁板繂銆佷汉鐗┿€佸湴鐐广€佸叧閿瘝" />').val(memoryGraphSearchText || ''),
     );
 
     if (!nodes.length) {
-        panel.append($('<div class="ai-wbr-token-empty m-t-1"></div>').text('暂无可预览的记忆。清除筛选或继续生成后会显示。'));
+        panel.append($('<div class="ai-wbr-token-empty m-t-1"></div>').text('鏆傛棤鍙瑙堢殑璁板繂銆傛竻闄ょ瓫閫夋垨缁х画鐢熸垚鍚庝細鏄剧ず銆?));
         return;
     }
 
@@ -7100,7 +7121,7 @@ function getMemoryTimelineGroupLabel(node) {
         return raw;
     }
     const dateText = String(node?.updatedAt || node?.createdAt || '').slice(0, 10);
-    return dateText || '未标记时间';
+    return dateText || '鏈爣璁版椂闂?;
 }
 
 function getMemoryTimelineSortValue(node, index = 0) {
@@ -7138,28 +7159,28 @@ function getMemoryTimelineRelatedNodes(graph, node, typeNames = []) {
 }
 
 function renderMemoryGraphToolbarHtml(graph, displayModel, nodes, edges) {
-    const fullscreenLabel = memoryGraphFullscreenActive ? '退出全屏' : '全屏图谱';
+    const fullscreenLabel = memoryGraphFullscreenActive ? '閫€鍑哄叏灞? : '鍏ㄥ睆鍥捐氨';
     return `
         <div class="ai-wbr-memory-graph-toolbar">
             <div class="ai-wbr-memory-graph-row">
-                <button class="menu_button ai-wbr-memory-mode ${displayModel.mode === 'overview' ? 'active' : ''}" type="button" data-memory-graph-mode="overview">概览</button>
-                <button class="menu_button ai-wbr-memory-mode ${displayModel.mode === 'focus' ? 'active' : ''}" type="button" data-memory-graph-mode="focus" ${memoryGraphSelectedNodeId ? '' : 'disabled'}>聚焦</button>
-                <button class="menu_button ai-wbr-memory-mode ${displayModel.mode === 'timeline' ? 'active' : ''}" type="button" data-memory-graph-mode="timeline">时间线</button>
-                <button class="menu_button ai-wbr-memory-mode ${displayModel.mode === 'full' ? 'active' : ''}" type="button" data-memory-graph-mode="full">全量</button>
-                <button class="menu_button ai-wbr-memory-clear-filters" type="button">清除筛选</button>
+                <button class="menu_button ai-wbr-memory-mode ${displayModel.mode === 'overview' ? 'active' : ''}" type="button" data-memory-graph-mode="overview">姒傝</button>
+                <button class="menu_button ai-wbr-memory-mode ${displayModel.mode === 'focus' ? 'active' : ''}" type="button" data-memory-graph-mode="focus" ${memoryGraphSelectedNodeId ? '' : 'disabled'}>鑱氱劍</button>
+                <button class="menu_button ai-wbr-memory-mode ${displayModel.mode === 'timeline' ? 'active' : ''}" type="button" data-memory-graph-mode="timeline">鏃堕棿绾?/button>
+                <button class="menu_button ai-wbr-memory-mode ${displayModel.mode === 'full' ? 'active' : ''}" type="button" data-memory-graph-mode="full">鍏ㄩ噺</button>
+                <button class="menu_button ai-wbr-memory-clear-filters" type="button">娓呴櫎绛涢€?/button>
             </div>
             <div class="ai-wbr-memory-graph-row">
-                <input class="text_pole ai-wbr-memory-graph-search" type="search" placeholder="搜索人物、地点、事件、关键词" value="${escapeHtml(memoryGraphSearchText)}" />
-                <label class="ai-wbr-memory-weight-filter">关系≥<span>${Math.round(displayModel.minWeight * 100)}%</span><input class="ai-wbr-memory-link-weight" type="range" min="0" max="1" step="0.05" value="${displayModel.minWeight}" /></label>
+                <input class="text_pole ai-wbr-memory-graph-search" type="search" placeholder="鎼滅储浜虹墿銆佸湴鐐广€佷簨浠躲€佸叧閿瘝" value="${escapeHtml(memoryGraphSearchText)}" />
+                <label class="ai-wbr-memory-weight-filter">鍏崇郴鈮?span>${Math.round(displayModel.minWeight * 100)}%</span><input class="ai-wbr-memory-link-weight" type="range" min="0" max="1" step="0.05" value="${displayModel.minWeight}" /></label>
             </div>
             ${renderMemoryGraphTypeFilters(graph)}
             <div class="ai-wbr-memory-graph-row ai-wbr-memory-graph-statusbar">
-                <div class="ai-wbr-memory-graph-summary">显示 ${nodes.length}/${displayModel.totalNodes} 节点，${edges.length}/${displayModel.totalLinks} 关系${displayModel.hiddenNodes || displayModel.hiddenLinks ? `，已收起 ${displayModel.hiddenNodes} 节点 / ${displayModel.hiddenLinks} 关系` : ''}</div>
-                <button class="menu_button ai-wbr-memory-zoom-in" type="button">＋</button>
-                <button class="menu_button ai-wbr-memory-zoom-out" type="button">－</button>
-                <button class="menu_button ai-wbr-memory-zoom-reset" type="button">适配视图</button>
+                <div class="ai-wbr-memory-graph-summary">鏄剧ず ${nodes.length}/${displayModel.totalNodes} 鑺傜偣锛?{edges.length}/${displayModel.totalLinks} 鍏崇郴${displayModel.hiddenNodes || displayModel.hiddenLinks ? `锛屽凡鏀惰捣 ${displayModel.hiddenNodes} 鑺傜偣 / ${displayModel.hiddenLinks} 鍏崇郴` : ''}</div>
+                <button class="menu_button ai-wbr-memory-zoom-in" type="button">锛?/button>
+                <button class="menu_button ai-wbr-memory-zoom-out" type="button">锛?/button>
+                <button class="menu_button ai-wbr-memory-zoom-reset" type="button">閫傞厤瑙嗗浘</button>
                 <button class="menu_button ai-wbr-memory-open-fullscreen" type="button">${fullscreenLabel}</button>
-                <span class="ai-wbr-memory-link-hint">${memoryGraphLinkSourceId ? `连线起点：${escapeHtml(graph.nodes.find(node => node.id === memoryGraphLinkSourceId)?.title || memoryGraphLinkSourceId)}` : ''}</span>
+                <span class="ai-wbr-memory-link-hint">${memoryGraphLinkSourceId ? `杩炵嚎璧风偣锛?{escapeHtml(graph.nodes.find(node => node.id === memoryGraphLinkSourceId)?.title || memoryGraphLinkSourceId)}` : ''}</span>
             </div>
         </div>
     `;
@@ -7173,7 +7194,7 @@ function setMemoryGraphFullscreen(enabled, options = {}) {
     memoryGraphFullscreenActive = !!enabled;
     section.toggleClass('ai-wbr-memory-graph-fullscreen', memoryGraphFullscreenActive);
     $('body').toggleClass('ai-wbr-memory-graph-fullscreen-open', memoryGraphFullscreenActive);
-    $('#ai_wbr_memory_graph_fullscreen').text(memoryGraphFullscreenActive ? '退出全屏' : '全屏图谱');
+    $('#ai_wbr_memory_graph_fullscreen').text(memoryGraphFullscreenActive ? '閫€鍑哄叏灞? : '鍏ㄥ睆鍥捐氨');
     if (memoryGraphFullscreenActive) {
         section.closest('.ai-wbr-graph-shell').removeClass('preview-open');
     }
@@ -7224,19 +7245,19 @@ function renderMemoryTimelineView(graph, displayModel) {
                         const settings = getMemoryTimelineRelatedNodes(graph, node, ['item', 'concept', 'rule', 'faction']).slice(0, 4);
                         const selected = String(node.id) === String(memoryGraphSelectedNodeId);
                         const chips = [
-                            ...people.map(item => `人物：${item.title || item.id}`),
-                            ...locations.map(item => `地点：${item.title || item.id}`),
-                            ...settings.map(item => getOptionLabel(MEMORY_NODE_TYPE_OPTIONS, item.type, item.type || '设定') + `：${item.title || item.id}`),
+                            ...people.map(item => `浜虹墿锛?{item.title || item.id}`),
+                            ...locations.map(item => `鍦扮偣锛?{item.title || item.id}`),
+                            ...settings.map(item => getOptionLabel(MEMORY_NODE_TYPE_OPTIONS, item.type, item.type || '璁惧畾') + `锛?{item.title || item.id}`),
                         ].slice(0, 6);
                         return `
                             <button class="ai-wbr-memory-timeline-card${selected ? ' selected' : ''}" type="button" data-memory-node-id="${escapeHtml(node.id)}">
                                 <span class="ai-wbr-memory-timeline-dot"></span>
                                 <span class="ai-wbr-memory-timeline-card-body">
                                     <b>${escapeHtml(node.title || node.id)}</b>
-                                    <small>${escapeHtml(truncateText(node.summary || node.content || '暂无摘要', 160))}</small>
+                                    <small>${escapeHtml(truncateText(node.summary || node.content || '鏆傛棤鎽樿', 160))}</small>
                                     <span class="ai-wbr-memory-timeline-meta">
-                                        ${escapeHtml(node.location || locations[0]?.title || '地点未标记')}
-                                        ${node.updatedAt ? ` · ${escapeHtml(String(node.updatedAt).slice(0, 10))}` : ''}
+                                        ${escapeHtml(node.location || locations[0]?.title || '鍦扮偣鏈爣璁?)}
+                                        ${node.updatedAt ? ` 路 ${escapeHtml(String(node.updatedAt).slice(0, 10))}` : ''}
                                     </span>
                                     ${chips.length ? `<span class="ai-wbr-memory-timeline-chips">${chips.map(chip => `<i>${escapeHtml(chip)}</i>`).join('')}</span>` : ''}
                                 </span>
@@ -7246,7 +7267,7 @@ function renderMemoryTimelineView(graph, displayModel) {
                 </div>
             </section>
         `).join('')
-        : '<div class="ai-wbr-token-empty ai-wbr-memory-timeline-empty">暂无事件时间线。事件/任务节点，或带有时间字段的记忆，会显示在这里。</div>';
+        : '<div class="ai-wbr-token-empty ai-wbr-memory-timeline-empty">鏆傛棤浜嬩欢鏃堕棿绾裤€備簨浠?浠诲姟鑺傜偣锛屾垨甯︽湁鏃堕棿瀛楁鐨勮蹇嗭紝浼氭樉绀哄湪杩欓噷銆?/div>';
 
     container.html(`
         ${renderMemoryGraphToolbarHtml(graph, displayModel, eventNodes, edges)}
@@ -7254,9 +7275,9 @@ function renderMemoryTimelineView(graph, displayModel) {
             <div class="ai-wbr-memory-timeline-head">
                 <div>
                     <div class="ai-wbr-memory-detail-kicker">Timeline</div>
-                    <h3>剧情时间线</h3>
+                    <h3>鍓ф儏鏃堕棿绾?/h3>
                 </div>
-                <small>按时间、章节或更新时间排列事件节点</small>
+                <small>鎸夋椂闂淬€佺珷鑺傛垨鏇存柊鏃堕棿鎺掑垪浜嬩欢鑺傜偣</small>
             </div>
             <div class="ai-wbr-memory-timeline-rail">${groupsHtml}</div>
         </div>
@@ -7272,13 +7293,13 @@ function renderMemoryDetailDrawer(graph = getMemoryGraph()) {
 
     const createMeta = (label, value) => $('<div class="ai-wbr-memory-detail-meta"></div>')
         .append($('<span></span>').text(label))
-        .append($('<b></b>').text(value || '未记录'));
+        .append($('<b></b>').text(value || '鏈褰?));
     const createChips = (items) => {
         const chips = $('<div class="ai-wbr-memory-detail-chips"></div>');
         for (const item of uniqueStrings(items || []).slice(0, 12)) {
             chips.append($('<span></span>').text(item));
         }
-        return chips.children().length ? chips : $('<div class="ai-wbr-memory-detail-muted"></div>').text('暂无');
+        return chips.children().length ? chips : $('<div class="ai-wbr-memory-detail-muted"></div>').text('鏆傛棤');
     };
 
     const selectedLink = memoryGraphDetailMode === 'link'
@@ -7290,18 +7311,18 @@ function renderMemoryDetailDrawer(graph = getMemoryGraph()) {
         drawer.empty().addClass('open').append(
             $('<div class="ai-wbr-memory-detail-head"></div>')
                 .append($('<div></div>')
-                    .append($('<div class="ai-wbr-memory-detail-kicker"></div>').text('关系详情'))
-                    .append($('<h3></h3>').text(`${source?.title || selectedLink.source} → ${target?.title || selectedLink.target}`)))
-                .append($('<button class="menu_button ai-wbr-memory-detail-close" type="button">关闭</button>')),
+                    .append($('<div class="ai-wbr-memory-detail-kicker"></div>').text('鍏崇郴璇︽儏'))
+                    .append($('<h3></h3>').text(`${source?.title || selectedLink.source} 鈫?${target?.title || selectedLink.target}`)))
+                .append($('<button class="menu_button ai-wbr-memory-detail-close" type="button">鍏抽棴</button>')),
             $('<div class="ai-wbr-memory-detail-grid"></div>')
-                .append(createMeta('关系类型', getOptionLabel(MEMORY_LINK_TYPE_OPTIONS, selectedLink.type, selectedLink.type || 'RELATED')))
-                .append(createMeta('权重', String(selectedLink.weight ?? 0.7)))
-                .append(createMeta('更新时间', selectedLink.updatedAt || graph.updatedAt || '')),
+                .append(createMeta('鍏崇郴绫诲瀷', getOptionLabel(MEMORY_LINK_TYPE_OPTIONS, selectedLink.type, selectedLink.type || 'RELATED')))
+                .append(createMeta('鏉冮噸', String(selectedLink.weight ?? 0.7)))
+                .append(createMeta('鏇存柊鏃堕棿', selectedLink.updatedAt || graph.updatedAt || '')),
             $('<div class="ai-wbr-memory-detail-section"></div>')
-                .append($('<b></b>').text('关系说明'))
-                .append($('<p></p>').text(selectedLink.description || '暂无关系说明。')),
+                .append($('<b></b>').text('鍏崇郴璇存槑'))
+                .append($('<p></p>').text(selectedLink.description || '鏆傛棤鍏崇郴璇存槑銆?)),
             $('<div class="ai-wbr-memory-detail-actions"></div>')
-                .append($('<button class="menu_button ai-wbr-memory-detail-delete-link" type="button">删除这条关系</button>').attr('data-memory-link-id', selectedLink.id)),
+                .append($('<button class="menu_button ai-wbr-memory-detail-delete-link" type="button">鍒犻櫎杩欐潯鍏崇郴</button>').attr('data-memory-link-id', selectedLink.id)),
         );
         return;
     }
@@ -7325,10 +7346,10 @@ function renderMemoryDetailDrawer(graph = getMemoryGraph()) {
                 const other = graph.nodes.find(node => node.id === otherId);
                 relatedList.append($('<button class="menu_button ai-wbr-memory-detail-related-link" type="button"></button>')
                     .attr('data-memory-link-id', link.id)
-                    .text(`${getOptionLabel(MEMORY_LINK_TYPE_OPTIONS, link.type, link.type || 'RELATED')}：${other?.title || otherId}`));
+                    .text(`${getOptionLabel(MEMORY_LINK_TYPE_OPTIONS, link.type, link.type || 'RELATED')}锛?{other?.title || otherId}`));
             }
         } else {
-            relatedList.append($('<div class="ai-wbr-memory-detail-muted"></div>').text('暂无关联关系。'));
+            relatedList.append($('<div class="ai-wbr-memory-detail-muted"></div>').text('鏆傛棤鍏宠仈鍏崇郴銆?));
         }
 
         drawer.empty().addClass('open').append(
@@ -7336,37 +7357,37 @@ function renderMemoryDetailDrawer(graph = getMemoryGraph()) {
                 .append($('<div></div>')
                     .append($('<div class="ai-wbr-memory-detail-kicker"></div>').text(typeLabel))
                     .append($('<h3></h3>').text(selectedNode.title || selectedNode.id)))
-                .append($('<button class="menu_button ai-wbr-memory-detail-close" type="button">关闭</button>')),
+                .append($('<button class="menu_button ai-wbr-memory-detail-close" type="button">鍏抽棴</button>')),
             $('<div class="ai-wbr-memory-detail-grid"></div>')
-                .append(createMeta('重要度', `${Math.round(clampNumber(selectedNode.importance, 0.5, 0, 1) * 100)}%`))
-                .append(createMeta('可信度', `${Math.round(clampNumber(selectedNode.credibility, 0.8, 0, 1) * 100)}%`))
-                .append(createMeta('地点', selectedNode.location || ''))
-                .append(createMeta('时间', selectedNode.timeSpan || ''))
-                .append(createMeta('更新时间', selectedNode.updatedAt || graph.updatedAt || '')),
+                .append(createMeta('閲嶈搴?, `${Math.round(clampNumber(selectedNode.importance, 0.5, 0, 1) * 100)}%`))
+                .append(createMeta('鍙俊搴?, `${Math.round(clampNumber(selectedNode.credibility, 0.8, 0, 1) * 100)}%`))
+                .append(createMeta('鍦扮偣', selectedNode.location || ''))
+                .append(createMeta('鏃堕棿', selectedNode.timeSpan || ''))
+                .append(createMeta('鏇存柊鏃堕棿', selectedNode.updatedAt || graph.updatedAt || '')),
             $('<div class="ai-wbr-memory-detail-section"></div>')
-                .append($('<b></b>').text('摘要'))
-                .append($('<p></p>').text(selectedNode.summary || selectedNode.content || '暂无摘要。')),
+                .append($('<b></b>').text('鎽樿'))
+                .append($('<p></p>').text(selectedNode.summary || selectedNode.content || '鏆傛棤鎽樿銆?)),
             $('<div class="ai-wbr-memory-detail-section"></div>')
-                .append($('<b></b>').text('详细内容'))
-                .append($('<p></p>').text(selectedNode.content || selectedNode.summary || '暂无详细内容。')),
+                .append($('<b></b>').text('璇︾粏鍐呭'))
+                .append($('<p></p>').text(selectedNode.content || selectedNode.summary || '鏆傛棤璇︾粏鍐呭銆?)),
             $('<div class="ai-wbr-memory-detail-section"></div>')
-                .append($('<b></b>').text('关键词'))
+                .append($('<b></b>').text('鍏抽敭璇?))
                 .append(createChips(selectedNode.keys)),
             $('<div class="ai-wbr-memory-detail-section"></div>')
-                .append($('<b></b>').text('标签'))
+                .append($('<b></b>').text('鏍囩'))
                 .append(createChips(selectedNode.tags)),
             $('<div class="ai-wbr-memory-detail-section"></div>')
-                .append($('<b></b>').text('关联关系'))
+                .append($('<b></b>').text('鍏宠仈鍏崇郴'))
                 .append(relatedList),
             $('<div class="ai-wbr-memory-detail-actions"></div>')
-                .append($('<button class="menu_button ai-wbr-memory-detail-set-link-source" type="button">设为连线起点</button>').attr('data-memory-node-id', selectedNode.id))
-                .append($(`<button class="menu_button ai-wbr-memory-detail-link-to-source" type="button" ${canLinkToSource ? '' : 'disabled'}>${hasRelatedLink ? '取消连接到起点' : '连接到起点'}${sourceTitle ? `：${escapeHtml(truncateText(sourceTitle, 10))}` : ''}</button>`).attr('data-memory-node-id', selectedNode.id))
-                .append($('<button class="menu_button ai-wbr-memory-detail-delete-node" type="button">删除节点</button>').attr('data-memory-node-id', selectedNode.id)),
+                .append($('<button class="menu_button ai-wbr-memory-detail-set-link-source" type="button">璁句负杩炵嚎璧风偣</button>').attr('data-memory-node-id', selectedNode.id))
+                .append($(`<button class="menu_button ai-wbr-memory-detail-link-to-source" type="button" ${canLinkToSource ? '' : 'disabled'}>${hasRelatedLink ? '鍙栨秷杩炴帴鍒拌捣鐐? : '杩炴帴鍒拌捣鐐?}${sourceTitle ? `锛?{escapeHtml(truncateText(sourceTitle, 10))}` : ''}</button>`).attr('data-memory-node-id', selectedNode.id))
+                .append($('<button class="menu_button ai-wbr-memory-detail-delete-node" type="button">鍒犻櫎鑺傜偣</button>').attr('data-memory-node-id', selectedNode.id)),
         );
         return;
     }
 
-    drawer.removeClass('open').html('<div class="ai-wbr-memory-detail-empty">点击图谱中的记忆卡片或关系线查看详情。</div>');
+    drawer.removeClass('open').html('<div class="ai-wbr-memory-detail-empty">鐐瑰嚮鍥捐氨涓殑璁板繂鍗＄墖鎴栧叧绯荤嚎鏌ョ湅璇︽儏銆?/div>');
 }
 
 function renderMemoryGraphSvg(graph) {
@@ -7398,7 +7419,7 @@ function renderMemoryGraphSvg(graph) {
         container.html(`
             ${renderMemoryGraphToolbarHtml(graph, displayModel, [], [])}
             <div class="ai-wbr-memory-graph-canvas ai-wbr-memory-graph-empty">
-                <div class="ai-wbr-token-empty">暂无可显示的记忆节点。可以清除搜索/类型筛选，或生成回复后让记忆图谱继续整理。</div>
+                <div class="ai-wbr-token-empty">鏆傛棤鍙樉绀虹殑璁板繂鑺傜偣銆傚彲浠ユ竻闄ゆ悳绱?绫诲瀷绛涢€夛紝鎴栫敓鎴愬洖澶嶅悗璁╄蹇嗗浘璋辩户缁暣鐞嗐€?/div>
             </div>
         `);
         bindMemoryGraphSvgInteractions();
@@ -7469,17 +7490,21 @@ function renderMemoryGraphSvg(graph) {
         const colorClass = `ai-wbr-memory-node-${escapeHtml(rawType.toLowerCase())}`;
         const typeLabel = getOptionLabel(MEMORY_NODE_TYPE_OPTIONS, rawType, rawType);
         const subtitle = node.summary || node.content || '';
+        const titleLines = splitMemoryGraphSvgText(node.title || node.id, 13, 1);
+        const subtitleLines = splitMemoryGraphSvgText(subtitle || '鏆傛棤鎽樿', 16, 2);
+        const safeTypeLabel = truncateText(typeLabel, 8);
+        const badgeWidth = Math.min(92, Math.max(38, safeTypeLabel.length * 11 + 14));
         const selectedClass = String(node.id) === String(memoryGraphSelectedNodeId) ? ' ai-wbr-memory-node-selected' : '';
         const searchClass = displayModel.query && getMemoryGraphSearchHaystack(node).includes(displayModel.query) ? ' ai-wbr-memory-node-search-hit' : '';
         const importanceLabel = `${Math.round(clampNumber(node.importance, 0.5, 0, 1) * 100)}%`;
         return `<g class="ai-wbr-memory-node ${colorClass}${selectedClass}${searchClass}" data-memory-node-id="${escapeHtml(node.id)}" transform="translate(${position.x},${position.y})">
             <rect class="ai-wbr-memory-node-card" x="0" y="0" width="${MEMORY_GRAPH_NODE_WIDTH}" height="${MEMORY_GRAPH_NODE_HEIGHT}" rx="14" ry="14"></rect>
             <circle class="ai-wbr-memory-node-accent" cx="16" cy="16" r="4"></circle>
-            <text class="ai-wbr-memory-node-title" x="28" y="21">${escapeHtml(truncateText(node.title || node.id, 20))}</text>
-            <text class="ai-wbr-memory-node-subtitle" x="14" y="42">${escapeHtml(truncateText(subtitle, 32) || '暂无摘要')}</text>
+            ${renderMemoryGraphSvgTextLines(titleLines, 'ai-wbr-memory-node-title', 28, 21, 13)}
+                        ${renderMemoryGraphSvgTextLines(subtitleLines, 'ai-wbr-memory-node-subtitle', 14, 39, 13)}
             <g class="ai-wbr-memory-node-badge" transform="translate(12,56)">
-                <rect width="${Math.max(34, typeLabel.length * 12)}" height="18" rx="9" ry="9"></rect>
-                <text x="${Math.max(34, typeLabel.length * 12) / 2}" y="12">${escapeHtml(typeLabel)}</text>
+                <rect width="${badgeWidth}" height="18" rx="9" ry="9"></rect>
+                <text x="${badgeWidth / 2}" y="12">${escapeHtml(safeTypeLabel)}</text>
             </g>
             <text class="ai-wbr-memory-node-score" x="154" y="68">${escapeHtml(importanceLabel)}</text>
             <title>${escapeHtml(`${node.title}\n${node.content || ''}`)}</title>
@@ -7500,7 +7525,7 @@ function renderMemoryGraphSvg(graph) {
     container.html(`
         ${renderMemoryGraphToolbarHtml(graph, displayModel, nodes, edges)}
         <div class="ai-wbr-memory-graph-canvas">
-            <svg viewBox="${memoryGraphView.x} ${memoryGraphView.y} ${memoryGraphView.width} ${memoryGraphView.height}" preserveAspectRatio="none" role="img" aria-label="记忆图谱">${markerDefs}${lines}${cards}</svg>
+            <svg viewBox="${memoryGraphView.x} ${memoryGraphView.y} ${memoryGraphView.width} ${memoryGraphView.height}" preserveAspectRatio="none" role="img" aria-label="璁板繂鍥捐氨">${markerDefs}${lines}${cards}</svg>
         </div>
     `);
     bindMemoryGraphSvgInteractions();
@@ -7522,13 +7547,13 @@ function renderMemoryDashboard(graph) {
     }, {});
     const topType = Object.entries(nodeTypes).sort((a, b) => b[1] - a[1])[0];
     const activeTopics = Array.isArray(graph?.state?.active_topics)
-        ? graph.state.active_topics.slice(0, 3).join('，')
+        ? graph.state.active_topics.slice(0, 3).join('锛?)
         : '';
     const cards = [
-        ['记忆节点', String(nodes.length), topType ? `最多：${topType[0]} × ${topType[1]}` : '等待写入'],
-        ['关系边', String(links.length), graph.updatedAt ? `更新：${new Date(graph.updatedAt).toLocaleString()}` : '暂无关系'],
-        ['待确认', String(queueCount), queueCount ? 'AI 更新等待确认' : '没有待处理更新'],
-        ['当前主题', activeTopics || '未识别', graph.lastSummary ? truncateText(graph.lastSummary, 64) : '等待整理剧情'],
+        ['璁板繂鑺傜偣', String(nodes.length), topType ? `鏈€澶氾細${topType[0]} 脳 ${topType[1]}` : '绛夊緟鍐欏叆'],
+        ['鍏崇郴杈?, String(links.length), graph.updatedAt ? `鏇存柊锛?{new Date(graph.updatedAt).toLocaleString()}` : '鏆傛棤鍏崇郴'],
+        ['寰呯‘璁?, String(queueCount), queueCount ? 'AI 鏇存柊绛夊緟纭' : '娌℃湁寰呭鐞嗘洿鏂?],
+        ['褰撳墠涓婚', activeTopics || '鏈瘑鍒?, graph.lastSummary ? truncateText(graph.lastSummary, 64) : '绛夊緟鏁寸悊鍓ф儏'],
     ];
 
     for (const [label, value, note] of cards) {
@@ -7549,15 +7574,15 @@ function renderMemoryReviewQueue() {
 
     const queue = getMemoryReviewQueue();
     const reviewFold = $('.ai-wbr-memory-review-fold');
-    $('#ai_wbr_memory_review_badge').text(queue.length ? `${queue.length} 条待确认，建议先处理。` : '暂无待确认。');
+    $('#ai_wbr_memory_review_badge').text(queue.length ? `${queue.length} 鏉″緟纭锛屽缓璁厛澶勭悊銆俙 : '鏆傛棤寰呯‘璁ゃ€?);
     reviewFold.toggleClass('ai-wbr-memory-fold-attention', queue.length > 0);
     if (queue.length) {
         reviewFold.prop('open', true);
     }
 
-    container.append($('<div class="ai-wbr-memory-subtitle"><b>待确认记忆更新</b></div>'));
+    container.append($('<div class="ai-wbr-memory-subtitle"><b>寰呯‘璁よ蹇嗘洿鏂?/b></div>'));
     if (!queue.length) {
-        container.append('<div class="ai-wbr-token-empty">暂无待确认更新。开启“记忆更新需要确认”后，AI 整理结果会先出现在这里。</div>');
+        container.append('<div class="ai-wbr-token-empty">鏆傛棤寰呯‘璁ゆ洿鏂般€傚紑鍚€滆蹇嗘洿鏂伴渶瑕佺‘璁も€濆悗锛孉I 鏁寸悊缁撴灉浼氬厛鍑虹幇鍦ㄨ繖閲屻€?/div>');
         return;
     }
 
@@ -7567,13 +7592,13 @@ function renderMemoryReviewQueue() {
         const sourceInvalidated = item.source?.id && getInvalidatedMemorySourceIds(item.source.chatKey || getCurrentChatMemoryKey()).includes(String(item.source.id));
         const isStale = item.status === 'stale' || sourceInvalidated || (item.source?.chatKey && item.source.chatKey !== getCurrentChatMemoryKey());
         const chips = [
-            `新增 ${summary.nodes || 0}`,
-            `修改 ${summary.updates || 0}`,
-            `关系 ${summary.links || 0}`,
-            `状态 ${summary.stateChanges || 0}`,
-            sourceLabel ? `来源 ${sourceLabel}` : '',
-            isStale ? '已失效' : '',
-            summary.removes ? `删除 ${summary.removes}` : '',
+            `鏂板 ${summary.nodes || 0}`,
+            `淇敼 ${summary.updates || 0}`,
+            `鍏崇郴 ${summary.links || 0}`,
+            `鐘舵€?${summary.stateChanges || 0}`,
+            sourceLabel ? `鏉ユ簮 ${sourceLabel}` : '',
+            isStale ? '宸插け鏁? : '',
+            summary.removes ? `鍒犻櫎 ${summary.removes}` : '',
         ].filter(Boolean);
 
         container.append(
@@ -7582,58 +7607,58 @@ function renderMemoryReviewQueue() {
                 .attr('data-memory-review-id', item.id)
                 .append($('<div class="ai-wbr-memory-review-head"></div>')
                     .append($('<div></div>')
-                        .append($('<b></b>').text(item.title || '待确认记忆更新'))
-                        .append($('<small></small>').text(` ${item.reason || 'auto'} · ${item.createdAt ? new Date(item.createdAt).toLocaleString() : ''}${sourceLabel ? ` · ${sourceLabel}` : ''}${isStale ? ' · roll/swipe 后已失效' : ''}`)))
+                        .append($('<b></b>').text(item.title || '寰呯‘璁よ蹇嗘洿鏂?))
+                        .append($('<small></small>').text(` ${item.reason || 'auto'} 路 ${item.createdAt ? new Date(item.createdAt).toLocaleString() : ''}${sourceLabel ? ` 路 ${sourceLabel}` : ''}${isStale ? ' 路 roll/swipe 鍚庡凡澶辨晥' : ''}`)))
                     .append($('<div class="ai-wbr-memory-review-actions"></div>')
-                        .append($('<button class="menu_button ai-wbr-memory-review-accept" type="button">确认写入</button>').prop('disabled', isStale))
-                        .append('<button class="menu_button ai-wbr-memory-review-reject" type="button">忽略</button>')))
+                        .append($('<button class="menu_button ai-wbr-memory-review-accept" type="button">纭鍐欏叆</button>').prop('disabled', isStale))
+                        .append('<button class="menu_button ai-wbr-memory-review-reject" type="button">蹇界暐</button>')))
                 .append($('<div class="ai-wbr-memory-review-chips"></div>').append(chips.map(chip => $('<span></span>').text(chip))))
-                .append($('<div class="ai-wbr-memory-review-summary"></div>').text(item.update?.summary || '无摘要')),
+                .append($('<div class="ai-wbr-memory-review-summary"></div>').text(item.update?.summary || '鏃犳憳瑕?)),
         );
     }
 }
 
 function getBookshelfTypeLabel(type) {
     return ({
-        character: '人物档案',
-        world: '世界观',
-        plot: '剧情记录',
-        rule: '规则设定',
-        memory: '自动记忆书',
-        other: '其他资料',
-    })[String(type || 'other')] || '其他资料';
+        character: '浜虹墿妗ｆ',
+        world: '涓栫晫瑙?,
+        plot: '鍓ф儏璁板綍',
+        rule: '瑙勫垯璁惧畾',
+        memory: '鑷姩璁板繂涔?,
+        other: '鍏朵粬璧勬枡',
+    })[String(type || 'other')] || '鍏朵粬璧勬枡';
 }
 
 function getBookshelfStatusLabel(book) {
-    if (!book) return '未知';
-    if (book.enabled === false) return '已禁用';
-    if (book.status === 'empty') return '无片段';
-    if (book.status === 'vectorizing') return `向量化中 ${book.vectorizedCount || 0}/${book.chunkCount || 0}`;
-    if (book.status === 'failed') return '向量化失败';
-    if (book.status === 'partial_failed') return `部分完成 ${book.vectorizedCount || 0}/${book.chunkCount || 0}`;
-    if (Number(book.vectorizedCount || 0) > 0 && Number(book.vectorizedCount || 0) >= Number(book.chunkCount || 0)) return '已向量化';
-    return '待向量化';
+    if (!book) return '鏈煡';
+    if (book.enabled === false) return '宸茬鐢?;
+    if (book.status === 'empty') return '鏃犵墖娈?;
+    if (book.status === 'vectorizing') return `鍚戦噺鍖栦腑 ${book.vectorizedCount || 0}/${book.chunkCount || 0}`;
+    if (book.status === 'failed') return '鍚戦噺鍖栧け璐?;
+    if (book.status === 'partial_failed') return `閮ㄥ垎瀹屾垚 ${book.vectorizedCount || 0}/${book.chunkCount || 0}`;
+    if (Number(book.vectorizedCount || 0) > 0 && Number(book.vectorizedCount || 0) >= Number(book.chunkCount || 0)) return '宸插悜閲忓寲';
+    return '寰呭悜閲忓寲';
 }
 
 function getBookshelfBindingLabels(book) {
     const labels = normalizeBookshelfBindings(book).map(item => {
-        if (item.type === 'character') return `角色：${item.label || '当前角色'}`;
-        if (item.type === 'chat') return `聊天：${item.label || '当前聊天'}`;
-        if (item.type === 'global') return '全局';
+        if (item.type === 'character') return `瑙掕壊锛?{item.label || '褰撳墠瑙掕壊'}`;
+        if (item.type === 'chat') return `鑱婂ぉ锛?{item.label || '褰撳墠鑱婂ぉ'}`;
+        if (item.type === 'global') return '鍏ㄥ眬';
         return item.label || item.type;
     });
-    return labels.length ? labels : ['未绑定'];
+    return labels.length ? labels : ['鏈粦瀹?];
 }
 
 function createBookshelfBookCard(book, selected) {
     const isAutoMemoryBook = book?.autoGenerated && book?.autoSource === 'memory-graph';
     const modeLabel = book.embeddingMode
-        ? `${book.embeddingMode}${book.embeddingModel ? ` / ${book.embeddingModel}` : ''}${book.embeddingDim ? ` / ${book.embeddingDim}维` : ''}`
-        : '待向量化';
+        ? `${book.embeddingMode}${book.embeddingModel ? ` / ${book.embeddingModel}` : ''}${book.embeddingDim ? ` / ${book.embeddingDim}缁碻 : ''}`
+        : '寰呭悜閲忓寲';
     const progress = Number(book.chunkCount || 0)
         ? Math.round((Number(book.vectorizedCount || 0) / Number(book.chunkCount || 1)) * 100)
         : 0;
-    const badge = book.enabled === false ? '停用' : Number(book.vectorizedCount || 0) ? '已向量' : '待向量';
+    const badge = book.enabled === false ? '鍋滅敤' : Number(book.vectorizedCount || 0) ? '宸插悜閲? : '寰呭悜閲?;
     return $('<div class="ai-wbr-bookshelf-book"></div>')
         .toggleClass('selected', !!selected)
         .toggleClass('ai-wbr-bookshelf-memory-book', !!isAutoMemoryBook)
@@ -7641,11 +7666,11 @@ function createBookshelfBookCard(book, selected) {
         .append(
             $('<button class="ai-wbr-bookshelf-cover ai-wbr-bookshelf-select" type="button"></button>')
                 .append($('<span class="ai-wbr-bookshelf-cover-badge"></span>').text(badge))
-                .append(isAutoMemoryBook ? $('<span class="ai-wbr-bookshelf-cover-mark"></span>').text('记忆小说') : null)
-                .append($('<b></b>').text(book.title || book.fileName || '未命名'))
+                .append(isAutoMemoryBook ? $('<span class="ai-wbr-bookshelf-cover-mark"></span>').text('璁板繂灏忚') : null)
+                .append($('<b></b>').text(book.title || book.fileName || '鏈懡鍚?))
                 .append($('<small></small>').text(getBookshelfTypeLabel(book.type))),
-            $('<div class="ai-wbr-bookshelf-book-title"></div>').text(book.title || book.fileName || '未命名'),
-            $('<div class="ai-wbr-bookshelf-book-meta"></div>').text(`${book.chunkCount || 0} 段 · ${progress}% · ${getBookshelfStatusLabel(book)}`),
+            $('<div class="ai-wbr-bookshelf-book-title"></div>').text(book.title || book.fileName || '鏈懡鍚?),
+            $('<div class="ai-wbr-bookshelf-book-meta"></div>').text(`${book.chunkCount || 0} 娈?路 ${progress}% 路 ${getBookshelfStatusLabel(book)}`),
             $('<div class="ai-wbr-bookshelf-book-provider"></div>').text(modeLabel),
         );
 }
@@ -7653,20 +7678,20 @@ function createBookshelfBookCard(book, selected) {
 function renderBookshelfResults(container, results = []) {
     container.empty();
     if (!results.length) {
-        container.append('<div class="ai-wbr-token-empty">暂无召回结果。输入一句话后点“测试召回”。</div>');
+        container.append('<div class="ai-wbr-token-empty">鏆傛棤鍙洖缁撴灉銆傝緭鍏ヤ竴鍙ヨ瘽鍚庣偣鈥滄祴璇曞彫鍥炩€濄€?/div>');
         return;
     }
     for (const item of results) {
         const isMemoryVector = item.source === 'memory-vector';
         const title = isMemoryVector
-            ? `图谱记忆 / ${item.comment || item.title || item.uid || '记忆节点'}`
-            : `《${item.book?.title || item.book?.fileName || '书架'}》 / ${item.title || `片段 ${item.order || ''}`}`;
+            ? `鍥捐氨璁板繂 / ${item.comment || item.title || item.uid || '璁板繂鑺傜偣'}`
+            : `銆?{item.book?.title || item.book?.fileName || '涔︽灦'}銆?/ ${item.title || `鐗囨 ${item.order || ''}`}`;
         container.append(
             $('<div class="ai-wbr-bookshelf-result"></div>')
                 .append($('<div class="ai-wbr-bookshelf-result-head"></div>')
                     .append($('<b></b>').text(title))
-                    .append($('<span></span>').text(`分数 ${Number(item.score || 0).toFixed(2)}`)))
-                .append($('<small></small>').text(`语义 ${Number(item.semanticScore || 0).toFixed(2)} · 关键词 ${Number(item.keywordScore || 0).toFixed(2)}`))
+                    .append($('<span></span>').text(`鍒嗘暟 ${Number(item.score || 0).toFixed(2)}`)))
+                .append($('<small></small>').text(`璇箟 ${Number(item.semanticScore || 0).toFixed(2)} 路 鍏抽敭璇?${Number(item.keywordScore || 0).toFixed(2)}`))
                 .append($('<p></p>').text(truncateText(item.text || item.content || '', 420))),
         );
     }
@@ -7684,15 +7709,15 @@ function buildBookshelfNovelParts(book, chunks = []) {
         }
     }
     for (const chunk of selectedChunks) {
-        const title = String(chunk.chapterTitle || '正文目录').trim();
+        const title = String(chunk.chapterTitle || '姝ｆ枃鐩綍').trim();
         if (!chapterSeen.has(title)) {
             chapterSeen.add(title);
-            chapters.push({ title, count: selectedChunks.filter(item => String(item.chapterTitle || '正文目录') === title).length });
+            chapters.push({ title, count: selectedChunks.filter(item => String(item.chapterTitle || '姝ｆ枃鐩綍') === title).length });
         }
     }
     return {
         chunks: selectedChunks,
-        chapters: chapters.length ? chapters : [{ title: '正文目录', count: selectedChunks.length }],
+        chapters: chapters.length ? chapters : [{ title: '姝ｆ枃鐩綍', count: selectedChunks.length }],
     };
 }
 
@@ -7703,10 +7728,10 @@ function createBookshelfNovelReader(book, chunks = []) {
         selectedChunks.slice(0, 160).map(chunk => (
             $('<article class="ai-wbr-bookshelf-reader-page"></article>')
                 .toggleClass('disabled', chunk.enabled === false)
-                .attr('data-bookshelf-chapter-title', chunk.chapterTitle || '正文目录')
+                .attr('data-bookshelf-chapter-title', chunk.chapterTitle || '姝ｆ枃鐩綍')
                 .append($('<div class="ai-wbr-bookshelf-reader-page-head"></div>')
-                    .append($('<b></b>').text(chunk.title || `第 ${chunk.order || ''} 节`))
-                    .append($('<span></span>').text(chunk.vectorStatus === 'ready' ? '已向量化' : chunk.vectorStatus === 'failed' ? '向量失败' : '待向量化')))
+                    .append($('<b></b>').text(chunk.title || `绗?${chunk.order || ''} 鑺俙))
+                    .append($('<span></span>').text(chunk.vectorStatus === 'ready' ? '宸插悜閲忓寲' : chunk.vectorStatus === 'failed' ? '鍚戦噺澶辫触' : '寰呭悜閲忓寲')))
                 .append($('<p></p>').text(chunk.text || ''))
         )),
     );
@@ -7716,34 +7741,34 @@ function createBookshelfNovelReader(book, chunks = []) {
                 $('<header class="ai-wbr-bookshelf-reader-top"></header>')
                     .append(
                         $('<div></div>')
-                            .append($('<b></b>').text(book.title || book.fileName || '记忆书'))
-                            .append($('<small></small>').text(`${chapters.length} 章 · ${selectedChunks.length} 小节 · 当前聊天记忆书`)),
+                            .append($('<b></b>').text(book.title || book.fileName || '璁板繂涔?))
+                            .append($('<small></small>').text(`${chapters.length} 绔?路 ${selectedChunks.length} 灏忚妭 路 褰撳墠鑱婂ぉ璁板繂涔)),
                     )
-                    .append($('<button class="menu_button ai-wbr-bookshelf-reader-close" type="button">关闭</button>')),
+                    .append($('<button class="menu_button ai-wbr-bookshelf-reader-close" type="button">鍏抽棴</button>')),
                 $('<section class="ai-wbr-bookshelf-reader-hero"></section>')
                     .append(
                         $('<div class="ai-wbr-bookshelf-reader-cover"></div>')
-                            .append($('<span></span>').text('记忆小说'))
-                            .append($('<strong></strong>').text(book.title || '记忆书'))
-                            .append($('<small></small>').text(`${book.vectorizedCount || 0}/${book.chunkCount || 0} 已向量化`)),
+                            .append($('<span></span>').text('璁板繂灏忚'))
+                            .append($('<strong></strong>').text(book.title || '璁板繂涔?))
+                            .append($('<small></small>').text(`${book.vectorizedCount || 0}/${book.chunkCount || 0} 宸插悜閲忓寲`)),
                         $('<div class="ai-wbr-bookshelf-reader-intro"></div>')
-                            .append($('<h3></h3>').text(book.title || '记忆书'))
-                            .append($('<p></p>').text(book.sourceSummary || '从当前聊天图谱自动整理，按小说目录阅读，也可参与向量召回。'))
+                            .append($('<h3></h3>').text(book.title || '璁板繂涔?))
+                            .append($('<p></p>').text(book.sourceSummary || '浠庡綋鍓嶈亰澶╁浘璋辫嚜鍔ㄦ暣鐞嗭紝鎸夊皬璇寸洰褰曢槄璇伙紝涔熷彲鍙備笌鍚戦噺鍙洖銆?))
                             .append($('<div class="ai-wbr-bookshelf-novel-stats"></div>')
-                                .append($('<span></span>').text(`章节 ${chapters.length}`))
-                                .append($('<span></span>').text(`小节 ${selectedChunks.length}`))
-                                .append($('<span></span>').text(`向量 ${book.vectorizedCount || 0}/${book.chunkCount || 0}`))),
+                                .append($('<span></span>').text(`绔犺妭 ${chapters.length}`))
+                                .append($('<span></span>').text(`灏忚妭 ${selectedChunks.length}`))
+                                .append($('<span></span>').text(`鍚戦噺 ${book.vectorizedCount || 0}/${book.chunkCount || 0}`))),
                     ),
                 $('<section class="ai-wbr-bookshelf-reader-body"></section>')
                     .append(
                         $('<aside class="ai-wbr-bookshelf-reader-toc"></aside>')
-                            .append($('<b></b>').text('目录'))
+                            .append($('<b></b>').text('鐩綍'))
                             .append(chapters.map((chapter, index) => (
                                 $('<button class="ai-wbr-bookshelf-reader-toc-item" type="button"></button>')
                                     .attr('data-bookshelf-chapter-title', chapter.title)
                                     .toggleClass('active', index === 0)
                                     .append($('<span></span>').text(chapter.title))
-                                    .append($('<small></small>').text(`${chapter.count || 0} 节`))
+                                    .append($('<small></small>').text(`${chapter.count || 0} 鑺俙))
                             ))),
                         pages,
                     ),
@@ -7794,15 +7819,15 @@ async function renderBookshelfPanel() {
     setBookshelfStatus('Ready');
 
     panel.find('#ai_wbr_bookshelf_scope').empty().append(
-        $('<div class="ai-wbr-bookshelf-scope-card"></div>').append($('<b></b>').text('当前角色卡'), $('<span></span>').text(scope.characterName || '当前角色')),
-        $('<div class="ai-wbr-bookshelf-scope-card"></div>').append($('<b></b>').text('当前聊天'), $('<span></span>').text(scope.chatName || '当前聊天')),
-        $('<div class="ai-wbr-bookshelf-scope-card"></div>').append($('<b></b>').text('自动注入'), $('<span></span>').text(settings.bookshelfEnabled && settings.bookshelfAutoInject ? '已开启' : '关闭')),
-        $('<div class="ai-wbr-bookshelf-scope-card"></div>').append($('<b></b>').text('记忆书'), $('<span></span>').text(settings.bookshelfAutoMemoryBook ? '自动维护当前聊天' : '手动刷新')),
-        $('<div class="ai-wbr-bookshelf-scope-card"></div>').append($('<b></b>').text('图谱向量'), $('<span></span>').text(settings.bookshelfMemoryVectorRecall ? `开启 · 最多 ${settings.bookshelfMemoryVectorMaxItems || defaultSettings.bookshelfMemoryVectorMaxItems} 条` : '关闭')),
-        $('<div class="ai-wbr-bookshelf-scope-card"></div>').append($('<b></b>').text('向量模型'), $('<span></span>').text(getBookshelfEmbeddingProviderMeta().label)),
+        $('<div class="ai-wbr-bookshelf-scope-card"></div>').append($('<b></b>').text('褰撳墠瑙掕壊鍗?), $('<span></span>').text(scope.characterName || '褰撳墠瑙掕壊')),
+        $('<div class="ai-wbr-bookshelf-scope-card"></div>').append($('<b></b>').text('褰撳墠鑱婂ぉ'), $('<span></span>').text(scope.chatName || '褰撳墠鑱婂ぉ')),
+        $('<div class="ai-wbr-bookshelf-scope-card"></div>').append($('<b></b>').text('鑷姩娉ㄥ叆'), $('<span></span>').text(settings.bookshelfEnabled && settings.bookshelfAutoInject ? '宸插紑鍚? : '鍏抽棴')),
+        $('<div class="ai-wbr-bookshelf-scope-card"></div>').append($('<b></b>').text('璁板繂涔?), $('<span></span>').text(settings.bookshelfAutoMemoryBook ? '鑷姩缁存姢褰撳墠鑱婂ぉ' : '鎵嬪姩鍒锋柊')),
+        $('<div class="ai-wbr-bookshelf-scope-card"></div>').append($('<b></b>').text('鍥捐氨鍚戦噺'), $('<span></span>').text(settings.bookshelfMemoryVectorRecall ? `寮€鍚?路 鏈€澶?${settings.bookshelfMemoryVectorMaxItems || defaultSettings.bookshelfMemoryVectorMaxItems} 鏉 : '鍏抽棴')),
+        $('<div class="ai-wbr-bookshelf-scope-card"></div>').append($('<b></b>').text('鍚戦噺妯″瀷'), $('<span></span>').text(getBookshelfEmbeddingProviderMeta().label)),
     );
 
-    const booksBox = panel.find('#ai_wbr_bookshelf_books').empty().append('<div class="ai-wbr-token-empty">正在读取书架...</div>');
+    const booksBox = panel.find('#ai_wbr_bookshelf_books').empty().append('<div class="ai-wbr-token-empty">姝ｅ湪璇诲彇涔︽灦...</div>');
     const detailBox = panel.find('#ai_wbr_bookshelf_detail').empty();
     const resultsBox = panel.find('#ai_wbr_bookshelf_results');
 
@@ -7823,7 +7848,7 @@ async function renderBookshelfPanel() {
 
         booksBox.empty();
         if (!allBooks.length) {
-            booksBox.append('<div class="ai-wbr-token-empty">还没有导入 TXT。点击“导入 TXT”建立第一本补充资料。</div>');
+            booksBox.append('<div class="ai-wbr-token-empty">杩樻病鏈夊鍏?TXT銆傜偣鍑烩€滃鍏?TXT鈥濆缓绔嬬涓€鏈ˉ鍏呰祫鏂欍€?/div>');
         } else {
             for (const book of allBooks) {
                 booksBox.append(createBookshelfBookCard(book, book.id === selectedBookshelfBookId));
@@ -7833,7 +7858,7 @@ async function renderBookshelfPanel() {
         const selectedBook = allBooks.find(book => book.id === selectedBookshelfBookId) || null;
         if (!selectedBook) {
             detailBox.removeClass('open');
-            detailBox.append('<div class="ai-wbr-token-empty">导入 TXT 后，点书籍封面查看向量化和删除操作。</div>');
+            detailBox.append('<div class="ai-wbr-token-empty">瀵煎叆 TXT 鍚庯紝鐐逛功绫嶅皝闈㈡煡鐪嬪悜閲忓寲鍜屽垹闄ゆ搷浣溿€?/div>');
         } else {
             detailBox.addClass('open');
             const selectedChunks = (chunksByBook.get(selectedBook.id) || []).sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
@@ -7845,7 +7870,7 @@ async function renderBookshelfPanel() {
                 .append($('<button class="menu_button ai-wbr-bookshelf-rebuild" type="button"></button>').attr('data-bookshelf-book-id', selectedBook.id).text(Number(selectedBook.vectorizedCount || 0) ? '\u91cd\u65b0\u5411\u91cf\u5316' : '\u5f00\u59cb\u5411\u91cf\u5316'))
                 .append($('<button class="menu_button ai-wbr-bookshelf-toggle" type="button"></button>').attr('data-bookshelf-book-id', selectedBook.id).text(selectedBook.enabled === false ? '\u542f\u7528\u53ec\u56de' : '\u505c\u7528\u53ec\u56de'));
             if (isAutoMemoryBook) {
-                actionBox.append($('<button class="menu_button ai-wbr-bookshelf-open-reader" type="button"></button>').attr('data-bookshelf-book-id', selectedBook.id).text('打开小说阅读'));
+                actionBox.append($('<button class="menu_button ai-wbr-bookshelf-open-reader" type="button"></button>').attr('data-bookshelf-book-id', selectedBook.id).text('鎵撳紑灏忚闃呰'));
             }
             if (!isAutoMemoryBook) {
                 actionBox
@@ -7861,15 +7886,15 @@ async function renderBookshelfPanel() {
                     .append(
                         $('<div class="ai-wbr-bookshelf-novel-cover"></div>')
                             .append($('<span></span>').text('AIWBR'))
-                            .append($('<b></b>').text(selectedBook.title || '记忆书'))
-                            .append($('<small></small>').text(`${chapterList.length} 章 · ${selectedChunks.length} 小节`)),
+                            .append($('<b></b>').text(selectedBook.title || '璁板繂涔?))
+                            .append($('<small></small>').text(`${chapterList.length} 绔?路 ${selectedChunks.length} 灏忚妭`)),
                         $('<div class="ai-wbr-bookshelf-novel-info"></div>')
-                            .append($('<strong></strong>').text(selectedBook.title || '记忆书'))
-                            .append($('<p></p>').text(selectedBook.sourceSummary || '从当前聊天图谱自动整理，像小说一样按目录阅读，也可作为向量片段召回。'))
+                            .append($('<strong></strong>').text(selectedBook.title || '璁板繂涔?))
+                            .append($('<p></p>').text(selectedBook.sourceSummary || '浠庡綋鍓嶈亰澶╁浘璋辫嚜鍔ㄦ暣鐞嗭紝鍍忓皬璇翠竴鏍锋寜鐩綍闃呰锛屼篃鍙綔涓哄悜閲忕墖娈靛彫鍥炪€?))
                             .append($('<div class="ai-wbr-bookshelf-novel-stats"></div>')
-                                .append($('<span></span>').text(`章节 ${chapterList.length}`))
-                                .append($('<span></span>').text(`小节 ${selectedChunks.length}`))
-                                .append($('<span></span>').text(`向量 ${selectedBook.vectorizedCount || 0}/${selectedBook.chunkCount || 0}`))),
+                                .append($('<span></span>').text(`绔犺妭 ${chapterList.length}`))
+                                .append($('<span></span>').text(`灏忚妭 ${selectedChunks.length}`))
+                                .append($('<span></span>').text(`鍚戦噺 ${selectedBook.vectorizedCount || 0}/${selectedBook.chunkCount || 0}`))),
                     )
                 : null;
             detailBox.append(
@@ -7877,41 +7902,41 @@ async function renderBookshelfPanel() {
                     .attr('data-bookshelf-book-id', selectedBook.id)
                     .append(
                 $('<div class="ai-wbr-bookshelf-detail-head"></div>')
-                    .append($('<b></b>').text(`《${selectedBook.title || selectedBook.fileName || '未命名'}》`))
-                    .append($('<span></span>').text(`${getBookshelfTypeLabel(selectedBook.type)} · ${getBookshelfStatusLabel(selectedBook)} · ${selectedBook.vectorizedCount || 0}/${selectedBook.chunkCount || 0}`)),
+                    .append($('<b></b>').text(`銆?{selectedBook.title || selectedBook.fileName || '鏈懡鍚?}銆媊))
+                    .append($('<span></span>').text(`${getBookshelfTypeLabel(selectedBook.type)} 路 ${getBookshelfStatusLabel(selectedBook)} 路 ${selectedBook.vectorizedCount || 0}/${selectedBook.chunkCount || 0}`)),
                 $('<div class="ai-wbr-bookshelf-tags"></div>').append(
                     getBookshelfBindingLabels(selectedBook).map(label => $('<span></span>').text(label)),
-                    isAutoMemoryBook ? $('<span></span>').text('单聊天记录绑定') : null,
+                    isAutoMemoryBook ? $('<span></span>').text('鍗曡亰澶╄褰曠粦瀹?) : null,
                 ),
                 novelHero,
                 selectedBook.sourceSummary ? $('<div class="ai-wbr-bookshelf-source-summary"></div>').text(selectedBook.sourceSummary) : null,
                 actionBox,
                 isAutoMemoryBook
-                    ? $('<div class="ai-wbr-token-empty"></div>').text('点击“打开小说阅读”进入独立阅读界面，目录和正文会在新界面中显示。')
+                    ? $('<div class="ai-wbr-token-empty"></div>').text('鐐瑰嚮鈥滄墦寮€灏忚闃呰鈥濊繘鍏ョ嫭绔嬮槄璇荤晫闈紝鐩綍鍜屾鏂囦細鍦ㄦ柊鐣岄潰涓樉绀恒€?)
                     : $('<div class="ai-wbr-bookshelf-chunk-list"></div>').append(
                         selectedChunks.slice(0, 24).map(chunk => (
                             $('<div class="ai-wbr-bookshelf-chunk"></div>')
                                 .toggleClass('disabled', chunk.enabled === false)
                                 .attr('data-bookshelf-chunk-id', chunk.id)
                                 .append($('<div class="ai-wbr-bookshelf-chunk-head"></div>')
-                                    .append($('<b></b>').text(`${String(chunk.order || '').padStart(2, '0')} · ${chunk.title || '片段'}`))
-                                    .append($('<span></span>').text(chunk.enabled === false ? '禁用' : chunk.vectorStatus === 'ready' ? '已向量化' : chunk.vectorStatus === 'failed' ? '失败' : '待向量化')))
+                                    .append($('<b></b>').text(`${String(chunk.order || '').padStart(2, '0')} 路 ${chunk.title || '鐗囨'}`))
+                                    .append($('<span></span>').text(chunk.enabled === false ? '绂佺敤' : chunk.vectorStatus === 'ready' ? '宸插悜閲忓寲' : chunk.vectorStatus === 'failed' ? '澶辫触' : '寰呭悜閲忓寲')))
                                 .append($('<p></p>').text(truncateText(chunk.text || '', 260)))
                         )),
                     ),
                     ),
             );
             if (!isAutoMemoryBook && selectedChunks.length > 24) {
-                detailBox.append($('<div class="ai-wbr-token-empty"></div>').text(`已显示前 24 个片段，共 ${selectedChunks.length} 个。`));
+                detailBox.append($('<div class="ai-wbr-token-empty"></div>').text(`宸叉樉绀哄墠 24 涓墖娈碉紝鍏?${selectedChunks.length} 涓€俙));
             }
         }
 
         renderBookshelfResults(resultsBox, bookshelfLastTestResults);
         syncBookshelfProviderVisibility();
-        setBookshelfStatus(bookshelfLastStatus || `书架共 ${allBooks.length} 本；只有已向量化片段会参与召回。`);
+        setBookshelfStatus(bookshelfLastStatus || `涔︽灦鍏?${allBooks.length} 鏈紱鍙湁宸插悜閲忓寲鐗囨浼氬弬涓庡彫鍥炪€俙);
     } catch (error) {
         booksBox.empty().append($('<div class="ai-wbr-console-alert error"></div>').text(error?.message || String(error)));
-        setBookshelfStatus(`书架读取失败：${error?.message || error}`);
+        setBookshelfStatus(`涔︽灦璇诲彇澶辫触锛?{error?.message || error}`);
     }
 }
 
@@ -8228,7 +8253,7 @@ function buildSelectOptionsHtml(options, currentValue) {
     const known = options.some(option => option.value === normalizedValue);
     const optionHtml = options.map(option => `<option value="${escapeHtml(option.value)}" ${option.value === normalizedValue ? 'selected' : ''}>${escapeHtml(option.label)}</option>`).join('');
     if (!known && normalizedValue) {
-        return `${optionHtml}<option value="${escapeHtml(normalizedValue)}" selected>自定义（${escapeHtml(normalizedValue)}）</option>`;
+        return `${optionHtml}<option value="${escapeHtml(normalizedValue)}" selected>鑷畾涔夛紙${escapeHtml(normalizedValue)}锛?/option>`;
     }
     return optionHtml;
 }
@@ -8248,7 +8273,7 @@ function createNodeTypeSelect(fieldAttrName, currentValue, extraData = {}) {
     }
     const normalizedValue = String(currentValue || 'event');
     if (!MEMORY_NODE_TYPE_OPTIONS.some(option => option.value === normalizedValue) && normalizedValue) {
-        select.append($('<option></option>').attr('value', normalizedValue).text(`自定义（${normalizedValue}）`));
+        select.append($('<option></option>').attr('value', normalizedValue).text(`鑷畾涔夛紙${normalizedValue}锛塦));
     }
     select.val(normalizedValue);
     for (const [key, value] of Object.entries(extraData)) {
@@ -8264,7 +8289,7 @@ function createLinkTypeSelect(fieldAttrName, currentValue, extraData = {}) {
     }
     const normalizedValue = String(currentValue || 'RELATED');
     if (!MEMORY_LINK_TYPE_OPTIONS.some(option => option.value === normalizedValue) && normalizedValue) {
-        select.append($('<option></option>').attr('value', normalizedValue).text(`自定义（${normalizedValue}）`));
+        select.append($('<option></option>').attr('value', normalizedValue).text(`鑷畾涔夛紙${normalizedValue}锛塦));
     }
     select.val(normalizedValue);
     for (const [key, value] of Object.entries(extraData)) {
@@ -8296,14 +8321,14 @@ function showMemoryNodePopover(nodeId, clientX, clientY) {
         .attr('data-memory-node-id', node.id)
         .html(`
             <div class="ai-wbr-memory-popover-title">${escapeHtml(truncateText(node.title || node.id, 38))}</div>
-            <label>标题<input class="text_pole" type="text" data-popover-node-field="title" value="${escapeHtml(node.title || '')}" /></label>
-            <label>类型${buildNodeTypeSelect('popover-node-field', node.type || 'event')}</label>
-            <label>内容<textarea class="text_pole" rows="2" data-popover-node-field="content">${escapeHtml(node.content || '')}</textarea></label>
+            <label>鏍囬<input class="text_pole" type="text" data-popover-node-field="title" value="${escapeHtml(node.title || '')}" /></label>
+            <label>绫诲瀷${buildNodeTypeSelect('popover-node-field', node.type || 'event')}</label>
+            <label>鍐呭<textarea class="text_pole" rows="2" data-popover-node-field="content">${escapeHtml(node.content || '')}</textarea></label>
             <div class="ai-wbr-memory-popover-actions">
-                <button class="menu_button ai-wbr-memory-popover-save" type="button">保存</button>
-                <button class="menu_button ai-wbr-memory-set-link-source" type="button">设为起点</button>
-                <button class="menu_button ai-wbr-memory-link-to-source" type="button" ${memoryGraphLinkSourceId && memoryGraphLinkSourceId !== node.id ? '' : 'disabled'}>连接到起点${sourceTitle ? `：${escapeHtml(truncateText(sourceTitle, 8))}` : ''}</button>
-                <button class="menu_button ai-wbr-memory-popover-delete" type="button">删除</button>
+                <button class="menu_button ai-wbr-memory-popover-save" type="button">淇濆瓨</button>
+                <button class="menu_button ai-wbr-memory-set-link-source" type="button">璁句负璧风偣</button>
+                <button class="menu_button ai-wbr-memory-link-to-source" type="button" ${memoryGraphLinkSourceId && memoryGraphLinkSourceId !== node.id ? '' : 'disabled'}>杩炴帴鍒拌捣鐐?{sourceTitle ? `锛?{escapeHtml(truncateText(sourceTitle, 8))}` : ''}</button>
+                <button class="menu_button ai-wbr-memory-popover-delete" type="button">鍒犻櫎</button>
             </div>
         `)
         .css({
@@ -8769,7 +8794,7 @@ function bindMemoryGraphSvgInteractions() {
             target: targetId,
             type: 'RELATED',
             weight: 0.7,
-            description: '手动创建的记忆关系',
+            description: '鎵嬪姩鍒涘缓鐨勮蹇嗗叧绯?,
         }, new Set(graph.nodes.map(node => node.id)), graph.links.length);
         if (link && !graph.links.some(item => item.source === link.source && item.target === link.target && item.type === link.type)) {
             graph.links.push(link);
@@ -8817,14 +8842,14 @@ function renderMemoryPanel(scope = 'all') {
         linkSourceId: memoryGraphLinkSourceId,
     });
     if (hasMemoryPanel) {
-        $('#ai_wbr_memory_status').text(getCurrentMemoryStatus() || (settings.memoryEnabled ? '待整理' : '未启用'));
+        $('#ai_wbr_memory_status').text(getCurrentMemoryStatus() || (settings.memoryEnabled ? '寰呮暣鐞? : '鏈惎鐢?));
         $('#ai_wbr_memory_json').val(JSON.stringify(graph, null, 2));
         const showMemoryDebugDetails = !!settings.memoryDebug || !!getCurrentMemoryLastError(context);
         $('.ai-wbr-memory-debug-fold').prop('open', showMemoryDebugDetails);
         $('#ai_wbr_memory_debug_panel .ai-wbr-router-raw-block').toggle(showMemoryDebugDetails);
-        $('#ai_wbr_memory_prompt').text(getCurrentMemoryLastPrompt(context) || '尚无后置记忆 Prompt');
-        $('#ai_wbr_memory_raw').text(getCurrentMemoryLastRaw(context) || '尚无后置记忆返回');
-        $('#ai_wbr_memory_error').text(getCurrentMemoryLastError(context) || '尚无错误');
+        $('#ai_wbr_memory_prompt').text(getCurrentMemoryLastPrompt(context) || '灏氭棤鍚庣疆璁板繂 Prompt');
+        $('#ai_wbr_memory_raw').text(getCurrentMemoryLastRaw(context) || '灏氭棤鍚庣疆璁板繂杩斿洖');
+        $('#ai_wbr_memory_error').text(getCurrentMemoryLastError(context) || '灏氭棤閿欒');
         renderMemoryDashboard(graph);
         renderMemoryReviewQueue();
         renderBookshelfPanel();
@@ -8840,7 +8865,7 @@ function renderMemoryPanel(scope = 'all') {
     if (hasMemoryPanel) {
         const stateRows = getMemoryStateRows(graph);
         const stateTable = $('<table class="ai-wbr-memory-table"></table>');
-        stateTable.append('<thead><tr><th>状态字段</th><th>当前值</th></tr></thead>');
+        stateTable.append('<thead><tr><th>鐘舵€佸瓧娈?/th><th>褰撳墠鍊?/th></tr></thead>');
         const stateBody = $('<tbody></tbody>');
         for (const row of stateRows) {
             stateBody.append(
@@ -8849,7 +8874,7 @@ function renderMemoryPanel(scope = 'all') {
                         .append($('<div></div>').text(row.label))
                         .append(row.description ? $('<div class="ai-wbr-memory-state-desc"></div>').text(row.description) : '')
                         .append(row.isCustom
-                            ? $('<button class="menu_button ai-wbr-memory-delete-state-definition m-t-05" type="button">删除</button>')
+                            ? $('<button class="menu_button ai-wbr-memory-delete-state-definition m-t-05" type="button">鍒犻櫎</button>')
                                 .attr('data-memory-state-definition-key', row.key)
                             : ''))
                     .append($('<td></td>').append(
@@ -8861,15 +8886,15 @@ function renderMemoryPanel(scope = 'all') {
         }
         stateTable.append(stateBody);
         $('#ai_wbr_memory_state_editor').empty().append(
-            $('<div class="ai-wbr-memory-subtitle"><b>新增自定义状态字段</b></div>'),
+            $('<div class="ai-wbr-memory-subtitle"><b>鏂板鑷畾涔夌姸鎬佸瓧娈?/b></div>'),
             $(`
                 <div class="ai-wbr-memory-add-state">
-                    <input id="ai_wbr_memory_new_state_label" class="text_pole" type="text" placeholder="字段名，例如：道具" />
-                    <input id="ai_wbr_memory_new_state_instruction" class="text_pole" type="text" placeholder="字段说明，例如：user背包里的道具" />
-                    <button id="ai_wbr_memory_add_state_definition" class="menu_button" type="button">添加字段</button>
+                    <input id="ai_wbr_memory_new_state_label" class="text_pole" type="text" placeholder="瀛楁鍚嶏紝渚嬪锛氶亾鍏? />
+                    <input id="ai_wbr_memory_new_state_instruction" class="text_pole" type="text" placeholder="瀛楁璇存槑锛屼緥濡傦細user鑳屽寘閲岀殑閬撳叿" />
+                    <button id="ai_wbr_memory_add_state_definition" class="menu_button" type="button">娣诲姞瀛楁</button>
                 </div>
             `),
-            $('<div class="ai-wbr-memory-subtitle"><b>状态表（固定更新）</b></div>'),
+            $('<div class="ai-wbr-memory-subtitle"><b>鐘舵€佽〃锛堝浐瀹氭洿鏂帮級</b></div>'),
             $('<div class="ai-wbr-memory-table-wrap"></div>').append(stateTable),
         );
     }
@@ -8881,12 +8906,12 @@ function renderMemoryPanel(scope = 'all') {
     const eventNodes = getMemoryEventNodes(graph);
     const nonEventNodes = getMemoryNonEventNodes(graph);
     const nodesContainer = $('#ai_wbr_memory_nodes').empty();
-    nodesContainer.append($('<div class="ai-wbr-memory-subtitle"><b>事件表（剧情推进会新增）</b></div>'));
+    nodesContainer.append($('<div class="ai-wbr-memory-subtitle"><b>浜嬩欢琛紙鍓ф儏鎺ㄨ繘浼氭柊澧烇級</b></div>'));
     if (!eventNodes.length) {
-        nodesContainer.append('<div class="ai-wbr-token-empty">暂无事件记录</div>');
+        nodesContainer.append('<div class="ai-wbr-token-empty">鏆傛棤浜嬩欢璁板綍</div>');
     } else {
         const eventTable = $('<table class="ai-wbr-memory-table ai-wbr-memory-event-table"></table>');
-        eventTable.append('<thead><tr><th>标题</th><th>地点 / 时间</th><th>概要</th><th>详细纪要</th><th>关键词</th><th>操作</th></tr></thead>');
+        eventTable.append('<thead><tr><th>鏍囬</th><th>鍦扮偣 / 鏃堕棿</th><th>姒傝</th><th>璇︾粏绾</th><th>鍏抽敭璇?/th><th>鎿嶄綔</th></tr></thead>');
         const eventBody = $('<tbody></tbody>');
         for (const node of eventNodes) {
             eventBody.append(
@@ -8896,8 +8921,8 @@ function renderMemoryPanel(scope = 'all') {
                         $('<input class="text_pole" type="text" data-memory-node-field="title" />').val(node.title || ''),
                     ))
                     .append($('<td></td>').append(
-                        $('<input class="text_pole" type="text" data-memory-node-field="location" placeholder="地点" />').val(node.location || ''),
-                        $('<input class="text_pole m-t-05" type="text" data-memory-node-field="timeSpan" placeholder="时间跨度" />').val(node.timeSpan || ''),
+                        $('<input class="text_pole" type="text" data-memory-node-field="location" placeholder="鍦扮偣" />').val(node.location || ''),
+                        $('<input class="text_pole m-t-05" type="text" data-memory-node-field="timeSpan" placeholder="鏃堕棿璺ㄥ害" />').val(node.timeSpan || ''),
                     ))
                     .append($('<td></td>').append(
                         $('<input class="text_pole" type="text" data-memory-node-field="summary" />').val(node.summary || ''),
@@ -8906,13 +8931,13 @@ function renderMemoryPanel(scope = 'all') {
                         $('<textarea class="text_pole ai-wbr-memory-content" rows="3" data-memory-node-field="content"></textarea>').val(node.content || ''),
                     ))
                     .append($('<td></td>').append(
-                        $('<input class="text_pole" type="text" data-memory-node-field="keys" placeholder="关键词，用逗号分隔" />').val((node.keys || []).join('，')),
-                        $('<input class="text_pole m-t-05" type="text" data-memory-node-field="tags" placeholder="标签，用逗号分隔" />').val((node.tags || []).join('，')),
+                        $('<input class="text_pole" type="text" data-memory-node-field="keys" placeholder="鍏抽敭璇嶏紝鐢ㄩ€楀彿鍒嗛殧" />').val((node.keys || []).join('锛?)),
+                        $('<input class="text_pole m-t-05" type="text" data-memory-node-field="tags" placeholder="鏍囩锛岀敤閫楀彿鍒嗛殧" />').val((node.tags || []).join('锛?)),
                     ))
                     .append($('<td></td>').append(
                         $('<div class="ai-wbr-memory-event-actions"></div>')
                             .append(createNodeTypeSelect('data-memory-node-field', node.type || 'event'))
-                            .append($('<button class="menu_button ai-wbr-memory-delete-node" type="button">删除</button>')),
+                            .append($('<button class="menu_button ai-wbr-memory-delete-node" type="button">鍒犻櫎</button>')),
                     )),
             );
         }
@@ -8920,12 +8945,12 @@ function renderMemoryPanel(scope = 'all') {
         nodesContainer.append($('<div class="ai-wbr-memory-table-wrap"></div>').append(eventTable));
     }
 
-    nodesContainer.append($('<div class="ai-wbr-memory-subtitle m-t-1"><b>非事件节点（角色 / 地点 / 概念等）</b></div>'));
+    nodesContainer.append($('<div class="ai-wbr-memory-subtitle m-t-1"><b>闈炰簨浠惰妭鐐癸紙瑙掕壊 / 鍦扮偣 / 姒傚康绛夛級</b></div>'));
     if (!nonEventNodes.length) {
-        nodesContainer.append('<div class="ai-wbr-token-empty">暂无非事件节点</div>');
+        nodesContainer.append('<div class="ai-wbr-token-empty">鏆傛棤闈炰簨浠惰妭鐐?/div>');
     } else {
         const nonEventTable = $('<table class="ai-wbr-memory-table ai-wbr-memory-entity-table"></table>');
-        nonEventTable.append('<thead><tr><th>标题</th><th>类型</th><th>说明</th><th>关键词 / 标签</th><th>操作</th></tr></thead>');
+        nonEventTable.append('<thead><tr><th>鏍囬</th><th>绫诲瀷</th><th>璇存槑</th><th>鍏抽敭璇?/ 鏍囩</th><th>鎿嶄綔</th></tr></thead>');
         const nonEventBody = $('<tbody></tbody>');
         for (const node of nonEventNodes) {
             nonEventBody.append(
@@ -8941,11 +8966,11 @@ function renderMemoryPanel(scope = 'all') {
                         $('<textarea class="text_pole ai-wbr-memory-content" rows="3" data-memory-node-field="content"></textarea>').val(node.content || ''),
                     ))
                     .append($('<td></td>').append(
-                        $('<input class="text_pole" type="text" data-memory-node-field="keys" placeholder="关键词，用逗号分隔" />').val((node.keys || []).join('，')),
-                        $('<input class="text_pole m-t-05" type="text" data-memory-node-field="tags" placeholder="标签，用逗号分隔" />').val((node.tags || []).join('，')),
+                        $('<input class="text_pole" type="text" data-memory-node-field="keys" placeholder="鍏抽敭璇嶏紝鐢ㄩ€楀彿鍒嗛殧" />').val((node.keys || []).join('锛?)),
+                        $('<input class="text_pole m-t-05" type="text" data-memory-node-field="tags" placeholder="鏍囩锛岀敤閫楀彿鍒嗛殧" />').val((node.tags || []).join('锛?)),
                     ))
                     .append($('<td></td>').append(
-                        $('<button class="menu_button ai-wbr-memory-delete-node" type="button">删除</button>'),
+                        $('<button class="menu_button ai-wbr-memory-delete-node" type="button">鍒犻櫎</button>'),
                     )),
             );
         }
@@ -8954,9 +8979,9 @@ function renderMemoryPanel(scope = 'all') {
     }
 
     const linksContainer = $('#ai_wbr_memory_links').empty();
-    linksContainer.append($('<div class="ai-wbr-memory-subtitle"><b>关系边</b></div>'));
+    linksContainer.append($('<div class="ai-wbr-memory-subtitle"><b>鍏崇郴杈?/b></div>'));
     if (!graph.links.length) {
-        linksContainer.append('<div class="ai-wbr-token-empty">暂无关系</div>');
+        linksContainer.append('<div class="ai-wbr-token-empty">鏆傛棤鍏崇郴</div>');
     }
     for (const link of graph.links) {
         const source = graph.nodes.find(node => node.id === link.source)?.title || link.source;
@@ -8965,12 +8990,12 @@ function renderMemoryPanel(scope = 'all') {
             $('<div class="ai-wbr-memory-link-card"></div>')
                 .attr('data-memory-link-id', link.id)
                 .toggleClass('ai-wbr-memory-link-card-selected', String(link.id) === String(memoryGraphSelectedLinkId))
-                .append($('<div class="ai-wbr-memory-link-title"></div>').text(`${source} → ${target}`))
+                .append($('<div class="ai-wbr-memory-link-title"></div>').text(`${source} 鈫?${target}`))
                 .append($('<div class="ai-wbr-memory-link-grid"></div>')
                     .append(createLinkTypeSelect('data-memory-link-field', link.type || 'RELATED'))
                     .append($('<input class="text_pole" type="number" min="0" max="1" step="0.05" data-memory-link-field="weight" />').val(link.weight ?? 0.7))
-                    .append($('<button class="menu_button ai-wbr-memory-delete-link" type="button">删除</button>')))
-                .append($('<input class="text_pole" type="text" data-memory-link-field="description" placeholder="关系描述" />').val(link.description || '')),
+                    .append($('<button class="menu_button ai-wbr-memory-delete-link" type="button">鍒犻櫎</button>')))
+                .append($('<input class="text_pole" type="text" data-memory-link-field="description" placeholder="鍏崇郴鎻忚堪" />').val(link.description || '')),
         );
     }
 }
@@ -8985,10 +9010,10 @@ function renderMemoryNodeEditor(graph) {
     const hasRelatedLink = !!(memoryGraphLinkSourceId && selectedNode && memoryGraphLinkSourceId !== selectedNode.id
         && graph.links.some(item => item.source === memoryGraphLinkSourceId && item.target === selectedNode.id && item.type === 'RELATED'));
 
-    editor.append('<div class="ai-wbr-memory-subtitle"><b>节点编辑器</b></div>');
+    editor.append('<div class="ai-wbr-memory-subtitle"><b>鑺傜偣缂栬緫鍣?/b></div>');
 
     if (!selectedNode) {
-        editor.append('<div class="ai-wbr-token-empty">点击上方图谱节点后，这里会显示该节点的可编辑信息。</div>');
+        editor.append('<div class="ai-wbr-token-empty">鐐瑰嚮涓婃柟鍥捐氨鑺傜偣鍚庯紝杩欓噷浼氭樉绀鸿鑺傜偣鐨勫彲缂栬緫淇℃伅銆?/div>');
         return;
     }
 
@@ -9000,36 +9025,36 @@ function renderMemoryNodeEditor(graph) {
                 .append($('<div class="ai-wbr-memory-node-editor-grid"></div>')
                     .append(
                         $('<label class="ai-wbr-memory-node-editor-field"></label>')
-                            .append('<span>标题</span>')
+                            .append('<span>鏍囬</span>')
                             .append($('<input class="text_pole" type="text" data-memory-editor-field="title" />').val(selectedNode.title || '')),
                     )
                     .append(
                         $('<label class="ai-wbr-memory-node-editor-field"></label>')
-                            .append('<span>类型</span>')
+                            .append('<span>绫诲瀷</span>')
                             .append(createNodeTypeSelect('data-memory-editor-field', selectedNode.type || 'event')),
                     )
                     .append(
                         $('<label class="ai-wbr-memory-node-editor-field ai-wbr-memory-node-editor-field-wide"></label>')
-                            .append('<span>内容</span>')
+                            .append('<span>鍐呭</span>')
                             .append($('<textarea class="text_pole" rows="4" data-memory-editor-field="content"></textarea>').val(selectedNode.content || '')),
                     )
                     .append(
                         $('<label class="ai-wbr-memory-node-editor-field"></label>')
-                            .append('<span>关键词</span>')
-                            .append($('<input class="text_pole" type="text" data-memory-editor-field="keys" placeholder="用逗号分隔" />').val((selectedNode.keys || []).join('，'))),
+                            .append('<span>鍏抽敭璇?/span>')
+                            .append($('<input class="text_pole" type="text" data-memory-editor-field="keys" placeholder="鐢ㄩ€楀彿鍒嗛殧" />').val((selectedNode.keys || []).join('锛?))),
                     )
                     .append(
                         $('<label class="ai-wbr-memory-node-editor-field"></label>')
-                            .append('<span>标签</span>')
-                            .append($('<input class="text_pole" type="text" data-memory-editor-field="tags" placeholder="用逗号分隔" />').val((selectedNode.tags || []).join('，'))),
+                            .append('<span>鏍囩</span>')
+                            .append($('<input class="text_pole" type="text" data-memory-editor-field="tags" placeholder="鐢ㄩ€楀彿鍒嗛殧" />').val((selectedNode.tags || []).join('锛?))),
                     ),
                 )
                 .append(
                     $('<div class="ai-wbr-memory-popover-actions"></div>')
-                        .append('<button class="menu_button ai-wbr-memory-editor-save" type="button">保存</button>')
-                        .append('<button class="menu_button ai-wbr-memory-editor-set-link-source" type="button">设为起点</button>')
-                        .append($(`<button class="menu_button ai-wbr-memory-editor-link-to-source" type="button" ${memoryGraphLinkSourceId && memoryGraphLinkSourceId !== selectedNode.id ? '' : 'disabled'}>${hasRelatedLink ? '取消连线' : '连接到起点'}${sourceTitle ? `：${escapeHtml(truncateText(sourceTitle, 10))}` : ''}</button>`))
-                        .append('<button class="menu_button ai-wbr-memory-editor-delete" type="button">删除</button>'),
+                        .append('<button class="menu_button ai-wbr-memory-editor-save" type="button">淇濆瓨</button>')
+                        .append('<button class="menu_button ai-wbr-memory-editor-set-link-source" type="button">璁句负璧风偣</button>')
+                        .append($(`<button class="menu_button ai-wbr-memory-editor-link-to-source" type="button" ${memoryGraphLinkSourceId && memoryGraphLinkSourceId !== selectedNode.id ? '' : 'disabled'}>${hasRelatedLink ? '鍙栨秷杩炵嚎' : '杩炴帴鍒拌捣鐐?}${sourceTitle ? `锛?{escapeHtml(truncateText(sourceTitle, 10))}` : ''}</button>`))
+                        .append('<button class="menu_button ai-wbr-memory-editor-delete" type="button">鍒犻櫎</button>'),
                 ),
         );
 }
@@ -9038,10 +9063,10 @@ function renderMemoryEdgeEditor(graph) {
     const editor = $('#ai_wbr_memory_edge_editor').empty();
     const links = Array.isArray(graph?.links) ? graph.links : [];
     const selectedLink = links.find(link => String(link.id) === String(memoryGraphSelectedLinkId)) || null;
-    editor.append('<div class="ai-wbr-memory-subtitle"><b>关系编辑器</b></div>');
+    editor.append('<div class="ai-wbr-memory-subtitle"><b>鍏崇郴缂栬緫鍣?/b></div>');
 
     if (!selectedLink) {
-        editor.append('<div class="ai-wbr-token-empty">点击图上的关系线，或下方关系卡片后，这里会显示该关系的可编辑信息。</div>');
+        editor.append('<div class="ai-wbr-token-empty">鐐瑰嚮鍥句笂鐨勫叧绯荤嚎锛屾垨涓嬫柟鍏崇郴鍗＄墖鍚庯紝杩欓噷浼氭樉绀鸿鍏崇郴鐨勫彲缂栬緫淇℃伅銆?/div>');
         return;
     }
 
@@ -9051,28 +9076,28 @@ function renderMemoryEdgeEditor(graph) {
     editor.append(
         $('<div class="ai-wbr-memory-node-editor-card"></div>')
             .attr('data-memory-link-id', selectedLink.id)
-            .append($('<div class="ai-wbr-memory-node-editor-title"></div>').text(`${sourceTitle} → ${targetTitle}`))
+            .append($('<div class="ai-wbr-memory-node-editor-title"></div>').text(`${sourceTitle} 鈫?${targetTitle}`))
                 .append($('<div class="ai-wbr-memory-node-editor-grid"></div>')
                     .append(
                         $('<label class="ai-wbr-memory-node-editor-field"></label>')
-                            .append('<span>关系类型</span>')
+                            .append('<span>鍏崇郴绫诲瀷</span>')
                             .append(createLinkTypeSelect('data-memory-edge-field', selectedLink.type || 'RELATED')),
                     )
                 .append(
                     $('<label class="ai-wbr-memory-node-editor-field"></label>')
-                        .append('<span>权重</span>')
+                        .append('<span>鏉冮噸</span>')
                         .append($('<input class="text_pole" type="number" min="0" max="1" step="0.05" data-memory-edge-field="weight" />').val(selectedLink.weight ?? 0.7)),
                 )
                 .append(
                     $('<label class="ai-wbr-memory-node-editor-field ai-wbr-memory-node-editor-field-wide"></label>')
-                        .append('<span>关系描述</span>')
+                        .append('<span>鍏崇郴鎻忚堪</span>')
                         .append($('<textarea class="text_pole" rows="3" data-memory-edge-field="description"></textarea>').val(selectedLink.description || '')),
                 ),
             )
             .append(
                 $('<div class="ai-wbr-memory-popover-actions"></div>')
-                    .append('<button class="menu_button ai-wbr-memory-edge-save" type="button">保存</button>')
-                    .append('<button class="menu_button ai-wbr-memory-edge-delete" type="button">删除这条线</button>'),
+                    .append('<button class="menu_button ai-wbr-memory-edge-save" type="button">淇濆瓨</button>')
+                    .append('<button class="menu_button ai-wbr-memory-edge-delete" type="button">鍒犻櫎杩欐潯绾?/button>'),
             ),
     );
 }
@@ -9198,7 +9223,7 @@ function bindMemoryPanelActions() {
         event.preventDefault();
         const accepted = acceptAllMemoryReviews();
         if (accepted.count) {
-            setMemoryStatus(`已确认 ${accepted.count} 条记忆更新`);
+            setMemoryStatus(`宸茬‘璁?${accepted.count} 鏉¤蹇嗘洿鏂癭);
             toastr?.success?.('Done.', 'AI Worldbook Router');
         }
         renderMemoryPanel();
@@ -9208,7 +9233,7 @@ function bindMemoryPanelActions() {
         event.preventDefault();
         const count = clearMemoryReviewQueue();
         if (count) {
-            setMemoryStatus(`已清空 ${count} 条待确认更新`);
+            setMemoryStatus(`宸叉竻绌?${count} 鏉″緟纭鏇存柊`);
             toastr?.info?.('Done.', 'AI Worldbook Router');
         }
         renderMemoryPanel();
@@ -9223,15 +9248,15 @@ function bindMemoryPanelActions() {
                 ...parsed,
             };
             saveMemoryGraph(nextGraph);
-            toastr.success('记忆 JSON 已保存', '世界书读取');
+            toastr.success('璁板繂 JSON 宸蹭繚瀛?, '涓栫晫涔﹁鍙?);
         } catch (error) {
-            toastr.error(`JSON 解析失败：${error.message || error}`, '世界书读取');
+            toastr.error(`JSON 瑙ｆ瀽澶辫触锛?{error.message || error}`, '涓栫晫涔﹁鍙?);
         }
     });
 
     $('#ai_wbr_memory_clear').on('click', (event) => {
         event.preventDefault();
-        if (!confirm('确定清空当前轻量记忆图谱？')) {
+        if (!confirm('纭畾娓呯┖褰撳墠杞婚噺璁板繂鍥捐氨锛?)) {
             return;
         }
         saveMemoryGraph(getDefaultMemoryGraph());
@@ -9239,7 +9264,7 @@ function bindMemoryPanelActions() {
         setCurrentMemoryLastPrompt('');
         setCurrentMemoryLastRaw('');
         setCurrentMemoryLastError('');
-        setMemoryStatus('已清空');
+        setMemoryStatus('宸叉竻绌?);
     });
 
     $(document).off('click.aiWbrBookshelfImport', '#ai_wbr_bookshelf_import').on('click.aiWbrBookshelfImport', '#ai_wbr_bookshelf_import', (event) => {
@@ -9267,7 +9292,7 @@ function bindMemoryPanelActions() {
         try {
             await importBookshelfFiles(this.files);
         } catch (error) {
-            setBookshelfStatus(`导入失败：${error?.message || error}`);
+            setBookshelfStatus(`瀵煎叆澶辫触锛?{error?.message || error}`);
             toastr?.error?.('Operation failed.', 'AI Worldbook Router');
         } finally {
             this.value = '';
@@ -9286,11 +9311,11 @@ function bindMemoryPanelActions() {
         const query = String(panel.find('#ai_wbr_bookshelf_test_query').val() || '').trim();
         saveSetting('bookshelfLastTestQuery', query);
         if (!query) {
-            setBookshelfStatus('请输入测试句子。');
+            setBookshelfStatus('璇疯緭鍏ユ祴璇曞彞瀛愩€?);
             return;
         }
         try {
-            setBookshelfStatus('正在测试统一向量召回...');
+            setBookshelfStatus('姝ｅ湪娴嬭瘯缁熶竴鍚戦噺鍙洖...');
             const context = getContext();
             const memoryGraph = getMemoryGraph(context);
             const result = await recallVectorMemoryAndBookshelf(query, memoryGraph, context, { force: true });
@@ -9302,11 +9327,11 @@ function bindMemoryPanelActions() {
             const txtHits = result.selectedBookshelf?.length || 0;
             const graphCandidates = result.memoryCandidates?.length || 0;
             const txtCandidates = result.bookshelfCandidates?.length || 0;
-            setBookshelfStatus(`测试完成：图谱候选 ${graphCandidates} 条，命中 ${graphHits} 条；TXT 候选 ${txtCandidates} 条，命中 ${txtHits} 条。`);
+            setBookshelfStatus(`娴嬭瘯瀹屾垚锛氬浘璋卞€欓€?${graphCandidates} 鏉★紝鍛戒腑 ${graphHits} 鏉★紱TXT 鍊欓€?${txtCandidates} 鏉★紝鍛戒腑 ${txtHits} 鏉°€俙);
             renderBookshelfPanel();
         } catch (error) {
             bookshelfLastTestResults = [];
-            setBookshelfStatus(`测试失败：${error?.message || error}`);
+            setBookshelfStatus(`娴嬭瘯澶辫触锛?{error?.message || error}`);
             renderBookshelfPanel();
         }
     });
@@ -9314,12 +9339,12 @@ function bindMemoryPanelActions() {
     $(document).off('click.aiWbrBookshelfProvider', '#ai_wbr_bookshelf_test_provider').on('click.aiWbrBookshelfProvider', '#ai_wbr_bookshelf_test_provider', async (event) => {
         event.preventDefault();
         try {
-            setBookshelfModelStatus('正在测试...');
-            const vector = await embedBookshelfText('测试书架向量模型连接。');
-            setBookshelfModelStatus(`可用，维度 ${vector.length}`);
+            setBookshelfModelStatus('姝ｅ湪娴嬭瘯...');
+            const vector = await embedBookshelfText('娴嬭瘯涔︽灦鍚戦噺妯″瀷杩炴帴銆?);
+            setBookshelfModelStatus(`鍙敤锛岀淮搴?${vector.length}`);
             toastr?.success?.('Done.', 'AI Worldbook Router');
         } catch (error) {
-            setBookshelfModelStatus(`失败：${error?.message || error}`);
+            setBookshelfModelStatus(`澶辫触锛?{error?.message || error}`);
             toastr?.error?.('Operation failed.', 'AI Worldbook Router');
         }
     });
@@ -9332,7 +9357,7 @@ function bindMemoryPanelActions() {
             await fetchBookshelfApiModels();
             syncBookshelfProviderVisibility();
         } catch (error) {
-            setBookshelfModelStatus(`获取失败：${error?.message || error}`);
+            setBookshelfModelStatus(`鑾峰彇澶辫触锛?{error?.message || error}`);
             toastr?.error?.('Operation failed.', 'AI Worldbook Router');
         }
     });
@@ -9343,12 +9368,12 @@ function bindMemoryPanelActions() {
             saveSetting('bookshelfEmbeddingMode', 'browser-local');
             $('#ai_wbr_bookshelf_embedding_mode').val('browser-local');
             syncBookshelfProviderVisibility();
-            setBookshelfModelStatus('正在下载/加载本地模型...');
+            setBookshelfModelStatus('姝ｅ湪涓嬭浇/鍔犺浇鏈湴妯″瀷...');
             await getBookshelfLocalEmbeddingPipeline();
-            setBookshelfModelStatus('本地模型已缓存并可用');
+            setBookshelfModelStatus('鏈湴妯″瀷宸茬紦瀛樺苟鍙敤');
             toastr?.success?.('Done.', 'AI Worldbook Router');
         } catch (error) {
-            setBookshelfModelStatus(`失败：${error?.message || error}`);
+            setBookshelfModelStatus(`澶辫触锛?{error?.message || error}`);
             toastr?.error?.('Operation failed.', 'AI Worldbook Router');
         }
     });
@@ -9356,13 +9381,13 @@ function bindMemoryPanelActions() {
     $(document).off('click.aiWbrBookshelfMemoryVectorize', '#ai_wbr_bookshelf_vectorize_memory').on('click.aiWbrBookshelfMemoryVectorize', '#ai_wbr_bookshelf_vectorize_memory', async (event) => {
         event.preventDefault();
         try {
-            setBookshelfStatus('正在同步图谱记忆向量...');
+            setBookshelfStatus('姝ｅ湪鍚屾鍥捐氨璁板繂鍚戦噺...');
             const result = await syncMemoryGraphVectors(getMemoryGraph(), getContext(), { force: true });
-            setBookshelfStatus(`图谱向量同步完成：节点 ${result.total} 个，可用 ${result.ready} 个，失败 ${result.failed} 个。`);
+            setBookshelfStatus(`鍥捐氨鍚戦噺鍚屾瀹屾垚锛氳妭鐐?${result.total} 涓紝鍙敤 ${result.ready} 涓紝澶辫触 ${result.failed} 涓€俙);
             toastr?.success?.('Done.', 'AI Worldbook Router');
             renderBookshelfPanel();
         } catch (error) {
-            setBookshelfStatus(`图谱向量同步失败：${error?.message || error}`);
+            setBookshelfStatus(`鍥捐氨鍚戦噺鍚屾澶辫触锛?{error?.message || error}`);
             toastr?.error?.('Operation failed.', 'AI Worldbook Router');
             renderBookshelfPanel();
         }
@@ -9371,7 +9396,7 @@ function bindMemoryPanelActions() {
     $(document).off('click.aiWbrBookshelfBuildMemoryBooks', '#ai_wbr_bookshelf_build_memory_books').on('click.aiWbrBookshelfBuildMemoryBooks', '#ai_wbr_bookshelf_build_memory_books', async (event) => {
         event.preventDefault();
         try {
-            setBookshelfStatus('正在从图谱拆分并生成自动记忆书...');
+            setBookshelfStatus('姝ｅ湪浠庡浘璋辨媶鍒嗗苟鐢熸垚鑷姩璁板繂涔?..');
             const result = await syncMemoryGraphBookshelfBooks(getMemoryGraph(), getContext(), { vectorize: false });
             selectedBookshelfBookId = result.bookIds?.[0] || selectedBookshelfBookId;
             bookshelfLastTestResults = [];
@@ -9380,14 +9405,14 @@ function bindMemoryPanelActions() {
                 for (const bookId of result.bookIds) {
                     await rebuildBookshelfBookVectors(bookId);
                 }
-                setBookshelfStatus(`自动记忆书已生成并向量化：${result.books} 本，${result.chunks} 个摘要片段；已替换旧书 ${result.deleted} 本。`);
+                setBookshelfStatus(`鑷姩璁板繂涔﹀凡鐢熸垚骞跺悜閲忓寲锛?{result.books} 鏈紝${result.chunks} 涓憳瑕佺墖娈碉紱宸叉浛鎹㈡棫涔?${result.deleted} 鏈€俙);
             } else {
-                setBookshelfStatus(`自动记忆书已生成：${result.books} 本，${result.chunks} 个摘要片段；配置向量模型后点击书籍“开始向量化”。`);
+                setBookshelfStatus(`鑷姩璁板繂涔﹀凡鐢熸垚锛?{result.books} 鏈紝${result.chunks} 涓憳瑕佺墖娈碉紱閰嶇疆鍚戦噺妯″瀷鍚庣偣鍑讳功绫嶁€滃紑濮嬪悜閲忓寲鈥濄€俙);
             }
             toastr?.success?.('Memory books generated.', 'AI Worldbook Router');
             renderBookshelfPanel();
         } catch (error) {
-            setBookshelfStatus(`生成记忆书失败：${error?.message || error}`);
+            setBookshelfStatus(`鐢熸垚璁板繂涔﹀け璐ワ細${error?.message || error}`);
             toastr?.error?.('Operation failed.', 'AI Worldbook Router');
             renderBookshelfPanel();
         }
@@ -9395,14 +9420,14 @@ function bindMemoryPanelActions() {
 
     $(document).off('click.aiWbrBookshelfMemoryReset', '#ai_wbr_bookshelf_reset_memory_vectors').on('click.aiWbrBookshelfMemoryReset', '#ai_wbr_bookshelf_reset_memory_vectors', async (event) => {
         event.preventDefault();
-        if (!confirm('确定重置当前聊天的图谱记忆向量索引？不会删除图谱本身。')) return;
+        if (!confirm('纭畾閲嶇疆褰撳墠鑱婂ぉ鐨勫浘璋辫蹇嗗悜閲忕储寮曪紵涓嶄細鍒犻櫎鍥捐氨鏈韩銆?)) return;
         try {
             await bookshelfDeleteMemoryVectorsForChat(getCurrentChatMemoryKey());
-            setBookshelfStatus('当前聊天的图谱记忆向量已重置。');
+            setBookshelfStatus('褰撳墠鑱婂ぉ鐨勫浘璋辫蹇嗗悜閲忓凡閲嶇疆銆?);
             bookshelfLastTestResults = [];
             renderBookshelfPanel();
         } catch (error) {
-            setBookshelfStatus(`图谱向量重置失败：${error?.message || error}`);
+            setBookshelfStatus(`鍥捐氨鍚戦噺閲嶇疆澶辫触锛?{error?.message || error}`);
             toastr?.error?.('Operation failed.', 'AI Worldbook Router');
         }
     });
@@ -9488,13 +9513,13 @@ function bindMemoryPanelActions() {
             try {
                 await rebuildBookshelfBookVectors(bookId);
             } catch (error) {
-                setBookshelfStatus(`向量化失败：${error?.message || error}`);
+                setBookshelfStatus(`鍚戦噺鍖栧け璐ワ細${error?.message || error}`);
             }
         })
         .on('click.aiWbrBookshelf', '.ai-wbr-bookshelf-clear-vector', async function (event) {
             event.preventDefault();
             const bookId = getBookshelfActionBookId(this);
-            if (!bookId || !confirm('确定重置这本书的所有向量并回到待向量化？')) return;
+            if (!bookId || !confirm('纭畾閲嶇疆杩欐湰涔︾殑鎵€鏈夊悜閲忓苟鍥炲埌寰呭悜閲忓寲锛?)) return;
             await clearBookshelfBookVectors(bookId);
         })
         .on('click.aiWbrBookshelf', '.ai-wbr-bookshelf-delete', async function (event) {
@@ -9595,7 +9620,7 @@ function bindMemoryPanelActions() {
                     target: targetId,
                     type: 'RELATED',
                     weight: 0.7,
-                    description: '手动创建的记忆关系',
+                    description: '鎵嬪姩鍒涘缓鐨勮蹇嗗叧绯?,
                 }, new Set(graph.nodes.map(node => node.id)), graph.links.length);
                 if (link) {
                     graph.links.push(link);
@@ -9638,7 +9663,7 @@ function bindMemoryPanelActions() {
             const id = String($(this).closest('[data-memory-review-id]').data('memoryReviewId') || '');
             const result = acceptMemoryReviewItem(id);
             if (result) {
-                setMemoryStatus(`已确认：${result.graph.nodes.length} 节点 / ${result.graph.links.length} 关系`);
+                setMemoryStatus(`宸茬‘璁わ細${result.graph.nodes.length} 鑺傜偣 / ${result.graph.links.length} 鍏崇郴`);
                 toastr?.success?.('Done.', 'AI Worldbook Router');
             }
             renderMemoryPanel();
@@ -9646,7 +9671,7 @@ function bindMemoryPanelActions() {
         .on('click', '.ai-wbr-memory-review-reject', function () {
             const id = String($(this).closest('[data-memory-review-id]').data('memoryReviewId') || '');
             rejectMemoryReviewItem(id);
-            setMemoryStatus('已忽略 1 条待确认更新');
+            setMemoryStatus('宸插拷鐣?1 鏉″緟纭鏇存柊');
             renderMemoryPanel();
         })
         .on('input change', '[data-memory-state-field]', function () {
@@ -9654,7 +9679,7 @@ function bindMemoryPanelActions() {
             const field = String($(this).data('memoryStateField'));
             const value = String($(this).val() || '').trim();
             if (field === 'active_topics' || field === 'open_questions') {
-                graph.state[field] = uniqueStrings(value.split(/[,\n，、]+/u)).slice(0, 12);
+                graph.state[field] = uniqueStrings(value.split(/[,\n锛屻€乚+/u)).slice(0, 12);
             } else if (field.startsWith('custom_')) {
                 graph.state.custom_values = graph.state.custom_values && typeof graph.state.custom_values === 'object'
                     ? graph.state.custom_values
@@ -9673,13 +9698,13 @@ function bindMemoryPanelActions() {
             const label = String($('#ai_wbr_memory_new_state_label').val() || '').trim();
             const instruction = String($('#ai_wbr_memory_new_state_instruction').val() || '').trim();
             if (!label) {
-                toastr.warning('请先填写字段名', '世界书读取');
+                toastr.warning('璇峰厛濉啓瀛楁鍚?, '涓栫晫涔﹁鍙?);
                 return;
             }
             const definition = normalizeMemoryStateDefinition({ label, instruction }, getCustomMemoryStateDefinitions(graph).length);
             graph.stateDefinitions = getCustomMemoryStateDefinitions(graph);
             if (graph.stateDefinitions.some(item => item.key === definition.key || item.label === definition.label)) {
-                toastr.warning('已存在同名或同 key 的状态字段', '世界书读取');
+                toastr.warning('宸插瓨鍦ㄥ悓鍚嶆垨鍚?key 鐨勭姸鎬佸瓧娈?, '涓栫晫涔﹁鍙?);
                 return;
             }
             graph.stateDefinitions.push(definition);
@@ -9712,9 +9737,9 @@ function bindMemoryPanelActions() {
             const field = String($(this).data('memoryNodeField'));
             const value = String($(this).val() || '');
             if (field === 'tags') {
-                node.tags = uniqueStrings(value.split(/[,\n，、]+/u));
+                node.tags = uniqueStrings(value.split(/[,\n锛屻€乚+/u));
             } else if (field === 'keys') {
-                node.keys = uniqueStrings(value.split(/[,\n，、]+/u));
+                node.keys = uniqueStrings(value.split(/[,\n锛屻€乚+/u));
             } else if (field === 'title' || field === 'type' || field === 'content') {
                 node[field] = value;
             } else if (field === 'summary' || field === 'location' || field === 'timeSpan') {
@@ -9777,7 +9802,7 @@ function bindMemoryPanelActions() {
             link.updatedAt = new Date().toISOString();
             graph.updatedAt = link.updatedAt;
             saveMemoryGraph(graph);
-            toastr.success('关系已保存', '世界书读取');
+            toastr.success('鍏崇郴宸蹭繚瀛?, '涓栫晫涔﹁鍙?);
         })
         .on('click', '.ai-wbr-memory-edge-delete', function () {
             const graph = getMemoryGraph();
@@ -9796,9 +9821,9 @@ function bindMemoryPanelActions() {
             const field = String($(this).data('memoryEditorField'));
             const value = String($(this).val() || '');
             if (field === 'tags') {
-                node.tags = uniqueStrings(value.split(/[,\n，、]+/u));
+                node.tags = uniqueStrings(value.split(/[,\n锛屻€乚+/u));
             } else if (field === 'keys') {
-                node.keys = uniqueStrings(value.split(/[,\n，、]+/u));
+                node.keys = uniqueStrings(value.split(/[,\n锛屻€乚+/u));
             } else {
                 node[field] = value;
             }
@@ -9815,7 +9840,7 @@ function bindMemoryPanelActions() {
             node.updatedAt = new Date().toISOString();
             graph.updatedAt = node.updatedAt;
             saveMemoryGraph(graph);
-            toastr.success('节点已保存', '世界书读取');
+            toastr.success('鑺傜偣宸蹭繚瀛?, '涓栫晫涔﹁鍙?);
         })
         .on('click', '.ai-wbr-memory-editor-set-link-source', function () {
             if (!memoryGraphSelectedNodeId) {
@@ -9844,7 +9869,7 @@ function bindMemoryPanelActions() {
                 target: targetId,
                 type: 'RELATED',
                 weight: 0.7,
-                description: '手动创建的记忆关系',
+                description: '鎵嬪姩鍒涘缓鐨勮蹇嗗叧绯?,
             }, new Set(graph.nodes.map(node => node.id)), graph.links.length);
             if (link && !graph.links.some(item => item.source === link.source && item.target === link.target && item.type === link.type)) {
                 graph.links.push(link);
@@ -10146,7 +10171,7 @@ function renderRouterModelOptions() {
     }
 
     select.empty();
-    select.append('<option value="">未选择</option>');
+    select.append('<option value="">鏈€夋嫨</option>');
     for (const modelId of settings.routerModels || []) {
         select.append($('<option></option>', {
             value: modelId,
@@ -10158,7 +10183,7 @@ function renderRouterModelOptions() {
     if (settings.routerModel && !settings.routerModels.includes(settings.routerModel)) {
         select.append($('<option></option>', {
             value: settings.routerModel,
-            text: `${settings.routerModel} (手动)`,
+            text: `${settings.routerModel} (鎵嬪姩)`,
             selected: true,
         }));
     }
@@ -10170,16 +10195,16 @@ async function fetchRouterModels() {
     const apiKey = String(settings.routerApiKey || '').trim();
 
     if (!apiUrl) {
-        toastr.warning('请先填写独立路由模型的 API URL。', '世界书读取');
+        toastr.warning('璇峰厛濉啓鐙珛璺敱妯″瀷鐨?API URL銆?, '涓栫晫涔﹁鍙?);
         return;
     }
 
     if (!apiKey) {
-        toastr.warning('请先填写独立路由模型的 API Key。', '世界书读取');
+        toastr.warning('璇峰厛濉啓鐙珛璺敱妯″瀷鐨?API Key銆?, '涓栫晫涔﹁鍙?);
         return;
     }
 
-    setRouterStatus('正在拉取模型...');
+    setRouterStatus('姝ｅ湪鎷夊彇妯″瀷...');
 
     try {
         const response = await fetch('/api/backends/chat-completions/status', {
@@ -10199,7 +10224,7 @@ async function fetchRouterModels() {
             : [];
 
         if (!response.ok || !models.length) {
-            throw new Error(data?.error?.message || data?.message || '没有拿到可用模型');
+            throw new Error(data?.error?.message || data?.message || '娌℃湁鎷垮埌鍙敤妯″瀷');
         }
 
         settings.routerModels = models;
@@ -10210,12 +10235,12 @@ async function fetchRouterModels() {
         Object.assign(extension_settings[MODULE_NAME], settings);
         saveSettingsDebounced();
         renderRouterModelOptions();
-        setRouterStatus(`已拉取 ${models.length} 个模型`);
-        toastr.success(`已拉取 ${models.length} 个模型`, '世界书读取');
+        setRouterStatus(`宸叉媺鍙?${models.length} 涓ā鍨媊);
+        toastr.success(`宸叉媺鍙?${models.length} 涓ā鍨媊, '涓栫晫涔﹁鍙?);
     } catch (error) {
-        setRouterStatus(`拉取失败：${error.message || error}`);
+        setRouterStatus(`鎷夊彇澶辫触锛?{error.message || error}`);
         console.error(`${LOG_PREFIX} Failed to fetch router models`, error);
-        toastr.error(String(error.message || error), '世界书读取');
+        toastr.error(String(error.message || error), '涓栫晫涔﹁鍙?);
     }
 }
 
@@ -10340,14 +10365,14 @@ function renderTitleBlocklistEditor() {
     container.empty();
 
     if (!rules.length) {
-        container.append('<div class="ai-wbr-token-empty">暂无拦截标题</div>');
+        container.append('<div class="ai-wbr-token-empty">鏆傛棤鎷︽埅鏍囬</div>');
         return;
     }
 
     for (const rule of rules) {
         const item = $('<div class="ai-wbr-token-item"></div>');
         item.append($('<span class="ai-wbr-token-label"></span>').text(rule));
-        item.append($('<button class="ai-wbr-token-remove" type="button" aria-label="删除">×</button>')
+        item.append($('<button class="ai-wbr-token-remove" type="button" aria-label="鍒犻櫎">脳</button>')
             .on('click', () => {
                 const nextRules = parseBlockRules(settings.titleBlocklist).filter(entry => entry !== rule);
                 saveSetting('titleBlocklist', nextRules.join('\n'));
@@ -10367,7 +10392,7 @@ function renderActiveWorldbookSelector(context = getContext()) {
     container.empty();
 
     if (!bindings.length) {
-        container.append('<div class="ai-wbr-token-empty">当前聊天下暂无可识别的生效世界书</div>');
+        container.append('<div class="ai-wbr-token-empty">褰撳墠鑱婂ぉ涓嬫殏鏃犲彲璇嗗埆鐨勭敓鏁堜笘鐣屼功</div>');
         return;
     }
 
@@ -10459,22 +10484,22 @@ function createFloatingMemoryWindow() {
     $('#ai_wbr_floating_window').remove();
     $('#ai_wbr_emergency_fab').remove();
 
-    const fab = $('<div id="ai_wbr_fab" class="ai-wbr-fab" title="打开记忆图谱"><i class="fa-solid fa-diagram-project"></i></div>');
-    // 注意：局部变量命名为 win，避免遮蔽全局 window 对象（拖拽时需要用 window.innerWidth/innerHeight 取视口尺寸）
+    const fab = $('<div id="ai_wbr_fab" class="ai-wbr-fab" title="鎵撳紑璁板繂鍥捐氨"><i class="fa-solid fa-diagram-project"></i></div>');
+    // 娉ㄦ剰锛氬眬閮ㄥ彉閲忓懡鍚嶄负 win锛岄伩鍏嶉伄钄藉叏灞€ window 瀵硅薄锛堟嫋鎷芥椂闇€瑕佺敤 window.innerWidth/innerHeight 鍙栬鍙ｅ昂瀵革級
     const win = $('<div id="ai_wbr_floating_window" class="ai-wbr-floating-window">' +
         '<div class="ai-wbr-floating-header" id="ai_wbr_floating_header">' +
-            '<div class="ai-wbr-floating-title"><i class="fa-solid fa-diagram-project"></i> 记忆图谱 <span id="ai_wbr_console_status" class="ai-wbr-console-status">等待生成</span></div>' +
+            '<div class="ai-wbr-floating-title"><i class="fa-solid fa-diagram-project"></i> 璁板繂鍥捐氨 <span id="ai_wbr_console_status" class="ai-wbr-console-status">绛夊緟鐢熸垚</span></div>' +
             '<div class="ai-wbr-floating-close" id="ai_wbr_floating_close"><i class="fa-solid fa-times"></i></div>' +
         '</div>' +
         '<div class="ai-wbr-console-tabs" id="ai_wbr_console_tabs">' +
-            '<button class="ai-wbr-console-tab active" type="button" data-tab="overview">总览</button>' +
-            '<button class="ai-wbr-console-tab" type="button" data-tab="routes">路由</button>' +
-            '<button class="ai-wbr-console-tab" type="button" data-tab="injection">注入</button>' +
-            '<button class="ai-wbr-console-tab" type="button" data-tab="memory">记忆</button>' +
-            '<button class="ai-wbr-console-tab" type="button" data-tab="graph">图谱</button>' +
-            '<button class="ai-wbr-console-tab" type="button" data-tab="bookshelf">书架</button>' +
-            '<button class="ai-wbr-console-tab" type="button" data-tab="debug">调试</button>' +
-            '<button class="ai-wbr-console-tab" type="button" data-tab="settings">设置</button>' +
+            '<button class="ai-wbr-console-tab active" type="button" data-tab="overview">鎬昏</button>' +
+            '<button class="ai-wbr-console-tab" type="button" data-tab="routes">璺敱</button>' +
+            '<button class="ai-wbr-console-tab" type="button" data-tab="injection">娉ㄥ叆</button>' +
+            '<button class="ai-wbr-console-tab" type="button" data-tab="memory">璁板繂</button>' +
+            '<button class="ai-wbr-console-tab" type="button" data-tab="graph">鍥捐氨</button>' +
+            '<button class="ai-wbr-console-tab" type="button" data-tab="bookshelf">涔︽灦</button>' +
+            '<button class="ai-wbr-console-tab" type="button" data-tab="debug">璋冭瘯</button>' +
+            '<button class="ai-wbr-console-tab" type="button" data-tab="settings">璁剧疆</button>' +
         '</div>' +
         '<div class="ai-wbr-floating-content ai-wbr-console-body" id="ai_wbr_console_body"></div>' +
     '</div>');
@@ -10484,8 +10509,7 @@ function createFloatingMemoryWindow() {
     updateFloatingButtonVisibility();
     clampFloatingFabToViewport();
 
-    // 切换悬浮窗显隐
-    function clearForcedWindowStyles() {
+    // 鍒囨崲鎮诞绐楁樉闅?    function clearForcedWindowStyles() {
         const node = win?.[0];
         if (!node) return;
         [
@@ -10586,7 +10610,7 @@ function createFloatingMemoryWindow() {
         node.style.setProperty('transform', 'none', 'important');
         clampWindowToViewport(mode);
         renderStandaloneConsole(tabId || 'overview');
-        // 动画结束后再渲染一次，确保记忆 SVG 取到动画终态的准确尺寸
+        // 鍔ㄧ敾缁撴潫鍚庡啀娓叉煋涓€娆★紝纭繚璁板繂 SVG 鍙栧埌鍔ㄧ敾缁堟€佺殑鍑嗙‘灏哄
         setTimeout(() => {
             clampWindowToViewport(node.dataset.aiWbrDisplayMode || mode);
             renderStandaloneConsole(tabId || getStandaloneTabId());
@@ -10616,8 +10640,7 @@ function createFloatingMemoryWindow() {
         setTimeout(() => {
             win.removeClass('closing');
             clearForcedWindowStyles();
-        }, 220); // 与 CSS 关闭动画时长一致
-    }
+        }, 220); // 涓?CSS 鍏抽棴鍔ㄧ敾鏃堕暱涓€鑷?    }
 
     function toggleWindow(defaultTab = getStandaloneTabId()) {
         const isOpen = win.hasClass('open');
@@ -10633,7 +10656,7 @@ function createFloatingMemoryWindow() {
     };
     globalThis.aiWbrCloseConsole = closeWindow;
 
-    // FAB 拖拽（区分点击与拖拽：移动超过 4px 视为拖拽，松手不触发开窗）
+    // FAB 鎷栨嫿锛堝尯鍒嗙偣鍑讳笌鎷栨嫿锛氱Щ鍔ㄨ秴杩?4px 瑙嗕负鎷栨嫿锛屾澗鎵嬩笉瑙﹀彂寮€绐楋級
     let fabDragging = false;
     let fabMoved = false;
     let fabStartX = 0, fabStartY = 0, fabInitialLeft = 0, fabInitialTop = 0;
@@ -10700,14 +10723,12 @@ function createFloatingMemoryWindow() {
     }
 
     fab.on('pointerdown', (e) => {
-        if (e.button !== undefined && e.button !== 0) return; // 仅左键
-        fabDragging = true;
+        if (e.button !== undefined && e.button !== 0) return; // 浠呭乏閿?        fabDragging = true;
         fabMoved = false;
         fabPointerId = e.pointerId;
         fabStartX = e.clientX;
         fabStartY = e.clientY;
-        // 把 right/bottom 定位转换为 left/top，便于拖拽
-        const rect = fab[0].getBoundingClientRect();
+        // 鎶?right/bottom 瀹氫綅杞崲涓?left/top锛屼究浜庢嫋鎷?        const rect = fab[0].getBoundingClientRect();
         fabInitialLeft = rect.left;
         fabInitialTop = rect.top;
         fab.css({ right: 'auto', bottom: 'auto', left: fabInitialLeft + 'px', top: fabInitialTop + 'px' });
@@ -10719,8 +10740,7 @@ function createFloatingMemoryWindow() {
         if (!fabDragging) return;
         const dx = e.clientX - fabStartX;
         const dy = e.clientY - fabStartY;
-        if (!fabMoved && Math.hypot(dx, dy) < 4) return; // 阈值内仍视为点击
-        fabMoved = true;
+        if (!fabMoved && Math.hypot(dx, dy) < 4) return; // 闃堝€煎唴浠嶈涓虹偣鍑?        fabMoved = true;
         const rect = fab[0].getBoundingClientRect();
         const maxLeft = Math.max(0, window.innerWidth - rect.width);
         const maxTop = Math.max(0, window.innerHeight - rect.height);
@@ -10745,8 +10765,7 @@ function createFloatingMemoryWindow() {
             return;
         }
         if (fabMoved) {
-            // 拖拽结束，抑制本次开窗
-            fabMoved = false;
+            // 鎷栨嫿缁撴潫锛屾姂鍒舵湰娆″紑绐?            fabMoved = false;
             e.preventDefault();
             e.stopPropagation();
             return;
@@ -10782,7 +10801,7 @@ function createFloatingMemoryWindow() {
         renderStandaloneConsole(String($(this).data('tab') || 'overview'));
     });
 
-    // ESC 关闭
+    // ESC 鍏抽棴
     $(document).on('keydown', (event) => {
         if (event.key === 'Escape' && memoryGraphFullscreenActive) {
             setMemoryGraphFullscreen(false);
@@ -10793,21 +10812,20 @@ function createFloatingMemoryWindow() {
         }
     });
 
-    // 拖拽逻辑（仅标题栏触发）
+    // 鎷栨嫿閫昏緫锛堜粎鏍囬鏍忚Е鍙戯級
     let isDragging = false;
     let startX, startY, initialLeft, initialTop;
 
     const header = $('#ai_wbr_floating_header');
 
     header.on('pointerdown', (e) => {
-        if ($(e.target).closest('#ai_wbr_floating_close').length) return; // 排除关闭按钮
+        if ($(e.target).closest('#ai_wbr_floating_close').length) return; // 鎺掗櫎鍏抽棴鎸夐挳
         if (e.button !== undefined && e.button !== 0) return;
         isDragging = true;
         startX = e.clientX;
         startY = e.clientY;
 
-        // 把 bottom/right 定位转换为 left/top，便于拖拽
-        const rect = win[0].getBoundingClientRect();
+        // 鎶?bottom/right 瀹氫綅杞崲涓?left/top锛屼究浜庢嫋鎷?        const rect = win[0].getBoundingClientRect();
         initialLeft = rect.left;
         initialTop = rect.top;
 
@@ -10822,7 +10840,7 @@ function createFloatingMemoryWindow() {
         win[0].style.removeProperty('right');
         win[0].style.removeProperty('bottom');
         header[0].setPointerCapture?.(e.pointerId);
-        $('body').css('user-select', 'none'); // 拖拽时禁止选中文本
+        $('body').css('user-select', 'none'); // 鎷栨嫿鏃剁姝㈤€変腑鏂囨湰
         e.preventDefault();
     });
 
@@ -10835,7 +10853,7 @@ function createFloatingMemoryWindow() {
         let newLeft = initialLeft + dx;
         let newTop = initialTop + dy;
 
-        // 限制在视口范围内（用全局 window.innerWidth/innerHeight 取视口尺寸）
+        // 闄愬埗鍦ㄨ鍙ｈ寖鍥村唴锛堢敤鍏ㄥ眬 window.innerWidth/innerHeight 鍙栬鍙ｅ昂瀵革級
         const rect = win[0].getBoundingClientRect();
         const maxLeft = Math.max(0, window.innerWidth - rect.width);
         const maxTop = Math.max(0, window.innerHeight - rect.height);
@@ -10933,23 +10951,23 @@ async function loadSettingsHtml() {
             if (html.includes('ai_worldbook_router_settings')) {
                 return html;
             }
-            errors.push(`settings.html 内容不完整：${settingsUrl.href}`);
+            errors.push(`settings.html 鍐呭涓嶅畬鏁达細${settingsUrl.href}`);
         } else {
-            errors.push(`settings.html 请求失败 ${response.status}：${settingsUrl.href}`);
+            errors.push(`settings.html 璇锋眰澶辫触 ${response.status}锛?{settingsUrl.href}`);
         }
     } catch (error) {
-        errors.push(`按当前脚本目录读取 settings.html 失败：${error?.message || error}`);
+        errors.push(`鎸夊綋鍓嶈剼鏈洰褰曡鍙?settings.html 澶辫触锛?{error?.message || error}`);
     }
 
     if (typeof renderExtensionTemplateAsync === 'function') {
         try {
             return await renderExtensionTemplateAsync('third-party/ai-worldbook-router', 'settings');
         } catch (error) {
-            errors.push(`兼容旧目录模板读取失败：${error?.message || error}`);
+            errors.push(`鍏煎鏃х洰褰曟ā鏉胯鍙栧け璐ワ細${error?.message || error}`);
         }
     }
 
-    throw new Error(`世界书读取设置界面加载失败：${errors.join('；') || '未知错误'}`);
+    throw new Error(`涓栫晫涔﹁鍙栬缃晫闈㈠姞杞藉け璐ワ細${errors.join('锛?) || '鏈煡閿欒'}`);
 }
 
 async function addSettingsUi() {
@@ -10994,7 +11012,7 @@ async function addSettingsUi() {
         event.preventDefault();
         await fetchRouterModels();
     });
-    $('#ai_wbr_router_status').text(settings.routerStatus || '未连接');
+    $('#ai_wbr_router_status').text(settings.routerStatus || '鏈繛鎺?);
 
     createFloatingMemoryWindow();
 
@@ -11018,7 +11036,7 @@ async function bootAiWorldbookRouter() {
         try {
             await addSettingsUi();
         } catch (settingsError) {
-            lastRun.error = `设置面板加载失败，但独立控制台已启用：${settingsError?.message || settingsError}`;
+            lastRun.error = `璁剧疆闈㈡澘鍔犺浇澶辫触锛屼絾鐙珛鎺у埗鍙板凡鍚敤锛?{settingsError?.message || settingsError}`;
             console.error(`${LOG_PREFIX} Settings UI failed, standalone console remains available`, settingsError);
             renderStandaloneConsole('overview');
         }
@@ -11071,7 +11089,7 @@ async function bootAiWorldbookRouter() {
             ensureSettings();
             createEmergencyEntryNative();
             createFloatingMemoryWindow();
-            lastRun.error = `初始化失败：${error?.message || error}`;
+            lastRun.error = `鍒濆鍖栧け璐ワ細${error?.message || error}`;
             renderStandaloneConsole('overview');
         } catch (fallbackError) {
             console.error(`${LOG_PREFIX} Failed to create fallback console`, fallbackError);
