@@ -266,6 +266,9 @@ let memoryRuleDrawerOpen = false;
 let memoryRuleSaveTimer = null;
 let bookshelfDbPromise = null;
 let selectedBookshelfBookId = '';
+let bookshelfVirtualBooks = new Map();
+let bookshelfLongPressTimer = null;
+let bookshelfSuppressNextBookClick = false;
 let bookshelfLastTestResults = [];
 let bookshelfLastStatus = '';
 let bookshelfLocalPipelinePromise = null;
@@ -7975,35 +7978,20 @@ function createBookshelfStandaloneFold() {
             <div id="ai_wbr_bookshelf_panel" class="ai-wbr-memory-fold-body ai-wbr-bookshelf-panel">
                 <div class="ai-wbr-bookshelf-app">
                     <div class="ai-wbr-bookshelf-top">
-                        <div class="ai-wbr-bookshelf-title">书架</div>
-                        <button id="ai_wbr_bookshelf_open_settings" class="ai-wbr-bookshelf-more" type="button" title="书架设置">•••</button>
-                    </div>
-                    <div class="ai-wbr-bookshelf-tabs ai-wbr-bookshelf-library-tabs">
-                        <span class="ai-wbr-bookshelf-read-badge">今日已读0分钟</span>
-                        <div class="ai-wbr-bookshelf-library-actions">
-                            <button id="ai_wbr_bookshelf_history_open" class="ai-wbr-bookshelf-link" type="button">浏览历史</button>
-                            <span class="ai-wbr-bookshelf-tab-divider"></span>
-                            <button id="ai_wbr_bookshelf_import" class="ai-wbr-bookshelf-link" type="button">导入</button>
+                        <div>
+                            <div class="ai-wbr-bookshelf-title">书架</div>
+                            <div class="ai-wbr-bookshelf-subtitle">点击阅读，长按管理。</div>
                         </div>
-                    </div>
-                    <div class="ai-wbr-bookshelf-mini-actions">
-                        <button id="ai_wbr_bookshelf_build_memory_books_quick" class="ai-wbr-bookshelf-pill-action" type="button">刷新记忆书</button>
-                        <button id="ai_wbr_bookshelf_test_open" class="ai-wbr-bookshelf-pill-action" type="button">召回测试</button>
+                        <div class="ai-wbr-bookshelf-top-actions">
+                            <button id="ai_wbr_bookshelf_import" class="ai-wbr-bookshelf-import-button" type="button">＋ 导入TXT</button>
+                            <button id="ai_wbr_bookshelf_open_settings" class="ai-wbr-bookshelf-more" type="button" title="书架设置">•••</button>
+                        </div>
                     </div>
 
                     <input id="ai_wbr_bookshelf_file" type="file" accept=".txt,text/plain" multiple hidden />
-                    <div id="ai_wbr_bookshelf_status" class="ai-wbr-bookshelf-status">书架待命。导入 TXT 后点击书籍向量化。</div>
+                    <div id="ai_wbr_bookshelf_status" class="ai-wbr-bookshelf-status">书架待命。点击书籍阅读，长按弹出书籍设置。</div>
                     <div id="ai_wbr_bookshelf_books" class="ai-wbr-bookshelf-books"></div>
                     <div id="ai_wbr_bookshelf_detail" class="ai-wbr-bookshelf-detail"></div>
-
-                    <div class="ai-wbr-bookshelf-test" id="ai_wbr_bookshelf_test_panel">
-                        <div class="ai-wbr-memory-subtitle"><b>召回测试</b></div>
-                        <textarea id="ai_wbr_bookshelf_test_query" class="text_pole" rows="3" placeholder="输入一句当前剧情问题，测试向量书架会召回哪些片段。"></textarea>
-                        <div class="ai-wbr-bookshelf-actions">
-                            <button id="ai_wbr_bookshelf_test" class="menu_button" type="button">测试召回</button>
-                        </div>
-                        <div id="ai_wbr_bookshelf_results" class="ai-wbr-bookshelf-results"></div>
-                    </div>
 
                     <div class="ai-wbr-bookshelf-drawer-backdrop" id="ai_wbr_bookshelf_settings_backdrop"></div>
                     <aside class="ai-wbr-bookshelf-settings-drawer" id="ai_wbr_bookshelf_settings_drawer" aria-hidden="true">
@@ -8064,12 +8052,32 @@ function createBookshelfStandaloneFold() {
                             <input id="ai_wbr_bookshelf_min_score" class="text_pole" type="number" min="0" max="1" step="0.05" />
                         </div>
                         <div class="ai-wbr-bookshelf-actions">
+                            <button id="ai_wbr_bookshelf_test_open" class="menu_button" type="button">召回测试</button>
                             <button id="ai_wbr_bookshelf_test_provider" class="menu_button" type="button">测试向量模型</button>
                             <button id="ai_wbr_bookshelf_load_local" class="menu_button" type="button">下载/加载本地模型</button>
                             <button id="ai_wbr_bookshelf_build_memory_books" class="menu_button" type="button">刷新当前聊天记忆书</button>
                             <button id="ai_wbr_bookshelf_vectorize_memory" class="menu_button" type="button">同步图谱向量</button>
                             <button id="ai_wbr_bookshelf_reset_memory_vectors" class="menu_button" type="button">重置图谱向量</button>
                         </div>
+                        <div class="ai-wbr-bookshelf-test" id="ai_wbr_bookshelf_test_panel">
+                            <div class="ai-wbr-memory-subtitle"><b>召回测试</b></div>
+                            <textarea id="ai_wbr_bookshelf_test_query" class="text_pole" rows="3" placeholder="输入一句当前剧情问题，测试向量书架会召回哪些片段。"></textarea>
+                            <div class="ai-wbr-bookshelf-actions">
+                                <button id="ai_wbr_bookshelf_test" class="menu_button" type="button">测试召回</button>
+                            </div>
+                            <div id="ai_wbr_bookshelf_results" class="ai-wbr-bookshelf-results"></div>
+                        </div>
+                    </aside>
+                    <div class="ai-wbr-bookshelf-book-action-backdrop" id="ai_wbr_bookshelf_book_actions_backdrop"></div>
+                    <aside class="ai-wbr-bookshelf-book-action-sheet" id="ai_wbr_bookshelf_book_actions_sheet" aria-hidden="true">
+                        <div class="ai-wbr-bookshelf-book-action-head">
+                            <div>
+                                <b id="ai_wbr_bookshelf_book_actions_title">书籍设置</b>
+                                <small id="ai_wbr_bookshelf_book_actions_meta">长按书籍打开</small>
+                            </div>
+                            <button id="ai_wbr_bookshelf_close_book_actions" class="menu_button" type="button">关闭</button>
+                        </div>
+                        <div id="ai_wbr_bookshelf_book_actions_body" class="ai-wbr-bookshelf-book-action-body"></div>
                     </aside>
                 </div>
             </div>
@@ -9726,6 +9734,7 @@ function getBookshelfTypeLabel(type) {
     return ({
         character: '人物档案',
         world: '世界观',
+        worldbook: '世界书',
         plot: '剧情记录',
         rule: '规则设定',
         memory: '自动记忆书',
@@ -9756,6 +9765,7 @@ function getBookshelfBindingLabels(book) {
 
 function getBookshelfLibraryBadge(book) {
     if (!book) return '资料';
+    if (book.virtualSource === 'worldbook') return '世界书';
     if (book.enabled === false) return '停用';
     if (book.autoGenerated && book.autoSource === 'memory-graph') return '连载';
     if (book.status === 'failed' || book.status === 'partial_failed') return '异常';
@@ -9765,6 +9775,9 @@ function getBookshelfLibraryBadge(book) {
 }
 
 function getBookshelfUnreadLabel(book) {
+    if (book?.virtualSource === 'worldbook') {
+        return `${book.chunkCount || 0}条设定 · ${book.sourceLabel || '世界书'}`;
+    }
     if (book?.autoGenerated && book?.autoSource === 'memory-graph') {
         const chapterCount = Array.isArray(book.chapters) ? book.chapters.length : 0;
         return `${chapterCount || 1}章记忆 · ${book.chunkCount || 0}节`;
@@ -9774,14 +9787,16 @@ function getBookshelfUnreadLabel(book) {
 
 function createBookshelfBookCard(book, selected) {
     const isAutoMemoryBook = book?.autoGenerated && book?.autoSource === 'memory-graph';
+    const isWorldbook = book?.virtualSource === 'worldbook';
     const modeLabel = book.embeddingMode
         ? `${book.embeddingMode}${book.embeddingModel ? ` / ${book.embeddingModel}` : ''}${book.embeddingDim ? ` / ${book.embeddingDim}维` : ''}`
-        : '待向量化';
+        : (isWorldbook ? (book.enabled === false ? '已停用世界书' : '当前世界书') : '待向量化');
     const badge = getBookshelfLibraryBadge(book);
     const unreadLabel = getBookshelfUnreadLabel(book);
     return $('<div class="ai-wbr-bookshelf-book"></div>')
         .toggleClass('selected', !!selected)
         .toggleClass('ai-wbr-bookshelf-memory-book', !!isAutoMemoryBook)
+        .toggleClass('ai-wbr-bookshelf-worldbook', !!isWorldbook)
         .attr('data-bookshelf-book-id', book.id)
         .append(
             $('<button class="ai-wbr-bookshelf-cover ai-wbr-bookshelf-select" type="button"></button>')
@@ -9793,6 +9808,122 @@ function createBookshelfBookCard(book, selected) {
             $('<div class="ai-wbr-bookshelf-book-meta"></div>').text(unreadLabel),
             $('<div class="ai-wbr-bookshelf-book-provider"></div>').text(modeLabel),
         );
+}
+
+async function buildBookshelfWorldbookLibrary(context = getContext()) {
+    const bindings = getActiveWorldbookBindings(context);
+    if (!bindings.length) return [];
+    const entries = await getWorldbookEntries(context).catch(() => []);
+    const entriesByWorld = new Map();
+    for (const entry of entries || []) {
+        const worldName = String(entry.world || '').trim();
+        if (!worldName) continue;
+        if (!entriesByWorld.has(worldName)) entriesByWorld.set(worldName, []);
+        entriesByWorld.get(worldName).push(entry);
+    }
+    return bindings
+        .map((binding, index) => {
+            const worldName = String(binding.worldName || '').trim();
+            if (!worldName) return null;
+            const worldEntries = entriesByWorld.get(worldName) || [];
+            const id = `worldbook_${hashString(`${binding.source}:${worldName}`)}`;
+            const enabled = getWorldSelectionState(worldName);
+            const book = {
+                id,
+                title: worldName,
+                fileName: worldName,
+                type: 'worldbook',
+                virtualSource: 'worldbook',
+                worldName,
+                sourceLabel: binding.source || '世界书',
+                enabled,
+                status: worldEntries.length ? 'ready' : 'empty',
+                chunkCount: worldEntries.length,
+                vectorizedCount: worldEntries.length,
+                sourceSummary: `${binding.source || '世界书'} · ${enabled ? '已启用' : '已停用'} · ${worldEntries.length} 条设定`,
+                updatedAt: `worldbook_${String(9999 - index).padStart(4, '0')}`,
+            };
+            const chunks = worldEntries.map((entry, entryIndex) => ({
+                id: `${id}:entry:${entry.uid || entryIndex}`,
+                bookId: id,
+                index: entryIndex,
+                order: entryIndex + 1,
+                title: entry.comment || entry.keys?.primary?.[0] || `设定 ${entryIndex + 1}`,
+                text: entry.content || '',
+                chapterTitle: entry.source || binding.source || '世界书',
+                enabled: !entry.disable && enabled,
+                vectorStatus: !entry.disable && enabled ? 'ready' : 'disabled',
+            }));
+            return { book, chunks };
+        })
+        .filter(Boolean);
+}
+
+async function getBookshelfDisplayBook(bookId) {
+    const id = String(bookId || '');
+    const virtual = bookshelfVirtualBooks.get(id);
+    if (virtual?.book) return virtual.book;
+    return await bookshelfGet('books', id);
+}
+
+function closeBookshelfBookActionSheet(panel = $('#ai_wbr_bookshelf_panel').last()) {
+    panel.find('#ai_wbr_bookshelf_book_actions_sheet').removeClass('open').attr('aria-hidden', 'true');
+    panel.find('#ai_wbr_bookshelf_book_actions_backdrop').removeClass('open');
+}
+
+function createBookshelfBookActionContent(book) {
+    const scope = getBookshelfScope();
+    const isAutoMemoryBook = book?.autoGenerated && book?.autoSource === 'memory-graph';
+    const isWorldbook = book?.virtualSource === 'worldbook';
+    const isCharBound = !isWorldbook && isBookshelfBookBound(book, 'character', scope.characterKey);
+    const isGlobalBound = !isWorldbook && isBookshelfBookBound(book, 'global', 'global');
+    const actions = $('<div class="ai-wbr-bookshelf-book-action-list"></div>')
+        .append($('<button class="menu_button ai-wbr-bookshelf-open-reader" type="button"></button>').attr('data-bookshelf-book-id', book.id).text('打开阅读'));
+    if (isWorldbook) {
+        actions.append(
+            $('<button class="menu_button ai-wbr-bookshelf-world-toggle" type="button"></button>')
+                .attr('data-world-name', book.worldName || book.title || '')
+                .text(book.enabled === false ? '启用世界书' : '停用世界书'),
+        );
+        return $('<div></div>').append(
+            $('<div class="ai-wbr-bookshelf-book-action-summary"></div>').text(book.sourceSummary || '当前生效世界书'),
+            actions,
+        );
+    }
+    actions
+        .append($('<button class="menu_button ai-wbr-bookshelf-rebuild" type="button"></button>').attr('data-bookshelf-book-id', book.id).text(Number(book.vectorizedCount || 0) ? '重新向量化' : '开始向量化'))
+        .append($('<button class="menu_button ai-wbr-bookshelf-toggle" type="button"></button>').attr('data-bookshelf-book-id', book.id).text(book.enabled === false ? '启用召回' : '停用召回'));
+    if (!isAutoMemoryBook) {
+        actions
+            .append($('<button class="menu_button ai-wbr-bookshelf-bind-character" type="button"></button>').attr('data-bookshelf-book-id', book.id).text(isCharBound ? '取消角色卡绑定' : '绑定当前角色卡'))
+            .append($('<button class="menu_button ai-wbr-bookshelf-bind-global" type="button"></button>').attr('data-bookshelf-book-id', book.id).text(isGlobalBound ? '取消全局' : '设为全局'))
+            .append($('<button class="menu_button ai-wbr-bookshelf-clear-bindings" type="button"></button>').attr('data-bookshelf-book-id', book.id).text('清空绑定'));
+    }
+    actions
+        .append($('<button class="menu_button ai-wbr-bookshelf-clear-vector" type="button"></button>').attr('data-bookshelf-book-id', book.id).text('重置向量'))
+        .append($('<button class="menu_button ai-wbr-bookshelf-delete danger" type="button"></button>').attr('data-bookshelf-book-id', book.id).text('删除书籍'));
+    return $('<div></div>').append(
+        $('<div class="ai-wbr-bookshelf-book-action-summary"></div>').text(`${getBookshelfTypeLabel(book.type)} · ${getBookshelfStatusLabel(book)} · ${book.vectorizedCount || 0}/${book.chunkCount || 0}`),
+        $('<div class="ai-wbr-bookshelf-tags"></div>').append(
+            getBookshelfBindingLabels(book).map(label => $('<span></span>').text(label)),
+            isAutoMemoryBook ? $('<span></span>').text('单聊天记录绑定') : null,
+        ),
+        actions,
+    );
+}
+
+async function openBookshelfBookActionSheet(bookId) {
+    const panel = $('#ai_wbr_bookshelf_panel:visible').last().length
+        ? $('#ai_wbr_bookshelf_panel:visible').last()
+        : $('#ai_wbr_bookshelf_panel').last();
+    const book = await getBookshelfDisplayBook(bookId);
+    if (!panel.length || !book) return;
+    selectedBookshelfBookId = String(book.id || bookId || '');
+    panel.find('#ai_wbr_bookshelf_book_actions_title').text(book.title || book.fileName || '书籍设置');
+    panel.find('#ai_wbr_bookshelf_book_actions_meta').text(book.virtualSource === 'worldbook' ? '世界书设置' : '当前书籍设置');
+    panel.find('#ai_wbr_bookshelf_book_actions_body').empty().append(createBookshelfBookActionContent(book));
+    panel.find('#ai_wbr_bookshelf_book_actions_sheet').addClass('open').attr('aria-hidden', 'false');
+    panel.find('#ai_wbr_bookshelf_book_actions_backdrop').addClass('open');
 }
 
 function renderBookshelfResults(container, results = []) {
@@ -9844,6 +9975,9 @@ function buildBookshelfNovelParts(book, chunks = []) {
 function createBookshelfNovelReader(book, chunks = []) {
     const { chapters, chunks: selectedChunks } = buildBookshelfNovelParts(book, chunks);
     const firstChapterTitle = chapters[0]?.title || '正文目录';
+    const readerLabel = book?.virtualSource === 'worldbook'
+        ? '世界书'
+        : (book?.autoGenerated && book?.autoSource === 'memory-graph' ? '记忆书' : 'TXT');
     const overlay = $('<div class="ai-wbr-bookshelf-reader-overlay" role="dialog" aria-modal="true"></div>');
     const pages = $('<main class="ai-wbr-bookshelf-reader-pages"></main>').append(
         selectedChunks.slice(0, 160).map(chunk => (
@@ -9879,7 +10013,7 @@ function createBookshelfNovelReader(book, chunks = []) {
                 $('<section class="ai-wbr-bookshelf-reader-hero"></section>')
                     .append(
                         $('<div class="ai-wbr-bookshelf-reader-cover"></div>')
-                            .append($('<span></span>').text('记忆小说'))
+                            .append($('<span></span>').text(readerLabel))
                             .append($('<strong></strong>').text(book.title || '记忆书'))
                             .append($('<small></small>').text(`${book.vectorizedCount || 0}/${book.chunkCount || 0} 已向量化`)),
                         $('<div class="ai-wbr-bookshelf-reader-intro"></div>')
@@ -9910,6 +10044,12 @@ function createBookshelfNovelReader(book, chunks = []) {
 }
 
 async function openBookshelfNovelReader(bookId) {
+    const virtual = bookshelfVirtualBooks.get(String(bookId || ''));
+    if (virtual?.book) {
+        $('.ai-wbr-bookshelf-reader-overlay').remove();
+        $('body').append(createBookshelfNovelReader(virtual.book, virtual.chunks || []));
+        return;
+    }
     const [book, chunks] = await Promise.all([
         bookshelfGet('books', bookId),
         bookshelfGetAll('chunks'),
@@ -9966,108 +10106,42 @@ async function renderBookshelfPanel() {
     const resultsBox = panel.find('#ai_wbr_bookshelf_results');
 
     try {
-        const [books, chunks] = await Promise.all([bookshelfGetAll('books'), bookshelfGetAll('chunks')]);
-        const allBooks = (books || [])
+        const [books, chunks, worldbookLibrary] = await Promise.all([
+            bookshelfGetAll('books'),
+            bookshelfGetAll('chunks'),
+            buildBookshelfWorldbookLibrary(getContext()),
+        ]);
+        bookshelfVirtualBooks = new Map((worldbookLibrary || []).map(item => [item.book.id, item]));
+        const localBooks = (books || [])
             .filter(book => !(book?.autoGenerated && book?.autoSource === 'memory-graph' && book?.autoChatKey !== scope.chatKey))
             .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
-        const chunksByBook = new Map();
-        for (const chunk of chunks || []) {
-            if (!chunksByBook.has(chunk.bookId)) chunksByBook.set(chunk.bookId, []);
-            chunksByBook.get(chunk.bookId).push(chunk);
-        }
+        const allBooks = [
+            ...(worldbookLibrary || []).map(item => item.book),
+            ...localBooks,
+        ];
 
         if (selectedBookshelfBookId && !allBooks.some(book => book.id === selectedBookshelfBookId)) {
             selectedBookshelfBookId = '';
         }
 
+        detailBox.removeClass('open').empty();
         booksBox.empty();
         if (!allBooks.length) {
-            booksBox.append('<div class="ai-wbr-token-empty">还没有导入 TXT。点击“导入 TXT”建立第一本补充资料。</div>');
+            booksBox.append(
+                $('<div class="ai-wbr-bookshelf-empty"></div>')
+                    .append($('<b></b>').text('书架还是空的'))
+                    .append($('<span></span>').text('导入 TXT 后会像小说书籍一样显示在这里。'))
+                    .append($('<button id="ai_wbr_bookshelf_empty_import" class="ai-wbr-bookshelf-import-button" type="button">＋ 导入TXT</button>')),
+            );
         } else {
             for (const book of allBooks) {
                 booksBox.append(createBookshelfBookCard(book, book.id === selectedBookshelfBookId));
             }
         }
 
-        const selectedBook = allBooks.find(book => book.id === selectedBookshelfBookId) || null;
-        if (!selectedBook) {
-            detailBox.removeClass('open');
-            detailBox.append('<div class="ai-wbr-token-empty">点普通资料可查看管理操作；点记忆书封面会直接进入小说阅读。</div>');
-        } else {
-            detailBox.addClass('open');
-            const selectedChunks = (chunksByBook.get(selectedBook.id) || []).sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
-            const isAutoMemoryBook = selectedBook.autoGenerated && selectedBook.autoSource === 'memory-graph';
-            const { chapters: chapterList } = buildBookshelfNovelParts(selectedBook, selectedChunks);
-            const isCharBound = isBookshelfBookBound(selectedBook, 'character', scope.characterKey);
-            const isGlobalBound = isBookshelfBookBound(selectedBook, 'global', 'global');
-            const actionBox = $('<div class="ai-wbr-bookshelf-actions"></div>')
-                .append($('<button class="menu_button ai-wbr-bookshelf-rebuild" type="button"></button>').attr('data-bookshelf-book-id', selectedBook.id).text(Number(selectedBook.vectorizedCount || 0) ? '\u91cd\u65b0\u5411\u91cf\u5316' : '\u5f00\u59cb\u5411\u91cf\u5316'))
-                .append($('<button class="menu_button ai-wbr-bookshelf-toggle" type="button"></button>').attr('data-bookshelf-book-id', selectedBook.id).text(selectedBook.enabled === false ? '\u542f\u7528\u53ec\u56de' : '\u505c\u7528\u53ec\u56de'));
-            if (isAutoMemoryBook) {
-                actionBox.append($('<button class="menu_button ai-wbr-bookshelf-open-reader" type="button"></button>').attr('data-bookshelf-book-id', selectedBook.id).text('打开小说阅读'));
-            }
-            if (!isAutoMemoryBook) {
-                actionBox
-                    .append($('<button class="menu_button ai-wbr-bookshelf-bind-character" type="button"></button>').attr('data-bookshelf-book-id', selectedBook.id).text(isCharBound ? '\u53d6\u6d88\u89d2\u8272\u5361\u7ed1\u5b9a' : '\u7ed1\u5b9a\u5f53\u524d\u89d2\u8272\u5361'))
-                    .append($('<button class="menu_button ai-wbr-bookshelf-bind-global" type="button"></button>').attr('data-bookshelf-book-id', selectedBook.id).text(isGlobalBound ? '\u53d6\u6d88\u5168\u5c40' : '\u8bbe\u4e3a\u5168\u5c40'))
-                    .append($('<button class="menu_button ai-wbr-bookshelf-clear-bindings" type="button"></button>').attr('data-bookshelf-book-id', selectedBook.id).text('\u6e05\u7a7a\u7ed1\u5b9a'));
-            }
-            actionBox
-                .append($('<button class="menu_button ai-wbr-bookshelf-clear-vector" type="button"></button>').attr('data-bookshelf-book-id', selectedBook.id).text('\u91cd\u7f6e\u5411\u91cf'))
-                .append($('<button class="menu_button ai-wbr-bookshelf-delete" type="button"></button>').attr('data-bookshelf-book-id', selectedBook.id).text('\u5220\u9664'));
-            const novelHero = isAutoMemoryBook
-                ? $('<div class="ai-wbr-bookshelf-novel-hero"></div>')
-                    .append(
-                        $('<div class="ai-wbr-bookshelf-novel-cover"></div>')
-                            .append($('<span></span>').text('AIWBR'))
-                            .append($('<b></b>').text(selectedBook.title || '记忆书'))
-                            .append($('<small></small>').text(`${chapterList.length} 章 · ${selectedChunks.length} 小节`)),
-                        $('<div class="ai-wbr-bookshelf-novel-info"></div>')
-                            .append($('<strong></strong>').text(selectedBook.title || '记忆书'))
-                            .append($('<p></p>').text(selectedBook.sourceSummary || '从当前聊天图谱自动整理，像小说一样按目录阅读，也可作为向量片段召回。'))
-                            .append($('<div class="ai-wbr-bookshelf-novel-stats"></div>')
-                                .append($('<span></span>').text(`章节 ${chapterList.length}`))
-                                .append($('<span></span>').text(`小节 ${selectedChunks.length}`))
-                                .append($('<span></span>').text(`向量 ${selectedBook.vectorizedCount || 0}/${selectedBook.chunkCount || 0}`))),
-                    )
-                : null;
-            detailBox.append(
-                $('<div class="ai-wbr-bookshelf-selected-detail"></div>')
-                    .attr('data-bookshelf-book-id', selectedBook.id)
-                    .append(
-                $('<div class="ai-wbr-bookshelf-detail-head"></div>')
-                    .append($('<b></b>').text(`《${selectedBook.title || selectedBook.fileName || '未命名'}》`))
-                    .append($('<span></span>').text(`${getBookshelfTypeLabel(selectedBook.type)} · ${getBookshelfStatusLabel(selectedBook)} · ${selectedBook.vectorizedCount || 0}/${selectedBook.chunkCount || 0}`)),
-                $('<div class="ai-wbr-bookshelf-tags"></div>').append(
-                    getBookshelfBindingLabels(selectedBook).map(label => $('<span></span>').text(label)),
-                    isAutoMemoryBook ? $('<span></span>').text('单聊天记录绑定') : null,
-                ),
-                novelHero,
-                selectedBook.sourceSummary ? $('<div class="ai-wbr-bookshelf-source-summary"></div>').text(selectedBook.sourceSummary) : null,
-                actionBox,
-                isAutoMemoryBook
-                    ? $('<div class="ai-wbr-token-empty"></div>').text('点击“打开小说阅读”进入独立阅读界面，目录和正文会在新界面中显示。')
-                    : $('<div class="ai-wbr-bookshelf-chunk-list"></div>').append(
-                        selectedChunks.slice(0, 24).map(chunk => (
-                            $('<div class="ai-wbr-bookshelf-chunk"></div>')
-                                .toggleClass('disabled', chunk.enabled === false)
-                                .attr('data-bookshelf-chunk-id', chunk.id)
-                                .append($('<div class="ai-wbr-bookshelf-chunk-head"></div>')
-                                    .append($('<b></b>').text(`${String(chunk.order || '').padStart(2, '0')} · ${chunk.title || '片段'}`))
-                                    .append($('<span></span>').text(chunk.enabled === false ? '禁用' : chunk.vectorStatus === 'ready' ? '已向量化' : chunk.vectorStatus === 'failed' ? '失败' : '待向量化')))
-                                .append($('<p></p>').text(truncateText(chunk.text || '', 260)))
-                        )),
-                    ),
-                    ),
-            );
-            if (!isAutoMemoryBook && selectedChunks.length > 24) {
-                detailBox.append($('<div class="ai-wbr-token-empty"></div>').text(`已显示前 24 个片段，共 ${selectedChunks.length} 个。`));
-            }
-        }
-
         renderBookshelfResults(resultsBox, bookshelfLastTestResults);
         syncBookshelfProviderVisibility();
-        setBookshelfStatus(bookshelfLastStatus || `书架共 ${allBooks.length} 本；只有已向量化片段会参与召回。`);
+        setBookshelfStatus(bookshelfLastStatus || `书架共 ${allBooks.length} 本；点击阅读，长按管理。`);
     } catch (error) {
         booksBox.empty().append($('<div class="ai-wbr-console-alert error"></div>').text(error?.message || String(error)));
         setBookshelfStatus(`书架读取失败：${error?.message || error}`);
@@ -11577,7 +11651,7 @@ function bindMemoryPanelActions() {
         setMemoryStatus('已清空');
     });
 
-    $(document).off('click.aiWbrBookshelfImport', '#ai_wbr_bookshelf_import').on('click.aiWbrBookshelfImport', '#ai_wbr_bookshelf_import', (event) => {
+    $(document).off('click.aiWbrBookshelfImport', '#ai_wbr_bookshelf_import, #ai_wbr_bookshelf_empty_import').on('click.aiWbrBookshelfImport', '#ai_wbr_bookshelf_import, #ai_wbr_bookshelf_empty_import', (event) => {
         event.preventDefault();
         const panel = $(event.currentTarget).closest('#ai_wbr_bookshelf_panel');
         const fileInput = panel.find('#ai_wbr_bookshelf_file').first();
@@ -11588,6 +11662,7 @@ function bindMemoryPanelActions() {
         .on('click.aiWbrBookshelfDrawer', '#ai_wbr_bookshelf_open_settings', (event) => {
             event.preventDefault();
             const panel = $(event.currentTarget).closest('#ai_wbr_bookshelf_panel');
+            closeBookshelfBookActionSheet(panel);
             panel.find('#ai_wbr_bookshelf_settings_drawer').addClass('open').attr('aria-hidden', 'false');
             panel.find('#ai_wbr_bookshelf_settings_backdrop').addClass('open');
         })
@@ -11596,6 +11671,12 @@ function bindMemoryPanelActions() {
             const panel = $(event.currentTarget).closest('#ai_wbr_bookshelf_panel');
             panel.find('#ai_wbr_bookshelf_settings_drawer').removeClass('open').attr('aria-hidden', 'true');
             panel.find('#ai_wbr_bookshelf_settings_backdrop').removeClass('open');
+        });
+
+    $(document).off('click.aiWbrBookshelfBookActionsDrawer', '#ai_wbr_bookshelf_close_book_actions, #ai_wbr_bookshelf_book_actions_backdrop')
+        .on('click.aiWbrBookshelfBookActionsDrawer', '#ai_wbr_bookshelf_close_book_actions, #ai_wbr_bookshelf_book_actions_backdrop', (event) => {
+            event.preventDefault();
+            closeBookshelfBookActionSheet($(event.currentTarget).closest('#ai_wbr_bookshelf_panel'));
         });
 
     $(document).off('change.aiWbrBookshelfFile', '#ai_wbr_bookshelf_file').on('change.aiWbrBookshelfFile', '#ai_wbr_bookshelf_file', async function () {
@@ -11761,27 +11842,53 @@ function bindMemoryPanelActions() {
 
     $(document)
         .off('.aiWbrBookshelf')
-        .on('click.aiWbrBookshelf', '.ai-wbr-bookshelf-book', function (event) {
+        .on('pointerdown.aiWbrBookshelf', '.ai-wbr-bookshelf-book', function (event) {
+            if ($(event.target).closest('button, input, textarea, select').length && !$(event.target).closest('.ai-wbr-bookshelf-cover').length) return;
+            clearTimeout(bookshelfLongPressTimer);
+            bookshelfSuppressNextBookClick = false;
+            const bookId = String($(this).data('bookshelfBookId') || '');
+            bookshelfLongPressTimer = setTimeout(() => {
+                bookshelfSuppressNextBookClick = true;
+                openBookshelfBookActionSheet(bookId);
+            }, 520);
+        })
+        .on('pointerup.aiWbrBookshelf pointercancel.aiWbrBookshelf pointerleave.aiWbrBookshelf', '.ai-wbr-bookshelf-book', function () {
+            clearTimeout(bookshelfLongPressTimer);
+        })
+        .on('contextmenu.aiWbrBookshelf', '.ai-wbr-bookshelf-book', function (event) {
+            event.preventDefault();
+            clearTimeout(bookshelfLongPressTimer);
+            bookshelfSuppressNextBookClick = true;
+            openBookshelfBookActionSheet(String($(this).data('bookshelfBookId') || ''));
+        })
+        .on('click.aiWbrBookshelf', '.ai-wbr-bookshelf-book', async function (event) {
             if ($(event.target).closest('button').length && !$(event.target).closest('.ai-wbr-bookshelf-cover').length) return;
             event.preventDefault();
+            if (bookshelfSuppressNextBookClick) {
+                bookshelfSuppressNextBookClick = false;
+                return;
+            }
             selectedBookshelfBookId = String($(this).data('bookshelfBookId') || '');
-            renderBookshelfPanel();
+            closeBookshelfBookActionSheet($(this).closest('#ai_wbr_bookshelf_panel'));
+            await openBookshelfNovelReader(selectedBookshelfBookId);
         })
         .on('click.aiWbrBookshelf', '.ai-wbr-bookshelf-select', async function (event) {
             event.preventDefault();
             event.stopPropagation();
-            selectedBookshelfBookId = String($(this).closest('[data-bookshelf-book-id]').data('bookshelfBookId') || '');
-            const book = await bookshelfGet('books', selectedBookshelfBookId);
-            if (book?.autoGenerated && book?.autoSource === 'memory-graph') {
-                await openBookshelfNovelReader(selectedBookshelfBookId);
-            } else {
-                renderBookshelfPanel();
+            if (bookshelfSuppressNextBookClick) {
+                bookshelfSuppressNextBookClick = false;
+                return;
             }
+            selectedBookshelfBookId = String($(this).closest('[data-bookshelf-book-id]').data('bookshelfBookId') || '');
+            closeBookshelfBookActionSheet($(this).closest('#ai_wbr_bookshelf_panel'));
+            await openBookshelfNovelReader(selectedBookshelfBookId);
         })
         .on('click.aiWbrBookshelf', '.ai-wbr-bookshelf-open-reader', async function (event) {
             event.preventDefault();
             event.stopPropagation();
-            await openBookshelfNovelReader(getBookshelfActionBookId(this));
+            const bookId = getBookshelfActionBookId(this);
+            closeBookshelfBookActionSheet($(this).closest('#ai_wbr_bookshelf_panel'));
+            await openBookshelfNovelReader(bookId);
         })
         .on('click.aiWbrBookshelf', '.ai-wbr-bookshelf-reader-close, .ai-wbr-bookshelf-reader-overlay', function (event) {
             if ($(event.target).closest('.ai-wbr-bookshelf-reader-shell').length && !$(event.target).closest('.ai-wbr-bookshelf-reader-close').length) return;
@@ -11845,12 +11952,14 @@ function bindMemoryPanelActions() {
             const bookId = getBookshelfActionBookId(this);
             const book = await bookshelfGet('books', bookId);
             if (!book) return;
+            closeBookshelfBookActionSheet($(this).closest('#ai_wbr_bookshelf_panel'));
             await updateBookshelfBook(bookId, { enabled: book.enabled === false });
             renderBookshelfPanel();
         })
         .on('click.aiWbrBookshelf', '.ai-wbr-bookshelf-rebuild', async function (event) {
             event.preventDefault();
             const bookId = getBookshelfActionBookId(this);
+            closeBookshelfBookActionSheet($(this).closest('#ai_wbr_bookshelf_panel'));
             try {
                 await rebuildBookshelfBookVectors(bookId);
             } catch (error) {
@@ -11861,6 +11970,7 @@ function bindMemoryPanelActions() {
             event.preventDefault();
             const bookId = getBookshelfActionBookId(this);
             if (!bookId || !confirm('确定重置这本书的所有向量并回到待向量化？')) return;
+            closeBookshelfBookActionSheet($(this).closest('#ai_wbr_bookshelf_panel'));
             await clearBookshelfBookVectors(bookId);
         })
         .on('click.aiWbrBookshelf', '.ai-wbr-bookshelf-delete', async function (event) {
@@ -11868,6 +11978,7 @@ function bindMemoryPanelActions() {
             event.stopPropagation();
             const bookId = getBookshelfActionBookId(this);
             if (!bookId) return;
+            closeBookshelfBookActionSheet($(this).closest('#ai_wbr_bookshelf_panel'));
             setBookshelfStatus('\u6b63\u5728\u5220\u9664\u4e66\u7c4d...');
             await bookshelfDeleteBook(bookId);
             if (selectedBookshelfBookId === bookId) selectedBookshelfBookId = '';
@@ -11880,6 +11991,7 @@ function bindMemoryPanelActions() {
             const bookId = getBookshelfActionBookId(this);
             const book = await bookshelfGet('books', bookId);
             const scope = getBookshelfScope();
+            closeBookshelfBookActionSheet($(this).closest('#ai_wbr_bookshelf_panel'));
             if (isBookshelfBookBound(book, 'character', scope.characterKey)) {
                 await removeBookshelfBinding(bookId, 'character');
             } else {
@@ -11891,6 +12003,7 @@ function bindMemoryPanelActions() {
             const bookId = getBookshelfActionBookId(this);
             const book = await bookshelfGet('books', bookId);
             const scope = getBookshelfScope();
+            closeBookshelfBookActionSheet($(this).closest('#ai_wbr_bookshelf_panel'));
             if (isBookshelfBookBound(book, 'chat', scope.chatKey)) {
                 await removeBookshelfBinding(bookId, 'chat');
             } else {
@@ -11901,6 +12014,7 @@ function bindMemoryPanelActions() {
             event.preventDefault();
             const bookId = getBookshelfActionBookId(this);
             const book = await bookshelfGet('books', bookId);
+            closeBookshelfBookActionSheet($(this).closest('#ai_wbr_bookshelf_panel'));
             if (isBookshelfBookBound(book, 'global', 'global')) {
                 await removeBookshelfBinding(bookId, 'global');
             } else {
@@ -11910,7 +12024,16 @@ function bindMemoryPanelActions() {
         .on('click.aiWbrBookshelf', '.ai-wbr-bookshelf-clear-bindings', async function (event) {
             event.preventDefault();
             const bookId = getBookshelfActionBookId(this);
+            closeBookshelfBookActionSheet($(this).closest('#ai_wbr_bookshelf_panel'));
             await clearBookshelfBindings(bookId);
+        })
+        .on('click.aiWbrBookshelf', '.ai-wbr-bookshelf-world-toggle', function (event) {
+            event.preventDefault();
+            const worldName = String($(this).data('worldName') || '').trim();
+            if (!worldName) return;
+            closeBookshelfBookActionSheet($(this).closest('#ai_wbr_bookshelf_panel'));
+            setWorldSelectionState(worldName, !getWorldSelectionState(worldName));
+            renderBookshelfPanel();
         });
 
     $(document)

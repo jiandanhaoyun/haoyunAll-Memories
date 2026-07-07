@@ -2839,6 +2839,54 @@
     line-height: 1.4;
 }
 
+.ai-wbr-bookshelf-subtitle {
+    margin-top: -0.35rem;
+    color: color-mix(in srgb, var(--SmartThemeBodyColor, #222) 58%, transparent 42%);
+    font-size: 0.9rem;
+}
+
+.ai-wbr-bookshelf-top-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+}
+
+.ai-wbr-bookshelf-import-button {
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor, #d9d9d9) 58%, transparent 42%);
+    border-radius: 999px;
+    padding: 0.42rem 0.78rem;
+    background: color-mix(in srgb, #7dd3fc 24%, var(--SmartThemeBlurTintColor, #fff) 76%);
+    color: color-mix(in srgb, var(--SmartThemeBodyColor, #222) 88%, #0ea5e9 12%);
+    cursor: pointer;
+    font-size: 0.88rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.ai-wbr-bookshelf-empty {
+    grid-column: 1 / -1;
+    display: flex;
+    min-height: 12rem;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border: 1px dashed color-mix(in srgb, var(--SmartThemeBorderColor, #4b5563) 64%, transparent 36%);
+    border-radius: 14px;
+    padding: 1.25rem;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor, #ffffff) 5%, transparent 95%);
+    text-align: center;
+}
+
+.ai-wbr-bookshelf-empty b {
+    font-size: 1.05rem;
+}
+
+.ai-wbr-bookshelf-empty span {
+    color: color-mix(in srgb, var(--SmartThemeBodyColor, #222) 54%, transparent 46%);
+    font-size: 0.9rem;
+}
+
 .ai-wbr-bookshelf-toolbar,
 .ai-wbr-bookshelf-quickbar,
 .ai-wbr-bookshelf-section-title,
@@ -2977,6 +3025,14 @@
         linear-gradient(145deg, rgba(255, 248, 235, 0.2), rgba(0, 0, 0, 0.24)),
         linear-gradient(135deg, #ff6a2a, #d7263d 46%, #24111f);
     box-shadow: 0 12px 28px rgba(215, 38, 61, 0.22);
+}
+
+.ai-wbr-bookshelf-worldbook .ai-wbr-bookshelf-cover {
+    background:
+        radial-gradient(circle at 18% 18%, rgba(255, 255, 255, 0.16), transparent 28%),
+        linear-gradient(145deg, rgba(210, 255, 232, 0.17), rgba(0, 0, 0, 0.2)),
+        linear-gradient(135deg, #0f766e, #134e4a 48%, #111827);
+    box-shadow: 0 12px 28px rgba(20, 184, 166, 0.18);
 }
 
 .ai-wbr-bookshelf-cover-mark {
@@ -3658,6 +3714,81 @@
 
 .ai-wbr-bookshelf-drawer-backdrop.open {
     display: block;
+}
+
+.ai-wbr-bookshelf-book-action-backdrop {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    display: none;
+    background: rgba(0, 0, 0, 0.34);
+}
+
+.ai-wbr-bookshelf-book-action-backdrop.open {
+    display: block;
+}
+
+.ai-wbr-bookshelf-book-action-sheet {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 6;
+    max-height: min(82%, 30rem);
+    overflow: auto;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor, #4b5563) 70%, transparent 30%);
+    border-radius: 18px 18px 0 0;
+    padding: 0.85rem;
+    background: color-mix(in srgb, var(--SmartThemeBlurTintColor, #111827) 96%, #020617 4%);
+    box-shadow: 0 -18px 42px rgba(0, 0, 0, 0.42);
+    color: color-mix(in srgb, var(--SmartThemeBodyColor, #fff) 92%, #d7f5ff 8%);
+    transform: translateY(110%);
+    transition: transform 180ms ease;
+}
+
+.ai-wbr-bookshelf-book-action-sheet.open {
+    transform: translateY(0);
+}
+
+.ai-wbr-bookshelf-book-action-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+}
+
+.ai-wbr-bookshelf-book-action-head b,
+.ai-wbr-bookshelf-book-action-head small {
+    display: block;
+}
+
+.ai-wbr-bookshelf-book-action-head small,
+.ai-wbr-bookshelf-book-action-summary {
+    color: color-mix(in srgb, var(--SmartThemeBodyColor, #fff) 62%, transparent 38%);
+    font-size: 0.84rem;
+}
+
+.ai-wbr-bookshelf-book-action-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+}
+
+.ai-wbr-bookshelf-book-action-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+    margin-top: 0.65rem;
+}
+
+.ai-wbr-bookshelf-book-action-list .menu_button {
+    width: 100%;
+}
+
+.ai-wbr-bookshelf-book-action-list .menu_button.danger {
+    border-color: rgba(248, 113, 113, 0.42);
+    color: #fecaca;
 }
 
 .ai-wbr-bookshelf-config {
