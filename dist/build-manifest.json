@@ -1,23 +1,23 @@
 {
   "name": "AI Worldbook Router",
   "id": "ai_worldbook_router",
-  "version": "0.8.4",
-  "generatedAt": "2026-07-07T13:49:21.288Z",
+  "version": "0.8.5",
+  "generatedAt": "2026-07-07T14:15:05.300Z",
   "files": [
     {
       "file": "manifest.json",
       "bytes": 571,
-      "modifiedAt": "2026-07-07T13:48:57.896Z"
+      "modifiedAt": "2026-07-07T14:14:34.739Z"
     },
     {
       "file": "index.js",
       "bytes": 34387,
-      "modifiedAt": "2026-07-07T13:48:57.897Z"
+      "modifiedAt": "2026-07-07T14:14:34.740Z"
     },
     {
       "file": "router-core.js",
-      "bytes": 630034,
-      "modifiedAt": "2026-07-07T13:48:15.960Z"
+      "bytes": 631499,
+      "modifiedAt": "2026-07-07T14:13:40.101Z"
     },
     {
       "file": "settings.html",
@@ -26,18 +26,18 @@
     },
     {
       "file": "style.css",
-      "bytes": 103728,
-      "modifiedAt": "2026-07-07T13:24:55.575Z"
+      "bytes": 104318,
+      "modifiedAt": "2026-07-07T14:13:40.104Z"
     },
     {
       "file": "dist/ai-worldbook-router.user.js",
-      "bytes": 815948,
-      "modifiedAt": "2026-07-07T13:49:21.305Z"
+      "bytes": 818034,
+      "modifiedAt": "2026-07-07T14:15:05.317Z"
     },
     {
       "file": "dist/ai-worldbook-router.tavern-helper.json",
-      "bytes": 6044457,
-      "modifiedAt": "2026-07-07T13:49:21.392Z"
+      "bytes": 6059332,
+      "modifiedAt": "2026-07-07T14:15:05.410Z"
     }
   ]
 }

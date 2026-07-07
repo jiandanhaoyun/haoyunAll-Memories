@@ -9224,8 +9224,12 @@ function renderMemoryGraphToolbarHtml(graph, displayModel, nodes, edges) {
     const hiddenHint = displayModel.hiddenNodes || displayModel.hiddenLinks ? `，收起 ${displayModel.hiddenNodes}/${displayModel.hiddenLinks}` : '';
     const linkHint = memoryGraphLinkSourceId ? ` · 起点：${escapeHtml(truncateText(graph.nodes.find(node => node.id === memoryGraphLinkSourceId)?.title || memoryGraphLinkSourceId, 8))}` : '';
     const ruleButtonClass = memoryRuleDrawerOpen ? ' active' : '';
+    const fullscreenCloseButton = memoryGraphFullscreenActive
+        ? '<button id="ai_wbr_memory_graph_close_fullscreen" class="ai-wbr-memory-graph-close-fullscreen" type="button" title="关闭图谱">×</button>'
+        : '';
     return `
         <div class="ai-wbr-memory-graph-toolbar ai-wbr-memory-graph-toolbar-compact">
+            ${fullscreenCloseButton}
             <div class="ai-wbr-memory-graph-row ai-wbr-memory-graph-row-primary">
                 <div class="ai-wbr-memory-graph-modes">
                     <button class="menu_button ai-wbr-memory-mode ${displayModel.mode === 'overview' ? 'active' : ''}" type="button" data-memory-graph-mode="overview">概览</button>
@@ -9233,25 +9237,24 @@ function renderMemoryGraphToolbarHtml(graph, displayModel, nodes, edges) {
                     <button class="menu_button ai-wbr-memory-mode ${displayModel.mode === 'timeline' ? 'active' : ''}" type="button" data-memory-graph-mode="timeline">时间线</button>
                     <button class="menu_button ai-wbr-memory-mode ${displayModel.mode === 'full' ? 'active' : ''}" type="button" data-memory-graph-mode="full">全量</button>
                 </div>
-                <input class="text_pole ai-wbr-memory-graph-search" type="search" placeholder="搜索节点、关键词" value="${escapeHtml(memoryGraphSearchText)}" />
                 <div class="ai-wbr-memory-graph-summary">显示 ${nodes.length}/${displayModel.totalNodes} · ${edges.length}/${displayModel.totalLinks}${hiddenHint}${linkHint}</div>
                 <span class="ai-wbr-memory-graph-divider"></span>
                 <div class="ai-wbr-memory-graph-actions">
                     <button id="ai_wbr_memory_graph_preview_toggle" class="menu_button" type="button"><i class="fa-solid fa-list-ul"></i> 列表</button>
                     <button id="ai_wbr_memory_graph_fit" class="menu_button" type="button" title="适配视图：把所有节点铺满画布"><i class="fa-solid fa-arrows-to-circle"></i> 适配</button>
                     <button id="ai_wbr_memory_graph_fullscreen" class="menu_button ai-wbr-graph-topbar-primary" type="button"><i class="fa-solid fa-expand"></i> ${fullscreenLabel}</button>
-                    <button class="menu_button ai-wbr-memory-graph-filter-toggle" type="button" aria-expanded="false"><i class="fa-solid fa-sliders"></i> 筛选</button>
+                    <button class="menu_button ai-wbr-memory-graph-filter-toggle" type="button" aria-expanded="true" title="查看下方类型与关系权重筛选"><i class="fa-solid fa-sliders"></i> 筛选</button>
                     <button id="ai_wbr_memory_rule_toggle" class="menu_button ai-wbr-memory-rule-toggle${ruleButtonClass}" type="button" aria-expanded="${memoryRuleDrawerOpen ? 'true' : 'false'}"><i class="fa-solid fa-wand-magic-sparkles"></i> 规则</button>
+                    <input class="text_pole ai-wbr-memory-graph-search" type="search" placeholder="搜索节点、关键词" value="${escapeHtml(memoryGraphSearchText)}" />
                 </div>
             </div>
-            <details class="ai-wbr-memory-graph-drawer">
-                <summary class="ai-wbr-memory-graph-drawer-hint">类型 / 关系权重筛选（点击展开）</summary>
+            <div class="ai-wbr-memory-graph-drawer ai-wbr-memory-graph-drawer-open">
                 <div class="ai-wbr-memory-graph-drawer-body">
                     ${renderMemoryGraphTypeFilters(graph)}
                     <label class="ai-wbr-memory-weight-filter">关系权重≥<span>${Math.round(displayModel.minWeight * 100)}%</span><input class="ai-wbr-memory-link-weight" type="range" min="0" max="1" step="0.05" value="${displayModel.minWeight}" /></label>
                     <button class="menu_button ai-wbr-memory-clear-filters" type="button">清除筛选</button>
                 </div>
-            </details>
+            </div>
         </div>
     `;
 }
@@ -10700,6 +10703,15 @@ function bindMemoryGraphSvgInteractions() {
         renderCurrentGraph({ fit: true });
     });
 
+    container.on('click.memoryGraphSvg', '.ai-wbr-memory-graph-filter-toggle', function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        const drawer = container.find('.ai-wbr-memory-graph-drawer-body').first();
+        if (drawer.length) {
+            drawer[0].scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+        }
+    });
+
     container.on('input.memoryGraphSvg change.memoryGraphSvg', '#ai_wbr_memory_rule_drawer input, #ai_wbr_memory_rule_drawer textarea, #ai_wbr_memory_rule_drawer select', function (event) {
         event.stopPropagation();
         scheduleMemoryRuleConfigSave();
@@ -12045,6 +12057,14 @@ function bindMemoryPanelActions() {
             event.stopPropagation();
             setMemoryGraphFullscreen(!memoryGraphFullscreenActive);
         })
+        .on('click.aiWbrGraphWorkspace', '#ai_wbr_memory_graph_close_fullscreen', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            setMemoryGraphFullscreen(false, { fit: false });
+            if (typeof globalThis.aiWbrCloseConsole === 'function') {
+                globalThis.aiWbrCloseConsole();
+            }
+        })
         .on('click.aiWbrGraphWorkspace', '#ai_wbr_memory_graph_close_detail, .ai-wbr-memory-detail-close', (event) => {
             event.preventDefault();
             memoryGraphSelectedNodeId = '';
@@ -13112,7 +13132,8 @@ function createFloatingMemoryWindow() {
     };
     globalThis.aiWbrCloseConsole = closeWindow;
 
-    // FAB 拖拽（区分点击与拖拽：移动超过 4px 视为拖拽，松手不触发开窗）
+    // FAB 拖拽（区分点击与拖拽：移动超过 8px 视为拖拽，松手不触发开窗）
+    const FAB_DRAG_TAP_THRESHOLD = 8;
     let fabDragging = false;
     let fabMoved = false;
     let fabStartX = 0, fabStartY = 0, fabInitialLeft = 0, fabInitialTop = 0;
@@ -13149,6 +13170,11 @@ function createFloatingMemoryWindow() {
     }
 
     function openFromFabTouch(event) {
+        if (fabMoved || fabDragging || fabSuppressNextClick) {
+            event?.preventDefault?.();
+            event?.stopPropagation?.();
+            return;
+        }
         fabLastTouchAt = Date.now();
         fabMoved = false;
         fabDragging = false;
@@ -13165,10 +13191,20 @@ function createFloatingMemoryWindow() {
             return;
         }
         const wasTap = !fabMoved && e.type === 'pointerup';
+        const wasDrag = fabMoved;
         fabDragging = false;
         fabPointerId = null;
         clampFloatingFabToViewport();
         $('body').css('user-select', '');
+        if (wasDrag) {
+            fabSuppressNextClick = true;
+            e?.preventDefault?.();
+            e?.stopPropagation?.();
+            setTimeout(() => {
+                fabSuppressNextClick = false;
+            }, 520);
+            return;
+        }
         if (wasTap) {
             fabSuppressNextClick = true;
             openFromFab(e, { force: true });
@@ -13198,7 +13234,7 @@ function createFloatingMemoryWindow() {
         if (!fabDragging) return;
         const dx = e.clientX - fabStartX;
         const dy = e.clientY - fabStartY;
-        if (!fabMoved && Math.hypot(dx, dy) < 4) return; // 阈值内仍视为点击
+        if (!fabMoved && Math.hypot(dx, dy) < FAB_DRAG_TAP_THRESHOLD) return; // 阈值内仍视为点击
         fabMoved = true;
         const rect = fab[0].getBoundingClientRect();
         const maxLeft = Math.max(0, window.innerWidth - rect.width);
