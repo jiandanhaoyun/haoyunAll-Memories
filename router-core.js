@@ -3965,14 +3965,151 @@ function isValidMemoryNodeForApply(node) {
     return hasSubstance;
 }
 
+function splitMemoryEntityTokens(value) {
+    if (Array.isArray(value)) {
+        return value.flatMap(splitMemoryEntityTokens);
+    }
+    return String(value || '')
+        .split(/[,\n;；、，|/]+/u)
+        .map(item => item.trim())
+        .filter(Boolean);
+}
+
+function normalizeMemoryEntityTitle(value) {
+    return truncateText(String(value || '')
+        .replace(/^[#\-*•\s]+/u, '')
+        .replace(/^(角色|人物|地点|场景|道具|物品|势力|组织|设定|规则|任务|目标|线索|概念)\s*[:：\-]\s*/u, '')
+        .trim(), 60);
+}
+
+function getMemoryEntityTypeFromLabel(label) {
+    const text = normalizeText(label);
+    if (/^(角色|人物|npc|主角|配角|同伴|敌人|玩家|character|person)$/iu.test(text)) return 'character';
+    if (/^(地点|场景|位置|区域|城市|据点|location|place|scene)$/iu.test(text)) return 'location';
+    if (/^(道具|物品|装备|武器|线索|资料|item|prop|object)$/iu.test(text)) return 'item';
+    if (/^(势力|组织|阵营|队伍|家族|帮派|faction|organization|org|group)$/iu.test(text)) return 'faction';
+    if (/^(规则|法则|限制|约定|rule|law)$/iu.test(text)) return 'rule';
+    if (/^(设定|概念|世界观|能力|机制|concept|setting|lore)$/iu.test(text)) return 'concept';
+    if (/^(任务|目标|悬念|问题|待办|quest|mission|goal|task)$/iu.test(text)) return 'quest';
+    return '';
+}
+
+function createMemoryEntityNode(type, title, sourceNode = null, state = {}, fallbackIndex = 0) {
+    const safeType = MEMORY_NODE_TYPE_OPTIONS.some(option => option.value === type) ? type : '';
+    const safeTitle = normalizeMemoryEntityTitle(title);
+    if (!safeType || isWeakMemoryTitle(safeTitle)) {
+        return null;
+    }
+    const sourceTitle = sourceNode?.title ? `（来源：${sourceNode.title}）` : '';
+    return {
+        id: createMemoryId(`${safeType}_${safeTitle}`, `${safeType}_${fallbackIndex + 1}`),
+        title: safeTitle,
+        type: safeType,
+        summary: safeType === 'quest'
+            ? `待跟进目标：${safeTitle}`
+            : `${getOptionLabel(MEMORY_NODE_TYPE_OPTIONS, safeType, safeType)}：${safeTitle}`,
+        content: truncateText(`${safeTitle}${sourceTitle}`, 500),
+        location: safeType === 'location' ? safeTitle : normalizeMemoryFacetValue(sourceNode?.location || state.current_location),
+        timeSpan: normalizeMemoryFacetValue(sourceNode?.timeSpan || state.current_time || state.current_phase),
+        keys: uniqueStrings([safeTitle]),
+        tags: uniqueStrings(['自动拆分', getOptionLabel(MEMORY_NODE_TYPE_OPTIONS, safeType, safeType)]),
+        importance: safeType === 'quest' ? 0.62 : 0.55,
+        credibility: 0.72,
+    };
+}
+
+function extractTypedMemoryEntityHints(rawNode = {}) {
+    const hints = [];
+    const tokens = [
+        ...splitMemoryEntityTokens(rawNode.keys),
+        ...splitMemoryEntityTokens(rawNode.tags),
+    ];
+    for (const token of tokens) {
+        const match = token.match(/^(角色|人物|地点|场景|道具|物品|势力|组织|设定|规则|任务|目标|线索|概念|character|person|location|place|item|prop|faction|organization|setting|rule|quest|goal)\s*[:：\-]\s*(.+)$/iu);
+        if (!match) {
+            continue;
+        }
+        const labelType = getMemoryEntityTypeFromLabel(match[1]);
+        const title = normalizeMemoryEntityTitle(match[2]);
+        if (labelType && title) {
+            hints.push({ type: labelType, title });
+        }
+    }
+    return hints;
+}
+
+function expandMemoryUpdateEntityNodes(update, graph = getMemoryGraph()) {
+    const state = update?.state && typeof update.state === 'object' ? update.state : {};
+    const incomingNodes = Array.isArray(update?.nodes) ? [...update.nodes] : [];
+    const incomingLinks = Array.isArray(update?.links) ? [...update.links] : [];
+    const existingTitles = new Set((Array.isArray(graph?.nodes) ? graph.nodes : [])
+        .map(node => `${String(node.type || '')}|${normalizeText(node.title)}`));
+    const incomingTitles = new Set(incomingNodes
+        .map(node => `${normalizeMemoryNodeType(node)}|${normalizeText(node?.title || node?.label || node?.id || '')}`));
+    const sourceIdByTitle = new Map(incomingNodes
+        .map(node => [normalizeText(node?.title || node?.label || node?.id || ''), createMemoryId(node?.id || node?.title || node?.label || '')]));
+
+    const addEntity = (type, title, sourceNode = null, linkType = 'RELATED') => {
+        const entity = createMemoryEntityNode(type, title, sourceNode, state, incomingNodes.length);
+        if (!entity) return null;
+        const key = `${entity.type}|${normalizeText(entity.title)}`;
+        if (existingTitles.has(key) || incomingTitles.has(key)) {
+            return null;
+        }
+        incomingNodes.push(entity);
+        incomingTitles.add(key);
+        const sourceTitleKey = normalizeText(sourceNode?.title || sourceNode?.label || sourceNode?.id || '');
+        const sourceId = sourceIdByTitle.get(sourceTitleKey) || createMemoryId(sourceNode?.id || sourceNode?.title || sourceNode?.label || '');
+        if (sourceId && sourceId !== entity.id) {
+            incomingLinks.push({
+                source: sourceId,
+                target: entity.id,
+                type: linkType,
+                weight: type === 'location' ? 0.78 : 0.64,
+                description: `${sourceNode?.title || '事件'} 关联 ${entity.title}`,
+            });
+        }
+        return entity;
+    };
+
+    for (const rawNode of incomingNodes.slice(0, 12)) {
+        const nodeType = normalizeMemoryNodeType(rawNode);
+        if (nodeType === 'event') {
+            if (rawNode?.location) {
+                addEntity('location', rawNode.location, rawNode, 'HAPPENS_AT');
+            }
+            for (const hint of extractTypedMemoryEntityHints(rawNode)) {
+                addEntity(hint.type, hint.title, rawNode, hint.type === 'location' ? 'HAPPENS_AT' : 'INVOLVES');
+            }
+        }
+    }
+
+    if (typeof state.current_location === 'string' && state.current_location.trim()) {
+        addEntity('location', state.current_location, null, 'HAPPENS_AT');
+    }
+    if (typeof state.current_objective === 'string' && state.current_objective.trim()) {
+        addEntity('quest', state.current_objective, null, 'RELATED');
+    }
+    for (const question of Array.isArray(state.open_questions) ? state.open_questions : []) {
+        addEntity('quest', question, null, 'RELATED');
+    }
+
+    return {
+        ...update,
+        nodes: incomingNodes,
+        links: incomingLinks,
+    };
+}
+
 function sanitizeMemoryUpdateForApply(update) {
+    update = expandMemoryUpdateEntityNodes(update);
     const sanitized = {
         ...update,
         nodes: [],
         updates: [],
         links: [],
     };
-    for (const rawNode of (Array.isArray(update?.nodes) ? update.nodes : []).slice(0, 8)) {
+    for (const rawNode of (Array.isArray(update?.nodes) ? update.nodes : []).slice(0, 14)) {
         const title = truncateText(rawNode?.title || rawNode?.label || rawNode?.id || '', 80);
         const summary = truncateText(rawNode?.summary || rawNode?.content || rawNode?.description || '', 240);
         const keys = Array.isArray(rawNode?.keys) ? rawNode.keys.join('') : String(rawNode?.keys || '');
@@ -4035,6 +4172,11 @@ function ensureMemoryUpdateHasVisibleFallback(update, messages, mode = 'realtime
     }
     return {
         ...(update && typeof update === 'object' ? update : {}),
+        state: {
+            ...(update?.state && typeof update.state === 'object' ? update.state : {}),
+            current_location: update?.state?.current_location || '',
+            current_objective: update?.state?.current_objective || '',
+        },
         summary,
         nodes: [{
             id: `event_${Date.now().toString(36)}`,
@@ -4402,7 +4544,7 @@ function buildMemoryExtractionPrompt(recentMessages, graph) {
         ? customDefinitions.map(definition => `- ${definition.label} (${definition.key}): ${definition.instruction || 'Custom state field'}`).join('\n')
         : '- None';
 
-    return `<role>你是 SillyTavern 的轻量记忆整理器。</role>
+    return `<role>你是 SillyTavern 的轻量记忆整理器。你需要把剧情记忆拆成可检索的图谱节点，而不是只写剧情摘要。</role>
 <task>只提取后续角色扮演会继续用到的稳定事实、剧情进展、人物关系、地点、物品、设定和未解决问题。只能返回下方变量块。</task>
 <rules>
 1. 除指定变量块外，不要返回任何 JSON、Markdown、解释或寒暄。
@@ -4415,7 +4557,20 @@ function buildMemoryExtractionPrompt(recentMessages, graph) {
 8. Add links for meaningful same-scene or same-time continuity when it helps connect plot events without inventing facts.
 9. Do not put every fact into event nodes. Split durable entities into typed nodes: character, location, item, faction, concept, rule, quest, and event.
 10. When a message introduces a person, place, item, organization, rule, ability, or open task, create or update that typed node and link it to the related event.
+11. 如果 event 节点的 summary/content/keys/tags 中出现角色、地点、道具、势力、设定、规则或任务，必须同时在 memory_nodes_json 中给出对应的独立 typed node。
+12. tags 或 keys 可以显式标注实体，例如 "角色:小开"、"地点:密室入口"、"道具:金属牌"、"任务:调查门后声响"，便于系统稳定拆分。
+13. event 节点描述“发生了什么”；character/location/item/faction/concept/rule/quest 节点描述“长期会再次用到的对象或设定”。不要把人物、地点、道具只藏在 event 内容里。
+14. memory_links_json 应优先连接 event -> character 用 INVOLVES，event -> location 用 HAPPENS_AT，event -> item 用 INVOLVES，event -> quest 用 UPDATES 或 RELATED。
 </rules>
+<node_type_guide>
+- character：人物、身份、关系、状态长期变化。
+- location：地点、场景、房间、城市、秘境、据点。
+- item：道具、物品、装备、线索、信件、钥匙、药物。
+- faction：组织、势力、家族、阵营、队伍。
+- concept/rule：世界观、能力、规则、限制、契约、系统机制。
+- quest：任务、目标、悬念、未解决问题、待调查事项。
+- event：本轮发生的剧情进展，只记录动作和结果。
+</node_type_guide>
 <custom_state_definitions>
 ${customDefinitionLines}
 </custom_state_definitions>
@@ -5175,7 +5330,7 @@ async function runMemoryGraphUpdate(reason = 'realtime', options = {}) {
     }
 }
 
-function scheduleMemoryGraphUpdate() {
+function scheduleMemoryGraphUpdate(options = {}) {
     if (!settings.memoryEnabled) {
         setMemoryStatus('实时整理未运行：记忆功能未启用。');
         return;
@@ -5199,11 +5354,14 @@ function scheduleMemoryGraphUpdate() {
     memoryUpdateTimer = setTimeout(async () => {
         if (shouldRunRealtime) {
             const forceRealtime = String(getCurrentMemoryLastTurnSignature(context) || '') === '';
-            await runMemoryGraphUpdate('realtime', {
+            const updated = await runMemoryGraphUpdate(options.reason || 'realtime', {
                 mode: 'realtime',
                 scanMessages: settings.memoryRealtimeScanMessages,
-                force: forceRealtime,
+                force: forceRealtime || !!options.force,
             });
+            if (!updated && (isMemoryWorkerRunning || isRouterSelectionRequest) && !options.retry) {
+                setTimeout(() => scheduleMemoryGraphUpdate({ ...options, retry: true }), 2200);
+            }
         }
         if (shouldRunSummary) {
             if (shouldRunRealtime) {
@@ -11851,6 +12009,7 @@ async function bootAiWorldbookRouter() {
         eventSource.on(event_types.GENERATION_STOPPED, () => {
             isGenerationActive = false;
             scheduleCompatFlush();
+            scheduleMemoryGraphUpdate({ reason: 'generation_stopped' });
         });
 
         eventSource.on(event_types.CHAT_CHANGED, (...args) => {
