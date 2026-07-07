@@ -3464,8 +3464,8 @@ function getMemoryGraph(context = getContext()) {
             return;
         }
         const type = String(node.type || '').trim().toLowerCase();
-        const inferredType = normalizeMemoryNodeType({ ...node, type: type === 'event' || !type ? '' : type });
-        if ((!type || type === 'event') && inferredType && inferredType !== type) {
+        const inferredType = !type ? normalizeMemoryNodeType(node) : '';
+        if (!type && inferredType) {
             node.type = inferredType;
             nodeTypeMigrated = true;
         } else if (!type) {
@@ -3473,6 +3473,9 @@ function getMemoryGraph(context = getContext()) {
             nodeTypeMigrated = true;
         }
     });
+    if (rebalanceMemoryGraphNodeTypes(graph)) {
+        nodeTypeMigrated = true;
+    }
     graph.links = Array.isArray(graph.links) ? graph.links : [];
     graph.lastSummary = String(graph.lastSummary || '');
     graph.updatedAt = nodeTypeMigrated ? new Date().toISOString() : String(graph.updatedAt || '');
@@ -3729,6 +3732,48 @@ function normalizeMemoryNodeType(rawNode = {}) {
         return 'quest';
     }
     return 'event';
+}
+
+function looksLikeMemoryEventNode(node = {}) {
+    const type = String(node?.type || '').toLowerCase();
+    if (type !== 'character') {
+        return false;
+    }
+    const title = String(node?.title || '').trim();
+    const summary = String(node?.summary || '').trim();
+    const content = String(node?.content || '').trim();
+    const text = normalizeText([title, summary, content, ...(Array.isArray(node?.keys) ? node.keys : []), ...(Array.isArray(node?.tags) ? node.tags : [])].join(' '));
+    const hasEventTypeCue = /\b(event|plot|scene|timeline|quest|mission|incident|memory|update|summary|conversation)\b/iu.test(text)
+        || /(事件|剧情|场景|时间线|任务|进展|回忆|记忆|摘要|对话|发生|遇到|发现|到达|离开|战斗|决定|约定|计划|调查)/u.test(text);
+    const hasActionCue = /(发生|遇到|发现|到达|离开|进入|拿到|失去|告诉|承诺|决定|开始|结束|寻找|调查|战斗|争吵|合作|逃离|回忆|确认|揭露)/u.test(text)
+        || /\b(met|found|arrived|left|entered|told|promised|decided|started|ended|searched|fought|escaped|revealed|confirmed|asked|answered)\b/iu.test(text);
+    const longNarrative = content.length >= 80 || summary.length >= 60;
+    const shortNameLikeTitle = title.length > 0 && title.length <= 18 && !/[，。！？,.!?;；:：]/u.test(title);
+    return hasEventTypeCue || (hasActionCue && longNarrative) || (!shortNameLikeTitle && longNarrative && !!node?.timeSpan);
+}
+
+function rebalanceMemoryGraphNodeTypes(graph = getDefaultMemoryGraph()) {
+    const nodes = Array.isArray(graph?.nodes) ? graph.nodes : [];
+    if (nodes.length < 4) {
+        return false;
+    }
+    const typeCounts = nodes.reduce((acc, node) => {
+        const type = String(node?.type || 'event');
+        acc[type] = (acc[type] || 0) + 1;
+        return acc;
+    }, {});
+    const characterRatio = Number(typeCounts.character || 0) / Math.max(1, nodes.length);
+    if (characterRatio < 0.72) {
+        return false;
+    }
+    let changed = false;
+    for (const node of nodes) {
+        if (looksLikeMemoryEventNode(node)) {
+            node.type = 'event';
+            changed = true;
+        }
+    }
+    return changed;
 }
 
 function normalizeMemoryLink(rawLink, nodeIds, fallbackIndex = 0) {
