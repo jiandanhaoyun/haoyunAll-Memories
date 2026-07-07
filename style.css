@@ -2718,15 +2718,13 @@
     position: relative;
     display: flex;
     flex-direction: column;
-    gap: 1.05rem;
+    gap: 0.95rem;
     min-height: 34rem;
-    padding: 1.05rem;
-    border: 1px solid rgba(125, 212, 255, 0.22);
-    border-radius: 14px;
-    background:
-        linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.015)),
-        color-mix(in srgb, var(--SmartThemeBlurTintColor, #111827) 90%, #020617 10%);
-    color: color-mix(in srgb, var(--SmartThemeBodyColor, #fff) 92%, #d7f5ff 8%);
+    padding: 1.15rem;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor, #d9d9d9) 42%, transparent 58%);
+    border-radius: 18px;
+    background: color-mix(in srgb, var(--SmartThemeBlurTintColor, #ffffff) 94%, #f6f3ee 6%);
+    color: color-mix(in srgb, var(--SmartThemeBodyColor, #222) 94%, #111 6%);
     font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
@@ -2738,9 +2736,9 @@
 }
 
 .ai-wbr-bookshelf-title {
-    font-size: 2rem;
+    font-size: 2.15rem;
     line-height: 1.15;
-    font-weight: 600;
+    font-weight: 700;
     letter-spacing: 0;
 }
 
@@ -2750,7 +2748,7 @@
     border: 0;
     border-radius: 999px;
     background: transparent;
-    color: color-mix(in srgb, var(--SmartThemeBodyColor, #fff) 86%, #d7f5ff 14%);
+    color: color-mix(in srgb, var(--SmartThemeBodyColor, #222) 86%, #111 14%);
     cursor: pointer;
     font-size: 1.75rem;
     font-weight: 700;
@@ -2765,14 +2763,47 @@
     margin-top: 0.25rem;
 }
 
+.ai-wbr-bookshelf-library-tabs {
+    margin-top: 0.45rem;
+}
+
+.ai-wbr-bookshelf-library-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.8rem;
+}
+
+.ai-wbr-bookshelf-tab-divider {
+    width: 1px;
+    height: 1.25rem;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor, #222) 18%, transparent 82%);
+}
+
+.ai-wbr-bookshelf-mini-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.55rem;
+    margin-top: -0.25rem;
+}
+
+.ai-wbr-bookshelf-pill-action {
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor, #d9d9d9) 52%, transparent 48%);
+    border-radius: 999px;
+    padding: 0.36rem 0.7rem;
+    background: color-mix(in srgb, var(--SmartThemeBlurTintColor, #fff) 88%, #f3f4f6 12%);
+    color: color-mix(in srgb, var(--SmartThemeBodyColor, #222) 78%, transparent 22%);
+    cursor: pointer;
+    font-size: 0.84rem;
+}
+
 .ai-wbr-bookshelf-read-badge {
     display: inline-flex;
     align-items: center;
     gap: 0.35rem;
     border-radius: 999px;
     padding: 0.5rem 0.9rem;
-    background: rgba(125, 212, 255, 0.12);
-    color: color-mix(in srgb, var(--SmartThemeBodyColor, #fff) 88%, #7dd3fc 12%);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor, #222) 7%, transparent 93%);
+    color: color-mix(in srgb, var(--SmartThemeBodyColor, #222) 82%, transparent 18%);
     font-size: 0.98rem;
     font-weight: 600;
 }
@@ -2790,7 +2821,7 @@
     border: 0;
     border-radius: 8px;
     background: transparent;
-    color: color-mix(in srgb, var(--SmartThemeBodyColor, #fff) 82%, #7dd3fc 18%);
+    color: color-mix(in srgb, var(--SmartThemeBodyColor, #222) 86%, transparent 14%);
     cursor: pointer;
     font-size: 1rem;
     white-space: nowrap;
@@ -2798,13 +2829,13 @@
 
 .ai-wbr-bookshelf-link:hover,
 .ai-wbr-bookshelf-more:hover {
-    background: rgba(125, 212, 255, 0.1);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor, #222) 8%, transparent 92%);
 }
 
 .ai-wbr-bookshelf-status {
-    min-height: 1.25rem;
-    color: color-mix(in srgb, var(--SmartThemeBodyColor, #fff) 58%, transparent 42%);
-    font-size: 0.88rem;
+    min-height: 1rem;
+    color: color-mix(in srgb, var(--SmartThemeBodyColor, #222) 48%, transparent 52%);
+    font-size: 0.78rem;
     line-height: 1.4;
 }
 
@@ -2902,7 +2933,7 @@
 .ai-wbr-bookshelf-books {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 1.25rem 1rem;
+    gap: 1.45rem 1.15rem;
     align-items: start;
 }
 
@@ -2966,12 +2997,12 @@
     width: 100%;
     overflow: hidden;
     border: 0;
-    border-radius: 6px;
+    border-radius: 8px;
     padding: 0.72rem;
     background:
         linear-gradient(145deg, rgba(255, 255, 255, 0.08), rgba(0, 0, 0, 0.28)),
         linear-gradient(135deg, #2d3142, #784421 45%, #111827);
-    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.14);
+    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.18);
     color: #fff;
     cursor: pointer;
     text-align: left;
@@ -3001,7 +3032,7 @@
     display: -webkit-box;
     overflow: hidden;
     color: #fff;
-    font-size: clamp(0.9rem, 2vw, 1.2rem);
+    font-size: 1.05rem;
     font-weight: 800;
     line-height: 1.18;
     text-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
@@ -3025,7 +3056,7 @@
     position: absolute;
     top: 0.35rem;
     right: 0.35rem;
-    border-radius: 3px;
+    border-radius: 4px;
     padding: 0.12rem 0.35rem;
     background: rgba(17, 17, 17, 0.78);
     color: #fff;
@@ -3036,9 +3067,9 @@
 .ai-wbr-bookshelf-book-title {
     display: -webkit-box;
     overflow: hidden;
-    color: color-mix(in srgb, var(--SmartThemeBodyColor, #fff) 90%, #d7f5ff 10%);
-    font-size: 1rem;
-    line-height: 1.28;
+    color: color-mix(in srgb, var(--SmartThemeBodyColor, #222) 92%, transparent 8%);
+    font-size: 1.02rem;
+    line-height: 1.36;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
 }
@@ -3055,8 +3086,8 @@
 .ai-wbr-bookshelf-scope-card span,
 .ai-wbr-bookshelf-book-meta,
 .ai-wbr-bookshelf-result small {
-    color: color-mix(in srgb, var(--SmartThemeBodyColor, #fff) 58%, transparent 42%);
-    font-size: 0.86rem;
+    color: color-mix(in srgb, var(--SmartThemeBodyColor, #222) 42%, transparent 58%);
+    font-size: 0.88rem;
 }
 
 .ai-wbr-bookshelf-book-head,
@@ -3229,47 +3260,110 @@
     justify-content: center;
     width: 100vw;
     height: 100dvh;
-    padding: clamp(0.75rem, 2.4vh, 1.5rem);
+    padding: 0;
     overflow: hidden;
-    background: rgba(6, 8, 15, 0.78);
-    backdrop-filter: blur(14px);
+    background: rgba(0, 0, 0, 0.34);
+    backdrop-filter: blur(10px);
 }
 
 .ai-wbr-bookshelf-reader-shell {
     box-sizing: border-box;
     display: grid;
-    grid-template-rows: auto auto minmax(0, 1fr);
-    gap: 0.9rem;
-    width: min(74rem, calc(100vw - 2rem));
-    height: min(52rem, calc(100dvh - 2rem));
-    max-width: calc(100vw - 2rem);
-    max-height: calc(100dvh - 2rem);
+    grid-template-rows: auto auto auto minmax(0, 1fr);
+    gap: 0.8rem;
+    width: min(54rem, 100vw);
+    height: min(100dvh, 58rem);
+    max-width: 100vw;
+    max-height: 100dvh;
     min-height: 0;
     overflow: hidden;
-    border: 1px solid rgba(255, 127, 80, 0.22);
-    border-radius: 18px;
-    padding: 1rem;
+    border: 0;
+    border-radius: 0;
+    padding: clamp(0.85rem, 2vw, 1.35rem);
     background:
-        linear-gradient(180deg, rgba(255, 248, 235, 0.08), rgba(255, 255, 255, 0.025)),
-        color-mix(in srgb, var(--SmartThemeBlurTintColor, #111827) 92%, #24111f 8%);
-    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.52);
-    color: color-mix(in srgb, var(--SmartThemeBodyColor, #fff) 92%, #ffe7d6 8%);
+        linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(247, 243, 235, 0.96)),
+        #f7f1e7;
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.32);
+    color: #2b2520;
 }
 
 .ai-wbr-bookshelf-reader-top {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 1rem;
+    gap: 0.7rem;
     min-width: 0;
 }
 
-.ai-wbr-bookshelf-reader-top > div {
+.ai-wbr-bookshelf-reader-titlebar {
+    flex: 1 1 auto;
     min-width: 0;
+    text-align: center;
 }
 
-.ai-wbr-bookshelf-reader-top .menu_button {
-    flex: 0 0 auto;
+.ai-wbr-bookshelf-reader-back,
+.ai-wbr-bookshelf-reader-more {
+    width: 2.35rem;
+    height: 2.35rem;
+    flex: 0 0 2.35rem;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: #2b2520;
+    cursor: pointer;
+    font-size: 1.45rem;
+    line-height: 1;
+}
+
+.ai-wbr-bookshelf-reader-menu-wrap {
+    position: relative;
+    display: flex;
+    flex: 0 0 2.35rem;
+    justify-content: flex-end;
+}
+
+.ai-wbr-bookshelf-reader-menu {
+    position: absolute;
+    top: calc(100% + 0.45rem);
+    right: 0;
+    z-index: 2;
+    display: none;
+    min-width: 8.2rem;
+    overflow: hidden;
+    border: 1px solid rgba(43, 37, 32, 0.12);
+    border-radius: 12px;
+    background: rgba(255, 251, 244, 0.96);
+    box-shadow: 0 16px 34px rgba(43, 37, 32, 0.18);
+}
+
+.ai-wbr-bookshelf-reader-menu-wrap.open .ai-wbr-bookshelf-reader-menu {
+    display: block;
+}
+
+.ai-wbr-bookshelf-reader-menu-action {
+    display: block;
+    width: 100%;
+    border: 0;
+    padding: 0.72rem 0.9rem;
+    background: transparent;
+    color: #2b2520;
+    cursor: pointer;
+    font-size: 0.92rem;
+    text-align: left;
+}
+
+.ai-wbr-bookshelf-reader-menu-action:hover {
+    background: rgba(43, 37, 32, 0.07);
+}
+
+.ai-wbr-bookshelf-reader-back {
+    font-size: 2.15rem;
+    font-weight: 300;
+}
+
+.ai-wbr-bookshelf-reader-back:hover,
+.ai-wbr-bookshelf-reader-more:hover {
+    background: rgba(43, 37, 32, 0.08);
 }
 
 .ai-wbr-bookshelf-reader-top b,
@@ -3281,41 +3375,40 @@
 }
 
 .ai-wbr-bookshelf-reader-top b {
-    font-size: 1.05rem;
+    font-size: 1rem;
+    font-weight: 700;
 }
 
 .ai-wbr-bookshelf-reader-top small {
-    color: color-mix(in srgb, var(--SmartThemeBodyColor, #fff) 58%, transparent 42%);
-    font-size: 0.82rem;
+    color: rgba(43, 37, 32, 0.54);
+    font-size: 0.78rem;
 }
 
 .ai-wbr-bookshelf-reader-hero {
     display: grid;
-    grid-template-columns: minmax(8rem, 13rem) minmax(0, 1fr);
-    gap: 0.9rem;
+    grid-template-columns: minmax(6.8rem, 9.5rem) minmax(0, 1fr);
+    gap: 0.95rem;
     align-items: stretch;
     min-height: 0;
-    border-radius: 16px;
-    padding: 0.9rem;
-    background:
-        linear-gradient(135deg, rgba(255, 106, 42, 0.16), rgba(215, 38, 61, 0.1)),
-        rgba(255, 255, 255, 0.04);
+    border-radius: 14px;
+    padding: 0.75rem 0;
+    background: transparent;
 }
 
 .ai-wbr-bookshelf-reader-cover {
     position: relative;
     display: flex;
-    min-height: clamp(8rem, 19vh, 11rem);
+    min-height: clamp(8.4rem, 18vh, 10.6rem);
     flex-direction: column;
     justify-content: flex-end;
     overflow: hidden;
-    border-radius: 14px;
+    border-radius: 8px;
     padding: 0.9rem;
     background:
         radial-gradient(circle at 20% 18%, rgba(255, 255, 255, 0.2), transparent 30%),
         linear-gradient(145deg, rgba(255, 255, 255, 0.16), rgba(0, 0, 0, 0.3)),
         linear-gradient(135deg, #ff7a30, #df2f45 48%, #22111f);
-    box-shadow: 0 14px 32px rgba(215, 38, 61, 0.24);
+    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.24);
     color: #fff;
 }
 
@@ -3356,20 +3449,32 @@
 
 .ai-wbr-bookshelf-reader-intro h3 {
     margin: 0;
-    font-size: 1.45rem;
+    color: #1f1a16;
+    font-size: 1.28rem;
     line-height: 1.22;
 }
 
 .ai-wbr-bookshelf-reader-intro p {
     margin: 0;
-    color: color-mix(in srgb, var(--SmartThemeBodyColor, #fff) 68%, transparent 32%);
+    color: rgba(43, 37, 32, 0.64);
     font-size: 0.92rem;
     line-height: 1.55;
 }
 
+.ai-wbr-bookshelf-reader-current {
+    overflow: hidden;
+    border-radius: 999px;
+    padding: 0.45rem 0.8rem;
+    background: rgba(43, 37, 32, 0.06);
+    color: rgba(43, 37, 32, 0.68);
+    font-size: 0.84rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .ai-wbr-bookshelf-reader-body {
     display: grid;
-    grid-template-columns: minmax(11rem, 0.26fr) minmax(0, 1fr);
+    grid-template-columns: minmax(10rem, 0.28fr) minmax(0, 1fr);
     gap: 0.9rem;
     min-height: 0;
     overflow: hidden;
@@ -3386,14 +3491,15 @@
     display: flex;
     flex-direction: column;
     gap: 0.45rem;
-    border: 1px solid rgba(255, 127, 80, 0.18);
-    border-radius: 14px;
-    padding: 0.75rem;
-    background: rgba(255, 255, 255, 0.035);
+    border: 1px solid rgba(43, 37, 32, 0.08);
+    border-radius: 12px;
+    padding: 0.65rem;
+    background: rgba(255, 255, 255, 0.48);
     overflow-x: hidden;
 }
 
 .ai-wbr-bookshelf-reader-toc > b {
+    color: rgba(43, 37, 32, 0.84);
     font-size: 0.95rem;
 }
 
@@ -3402,41 +3508,41 @@
     flex-direction: column;
     gap: 0.14rem;
     border: 1px solid transparent;
-    border-radius: 10px;
+    border-radius: 8px;
     padding: 0.5rem 0.55rem;
     background: transparent;
-    color: color-mix(in srgb, var(--SmartThemeBodyColor, #fff) 84%, transparent 16%);
+    color: rgba(43, 37, 32, 0.82);
     text-align: left;
     cursor: pointer;
 }
 
 .ai-wbr-bookshelf-reader-toc-item.active,
 .ai-wbr-bookshelf-reader-toc-item:hover {
-    border-color: rgba(255, 106, 42, 0.42);
-    background: rgba(255, 106, 42, 0.12);
+    border-color: rgba(43, 37, 32, 0.12);
+    background: rgba(43, 37, 32, 0.07);
 }
 
 .ai-wbr-bookshelf-reader-toc-item small {
-    color: color-mix(in srgb, var(--SmartThemeBodyColor, #fff) 54%, transparent 46%);
+    color: rgba(43, 37, 32, 0.48);
     font-size: 0.76rem;
 }
 
 .ai-wbr-bookshelf-reader-pages {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
-    padding-right: 0.25rem;
+    gap: 0.9rem;
+    padding: 0 0.25rem 0.75rem 0;
     overflow-x: hidden;
     overflow-y: auto;
 }
 
 .ai-wbr-bookshelf-reader-page {
-    border: 1px solid rgba(255, 127, 80, 0.15);
-    border-radius: 16px;
-    padding: 1.1rem 1.15rem;
+    border: 1px solid rgba(43, 37, 32, 0.08);
+    border-radius: 12px;
+    padding: clamp(1rem, 2.4vw, 1.55rem);
     background:
-        linear-gradient(180deg, rgba(255, 248, 235, 0.09), rgba(255, 255, 255, 0.03)),
-        rgba(255, 255, 255, 0.04);
+        linear-gradient(180deg, rgba(255, 255, 255, 0.68), rgba(255, 251, 244, 0.88)),
+        #fff9ef;
 }
 
 .ai-wbr-bookshelf-reader-page-head {
@@ -3447,23 +3553,24 @@
 }
 
 .ai-wbr-bookshelf-reader-page-head b {
-    font-size: 1.02rem;
+    color: #1f1a16;
+    font-size: 1.08rem;
 }
 
 .ai-wbr-bookshelf-reader-page-head span {
     border-radius: 999px;
     padding: 0.14rem 0.46rem;
-    background: rgba(255, 106, 42, 0.14);
-    color: color-mix(in srgb, var(--SmartThemeBodyColor, #fff) 82%, #ff9b65 18%);
+    background: rgba(43, 37, 32, 0.07);
+    color: rgba(43, 37, 32, 0.58);
     font-size: 0.76rem;
     white-space: nowrap;
 }
 
 .ai-wbr-bookshelf-reader-page p {
-    margin: 0.55rem 0 0;
-    color: color-mix(in srgb, var(--SmartThemeBodyColor, #fff) 88%, transparent 12%);
-    font-size: 1rem;
-    line-height: 1.78;
+    margin: 0.75rem 0 0;
+    color: #342c25;
+    font-size: 1.04rem;
+    line-height: 1.9;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
 }
