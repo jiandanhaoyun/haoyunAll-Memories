@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         AI Worldbook Router Test - Tavern Helper
+// @name         AI Worldbook Router - Tavern Helper
 // @namespace    https://github.com/jiandanhaoyun/haoyunAll-Memories-test
 // @version      0.7.2-userscript
-// @description  TEST channel - AI worldbook routing and lightweight memory graph console
+// @description  AI worldbook routing and lightweight memory graph console
 // @author       zmer
 // @match        *://*/*
 // @grant        none
