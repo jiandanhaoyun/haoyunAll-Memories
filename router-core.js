@@ -8118,8 +8118,10 @@ function renderMemoryGraphSvg(graph) {
         const selectedClass = String(node.id) === String(memoryGraphSelectedNodeId) ? ' ai-wbr-memory-node-selected' : '';
         const searchClass = displayModel.query && getMemoryGraphSearchHaystack(node).includes(displayModel.query) ? ' ai-wbr-memory-node-search-hit' : '';
         const importanceLabel = `${Math.round(clampNumber(node.importance, 0.5, 0, 1) * 100)}%`;
+        const emphasisScore = getMemoryGraphNodeScore(node, 0, 0);
+        const emphasisClass = emphasisScore >= 1.2 ? ' ai-wbr-memory-node-emphasis' : '';
         const clipId = `ai-wbr-memory-node-clip-${escapeHtml(String(node.id || '').replace(/[^a-zA-Z0-9_-]/g, '-'))}`;
-        return `<g class="ai-wbr-memory-node ${colorClass}${selectedClass}${searchClass}" data-memory-node-id="${escapeHtml(node.id)}" transform="translate(${position.x},${position.y})">
+        return `<g class="ai-wbr-memory-node ${colorClass}${selectedClass}${searchClass}${emphasisClass}" data-memory-node-id="${escapeHtml(node.id)}" transform="translate(${position.x},${position.y})">
             <clipPath id="${clipId}"><rect x="3" y="3" width="${MEMORY_GRAPH_NODE_WIDTH - 6}" height="${MEMORY_GRAPH_NODE_HEIGHT - 6}" rx="12" ry="12"></rect></clipPath>
             <rect class="ai-wbr-memory-node-card" x="0" y="0" width="${MEMORY_GRAPH_NODE_WIDTH}" height="${MEMORY_GRAPH_NODE_HEIGHT}" rx="14" ry="14"></rect>
             <g clip-path="url(#${clipId})">

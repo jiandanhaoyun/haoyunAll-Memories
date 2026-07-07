@@ -1,33 +1,33 @@
 {
-  "name": "世界书读取",
+  "name": "AI Worldbook Router",
   "id": "ai_worldbook_router",
-  "version": "0.6.17",
-  "generatedAt": "2026-07-06T07:05:49.151Z",
+  "version": "0.6.18",
+  "generatedAt": "2026-07-07T03:10:50.566Z",
   "files": [
     {
       "file": "manifest.json",
-      "bytes": 566,
-      "modifiedAt": "2026-07-06T07:05:49.048Z"
+      "bytes": 519,
+      "modifiedAt": "2026-07-07T03:08:23.314Z"
     },
     {
       "file": "index.js",
-      "bytes": 33548,
-      "modifiedAt": "2026-07-05T20:41:57.222Z"
+      "bytes": 34386,
+      "modifiedAt": "2026-07-07T02:33:41.642Z"
     },
     {
       "file": "router-core.js",
-      "bytes": 407072,
-      "modifiedAt": "2026-07-06T07:05:21.719Z"
+      "bytes": 533816,
+      "modifiedAt": "2026-07-07T03:05:32.233Z"
     },
     {
       "file": "settings.html",
-      "bytes": 36365,
-      "modifiedAt": "2026-07-05T19:32:10.448Z"
+      "bytes": 37237,
+      "modifiedAt": "2026-07-07T03:05:10.204Z"
     },
     {
       "file": "style.css",
-      "bytes": 61065,
-      "modifiedAt": "2026-07-05T20:11:08.286Z"
+      "bytes": 89072,
+      "modifiedAt": "2026-07-07T03:07:19.251Z"
     }
   ]
 }

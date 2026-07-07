@@ -3556,3 +3556,168 @@
         font-size: 0.8rem;
     }
 }
+
+/* ===== Memory & Graph panel restructure (v0.6.18) ===== */
+
+/* ----- Memory section: status band + activity area ----- */
+.ai-wbr-memory-band {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem 0.8rem;
+    padding: 0.65rem 0.8rem;
+    margin-bottom: 0.7rem;
+    border: 1px solid rgba(125, 212, 255, 0.32);
+    border-radius: 12px;
+    background:
+        linear-gradient(135deg, rgba(85, 133, 201, 0.16), rgba(123, 216, 255, 0.07)),
+        color-mix(in srgb, var(--SmartThemeBlurTintColor, rgba(12, 16, 24, 0.96)) 92%, #08101d 8%);
+    box-shadow: inset 0 0 22px rgba(125, 212, 255, 0.08);
+    position: sticky;
+    top: 0;
+    z-index: 6;
+}
+
+.ai-wbr-memory-band-metrics {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.3rem 0.7rem;
+    min-width: 0;
+}
+
+.ai-wbr-memory-band-metrics .ai-wbr-status {
+    font-weight: 700;
+    font-size: 0.92rem;
+    opacity: 1;
+}
+
+.ai-wbr-memory-band-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+}
+
+.ai-wbr-memory-band-actions .menu_button {
+    margin: 0;
+}
+
+.ai-wbr-memory-band-primary {
+    border-color: rgba(125, 212, 255, 0.6) !important;
+    background: rgba(125, 212, 255, 0.14) !important;
+}
+
+.ai-wbr-memory-band-muted {
+    opacity: 0.7;
+}
+
+.ai-wbr-memory-band-danger {
+    border-color: rgba(255, 120, 120, 0.5) !important;
+    color: color-mix(in srgb, var(--SmartThemeBodyColor, #fff) 80%, #ff9b9b 20%);
+}
+
+.ai-wbr-memory-band-danger:hover {
+    background: rgba(255, 100, 100, 0.16) !important;
+}
+
+.ai-wbr-memory-activity {
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+    margin-bottom: 0.7rem;
+}
+
+.ai-wbr-memory-activity .ai-wbr-memory-review-fold {
+    margin-top: 0;
+}
+
+/* make the activity review queue prominent when there are pending items */
+.ai-wbr-memory-activity .ai-wbr-memory-fold-attention {
+    box-shadow: 0 0 0 1px rgba(255, 196, 87, 0.45), 0 8px 20px rgba(255, 160, 60, 0.12);
+}
+
+/* settings group: visually separate the collapsed settings cluster */
+.ai-wbr-memory-settings-fold {
+    margin-top: 0.2rem;
+}
+
+.ai-wbr-memory-settings-fold > summary span {
+    color: color-mix(in srgb, var(--SmartThemeBodyColor, #fff) 78%, #8fd7ff 22%);
+}
+
+/* ----- Graph section: topbar slim + floating fit button + emphasis ----- */
+.ai-wbr-graph-topbar-actions .menu_button {
+    margin: 0;
+}
+
+.ai-wbr-graph-topbar-primary {
+    border-color: rgba(125, 212, 255, 0.6) !important;
+    background: rgba(125, 212, 255, 0.14) !important;
+}
+
+.ai-wbr-graph-fab-fit {
+    position: absolute;
+    z-index: 7;
+    right: 0.6rem;
+    bottom: 0.6rem;
+    width: 2.2rem;
+    height: 2.2rem;
+    min-width: 0;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    border: 1px solid rgba(176, 225, 255, 0.42);
+    background: color-mix(in srgb, var(--SmartThemeBlurTintColor, rgba(12, 16, 24, 0.9)) 80%, #08101d 20%);
+    color: color-mix(in srgb, var(--SmartThemeBodyColor, #fff) 88%, #d7f5ff 12%);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.28);
+    cursor: pointer;
+    opacity: 0.78;
+    transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.ai-wbr-graph-fab-fit:hover {
+    opacity: 1;
+    transform: scale(1.06);
+}
+
+/* emphasize high-importance / recently-updated nodes so the graph has a focal point */
+.ai-wbr-memory-node-emphasis .ai-wbr-memory-node-card {
+    stroke-width: 2.4;
+    stroke: color-mix(in srgb, var(--memory-node-accent, #66e0ff) 78%, #ffffff 22%);
+    filter: drop-shadow(0 0 5px color-mix(in srgb, var(--memory-node-accent, #66e0ff) 55%, transparent 45%));
+}
+
+.ai-wbr-memory-node-emphasis .ai-wbr-memory-node-title {
+    font-weight: 800;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .ai-wbr-memory-node-emphasis .ai-wbr-memory-node-card {
+        animation: ai-wbr-memory-node-emphasis-pulse 2.6s ease-in-out infinite;
+    }
+
+    @keyframes ai-wbr-memory-node-emphasis-pulse {
+        0%, 100% { filter: drop-shadow(0 0 4px color-mix(in srgb, var(--memory-node-accent, #66e0ff) 45%, transparent 55%)); }
+        50% { filter: drop-shadow(0 0 8px color-mix(in srgb, var(--memory-node-accent, #66e0ff) 70%, transparent 30%)); }
+    }
+}
+
+/* fullscreen floating fit button placement stays reachable */
+.ai-wbr-graph-workspace.ai-wbr-memory-graph-fullscreen .ai-wbr-graph-fab-fit {
+    right: 1rem;
+    bottom: 1rem;
+}
+
+/* narrow screens: band stacks vertically */
+@media (max-width: 640px) {
+    .ai-wbr-memory-band {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .ai-wbr-memory-band-actions {
+        justify-content: center;
+    }
+}

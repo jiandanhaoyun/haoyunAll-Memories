@@ -136,7 +136,30 @@
                 <div class="ai-wbr-section-title">
                     <b>记忆存储与整理</b>
                 </div>
-                <details class="ai-wbr-memory-fold" open>
+                <div class="ai-wbr-memory-band">
+                    <div class="ai-wbr-memory-band-metrics" id="ai_wbr_memory_band_metrics">
+                        <span class="ai-wbr-status" id="ai_wbr_memory_status">未启用</span>
+                    </div>
+                    <div class="ai-wbr-memory-band-actions">
+                        <button id="ai_wbr_memory_run_now" class="menu_button ai-wbr-memory-band-primary" type="button">立即实时整理</button>
+                        <button id="ai_wbr_memory_summary_now" class="menu_button ai-wbr-memory-band-primary" type="button">立即归纳整理</button>
+                        <button id="ai_wbr_memory_accept_all" class="menu_button" type="button">确认全部更新</button>
+                        <button id="ai_wbr_memory_reject_all" class="menu_button ai-wbr-memory-band-muted" type="button">清空待确认</button>
+                        <button id="ai_wbr_memory_save_json" class="menu_button ai-wbr-memory-band-muted" type="button">保存 JSON</button>
+                        <button id="ai_wbr_memory_clear" class="menu_button ai-wbr-memory-band-danger" type="button">清空记忆</button>
+                    </div>
+                </div>
+                <div class="ai-wbr-memory-activity">
+                    <div id="ai_wbr_memory_dashboard" class="ai-wbr-memory-dashboard"></div>
+                    <details class="ai-wbr-memory-fold ai-wbr-memory-review-fold">
+                        <summary>
+                            <span>待确认更新</span>
+                            <small id="ai_wbr_memory_review_badge">暂无待确认。</small>
+                        </summary>
+                        <div id="ai_wbr_memory_review_queue" class="ai-wbr-memory-review-queue ai-wbr-memory-fold-body"></div>
+                    </details>
+                </div>
+                <details class="ai-wbr-memory-fold ai-wbr-memory-settings-fold">
                     <summary>
                         <span>核心开关</span>
                         <small>启用记忆、实时整理、归纳和路由参与。</small>
@@ -196,22 +219,6 @@
 
                         <label for="ai_wbr_memory_retries"><span class="fa-solid fa-circle-info ai-wbr-help" title="后置记忆整理失败、空回或解析失败时，额外自动重试几次。"></span>后置记忆重试次数</label>
                         <input id="ai_wbr_memory_retries" class="text_pole" type="number" min="0" max="10" step="1" />
-                    </div>
-                </details>
-
-                <details class="ai-wbr-memory-fold" open>
-                    <summary>
-                        <span>立即整理</span>
-                        <small>手动运行整理、确认队列、保存或清空。</small>
-                    </summary>
-                    <div class="ai-wbr-memory-fold-body ai-wbr-actions">
-                        <button id="ai_wbr_memory_run_now" class="menu_button" type="button">立即实时整理</button>
-                        <button id="ai_wbr_memory_summary_now" class="menu_button" type="button">立即归纳整理</button>
-                        <button id="ai_wbr_memory_accept_all" class="menu_button" type="button">确认全部更新</button>
-                        <button id="ai_wbr_memory_reject_all" class="menu_button" type="button">清空待确认</button>
-                        <button id="ai_wbr_memory_save_json" class="menu_button" type="button">保存 JSON</button>
-                        <button id="ai_wbr_memory_clear" class="menu_button" type="button">清空记忆</button>
-                        <span id="ai_wbr_memory_status" class="ai-wbr-status">未启用</span>
                     </div>
                 </details>
 
@@ -359,24 +366,6 @@
                     </div>
                 </details>
 
-                <details class="ai-wbr-memory-fold" open>
-                    <summary>
-                        <span>记忆概览</span>
-                        <small>节点、关系、待确认数量和当前主题。</small>
-                    </summary>
-                    <div class="ai-wbr-memory-fold-body">
-                        <div id="ai_wbr_memory_dashboard" class="ai-wbr-memory-dashboard"></div>
-                    </div>
-                </details>
-
-                <details class="ai-wbr-memory-fold ai-wbr-memory-review-fold">
-                    <summary>
-                        <span>待确认更新</span>
-                        <small id="ai_wbr_memory_review_badge">暂无待确认。</small>
-                    </summary>
-                    <div id="ai_wbr_memory_review_queue" class="ai-wbr-memory-review-queue ai-wbr-memory-fold-body"></div>
-                </details>
-
                 <details class="ai-wbr-memory-fold">
                     <summary>
                         <span>状态字段</span>
@@ -436,14 +425,13 @@
                     </div>
                     <div class="ai-wbr-graph-topbar-actions">
                         <button id="ai_wbr_memory_graph_preview_toggle" class="menu_button" type="button">记忆列表</button>
-                        <button id="ai_wbr_memory_graph_fit" class="menu_button" type="button">适配视图</button>
-                        <button id="ai_wbr_memory_graph_fullscreen" class="menu_button" type="button">全屏图谱</button>
-                        <button id="ai_wbr_memory_graph_close_detail" class="menu_button" type="button">关闭详情</button>
+                        <button id="ai_wbr_memory_graph_fullscreen" class="menu_button ai-wbr-graph-topbar-primary" type="button">全屏图谱</button>
                     </div>
                 </div>
                 <div class="ai-wbr-graph-shell">
                     <aside id="ai_wbr_memory_preview_panel" class="ai-wbr-memory-preview-panel"></aside>
                     <div id="ai_wbr_memory_graph" class="ai-wbr-memory-graph ai-wbr-memory-graph-large"></div>
+                    <button id="ai_wbr_memory_graph_fit" class="menu_button ai-wbr-graph-fab-fit" type="button" title="适配视图"><i class="fa-solid fa-expand"></i></button>
                     <aside id="ai_wbr_memory_detail_drawer" class="ai-wbr-memory-detail-drawer">
                         <div class="ai-wbr-memory-detail-empty">点击图谱中的记忆卡片或关系线查看详情。</div>
                     </aside>
