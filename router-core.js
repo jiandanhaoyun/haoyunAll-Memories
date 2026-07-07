@@ -3639,6 +3639,115 @@ function normalizeMemoryLink(rawLink, nodeIds, fallbackIndex = 0) {
     };
 }
 
+function normalizeMemoryFacetValue(value, maxLength = 120) {
+    const text = String(value || '').replace(/\s+/g, ' ').trim();
+    if (!text) {
+        return '';
+    }
+    const compact = normalizeText(text);
+    if (!compact || /^(unknown|none|null|n\/a|na|undefined|not\s+specified|unspecified)$/iu.test(compact)) {
+        return '';
+    }
+    return truncateText(text, maxLength);
+}
+
+function getMemoryNodeTemporalContext(rawNode = {}, graph = getMemoryGraph(), state = {}) {
+    const normalizedTitle = normalizeText(rawNode?.title || rawNode?.label || rawNode?.id || rawNode?.titleToUpdate || '');
+    const existing = normalizedTitle
+        ? (Array.isArray(graph?.nodes) ? graph.nodes : []).find(node => normalizeText(node.title) === normalizedTitle || normalizeText(node.id) === normalizedTitle)
+        : null;
+    const location = normalizeMemoryFacetValue(
+        rawNode?.location
+        || rawNode?.scene
+        || rawNode?.place
+        || existing?.location
+        || state?.current_location
+        || graph?.state?.current_location,
+    );
+    const timeSpan = normalizeMemoryFacetValue(
+        rawNode?.timeSpan
+        || rawNode?.time_span
+        || rawNode?.time
+        || rawNode?.period
+        || existing?.timeSpan
+        || state?.current_time
+        || graph?.state?.current_time
+        || state?.current_phase
+        || graph?.state?.current_phase,
+    );
+    return { location, timeSpan };
+}
+
+function applyMemoryTemporalContext(rawNode = {}, graph = getMemoryGraph(), state = {}) {
+    if (!rawNode || typeof rawNode !== 'object') {
+        return rawNode;
+    }
+    const temporal = getMemoryNodeTemporalContext(rawNode, graph, state);
+    return {
+        ...rawNode,
+        location: normalizeMemoryFacetValue(rawNode.location || rawNode.scene || rawNode.place) || temporal.location,
+        timeSpan: normalizeMemoryFacetValue(rawNode.timeSpan || rawNode.time_span || rawNode.time || rawNode.period) || temporal.timeSpan,
+    };
+}
+
+function buildMemoryAutoTemporalLinks(nodes = [], existingLinks = [], maxLinks = 10) {
+    const result = [];
+    const existingKeys = new Set((Array.isArray(existingLinks) ? existingLinks : []).map(link => {
+        const pair = [String(link.source || ''), String(link.target || '')].sort().join('|');
+        return `${pair}|${String(link.type || 'RELATED').toUpperCase()}`;
+    }));
+    const candidates = (Array.isArray(nodes) ? nodes : [])
+        .filter(node => node?.id)
+        .slice(0, 80);
+    for (let i = 0; i < candidates.length && result.length < maxLinks; i += 1) {
+        for (let j = i + 1; j < candidates.length && result.length < maxLinks; j += 1) {
+            const source = candidates[i];
+            const target = candidates[j];
+            const sameLocation = normalizeMemoryFacetValue(source.location) && normalizeText(source.location) === normalizeText(target.location);
+            const sameTime = normalizeMemoryFacetValue(source.timeSpan) && normalizeText(source.timeSpan) === normalizeText(target.timeSpan);
+            if (!sameLocation && !sameTime) {
+                continue;
+            }
+            const pair = [String(source.id), String(target.id)].sort().join('|');
+            const key = `${pair}|RELATED`;
+            if (existingKeys.has(key)) {
+                continue;
+            }
+            existingKeys.add(key);
+            result.push({
+                id: truncateText(`temporal_${source.id}_${target.id}_${result.length}`, 120),
+                source: source.id,
+                target: target.id,
+                type: 'RELATED',
+                weight: sameLocation && sameTime ? 0.58 : 0.42,
+                description: sameLocation && sameTime
+                    ? `Same scene and time: ${source.location} / ${source.timeSpan}`
+                    : sameLocation
+                        ? `Same location: ${source.location}`
+                        : `Same time: ${source.timeSpan}`,
+                updatedAt: new Date().toISOString(),
+                autoTemporal: true,
+            });
+        }
+    }
+    return result;
+}
+
+function getMemoryTemporalLayoutKey(node) {
+    const location = normalizeMemoryFacetValue(node?.location);
+    const timeSpan = normalizeMemoryFacetValue(node?.timeSpan);
+    if (location && timeSpan) {
+        return `${normalizeText(location)}::${normalizeText(timeSpan)}`;
+    }
+    if (location) {
+        return `loc::${normalizeText(location)}`;
+    }
+    if (timeSpan) {
+        return `time::${normalizeText(timeSpan)}`;
+    }
+    return '';
+}
+
 function isWeakMemoryTitle(title) {
     const text = normalizeText(title);
     if (!text || text.length < 2) return true;
@@ -4075,7 +4184,13 @@ function buildMemoryExtractionPrompt(recentMessages, graph) {
     const currentGraph = truncateText(JSON.stringify({
         state: graph.state,
         stateDefinitions: getCustomMemoryStateDefinitions(graph),
-        nodes: graph.nodes.slice(-8).map(node => ({ id: node.id, title: node.title, type: node.type })),
+        nodes: graph.nodes.slice(-8).map(node => ({
+            id: node.id,
+            title: node.title,
+            type: node.type,
+            location: node.location || '',
+            timeSpan: node.timeSpan || '',
+        })),
         links: graph.links.slice(-12).map(link => ({ source: link.source, target: link.target, type: link.type })),
     }, null, 2), 4200);
     const customDefinitions = getCustomMemoryStateDefinitions(graph);
@@ -4091,6 +4206,9 @@ function buildMemoryExtractionPrompt(recentMessages, graph) {
 3. node id 保持稳定，使用小写 snake_case；id 可以是英文/拼音，但展示给用户的标题和摘要必须是中文。
 4. 优先更新已有节点，避免重复创建含义相同的节点。
 5. 如果有可用剧情内容，至少生成 1 个中文 event 节点；只有完全没有有效记忆时才返回空数组。
+6. Every new or updated event/location/character node should include location and timeSpan when they are known or can be inherited from current state.
+7. If the recent messages only imply the same scene or phase, use state.current_location/current_time as the default location/timeSpan for affected nodes.
+8. Add links for meaningful same-scene or same-time continuity when it helps connect plot events without inventing facts.
 </rules>
 <custom_state_definitions>
 ${customDefinitionLines}
@@ -4328,7 +4446,7 @@ function applyMemoryGraphUpdate(update, context = getContext()) {
     const byId = new Map(graph.nodes.map(node => [node.id, node]));
     const incomingNodes = Array.isArray(update?.nodes) ? update.nodes : [];
     for (const rawNode of incomingNodes.slice(0, 8)) {
-        const node = normalizeMemoryNode(rawNode, byId.size);
+        const node = normalizeMemoryNode(applyMemoryTemporalContext(rawNode, graph, state), byId.size);
         if (!isValidMemoryNodeForApply(node)) {
             continue;
         }
@@ -4361,34 +4479,35 @@ function applyMemoryGraphUpdate(update, context = getContext()) {
 
     const updates = Array.isArray(update?.updates) ? update.updates : [];
     for (const rawUpdate of updates.slice(0, 8)) {
-        const resolvedId = resolveMemoryNodeId(rawUpdate?.id || rawUpdate?.title || rawUpdate?.titleToUpdate, graph);
-        const existing = byId.get(resolvedId) || graph.nodes.find(item => normalizeText(item.title) === normalizeText(rawUpdate?.title || rawUpdate?.titleToUpdate || ''));
+        const contextualUpdate = applyMemoryTemporalContext(rawUpdate, graph, state);
+        const resolvedId = resolveMemoryNodeId(contextualUpdate?.id || contextualUpdate?.title || contextualUpdate?.titleToUpdate, graph);
+        const existing = byId.get(resolvedId) || graph.nodes.find(item => normalizeText(item.title) === normalizeText(contextualUpdate?.title || contextualUpdate?.titleToUpdate || ''));
         if (!existing) {
             continue;
         }
-        if (rawUpdate.title) {
-            existing.title = truncateText(rawUpdate.title, 80);
+        if (contextualUpdate.title) {
+            existing.title = truncateText(contextualUpdate.title, 80);
         }
-        if (rawUpdate.content || rawUpdate.newContent) {
-            existing.content = truncateText(rawUpdate.content || rawUpdate.newContent, 1400);
+        if (contextualUpdate.content || contextualUpdate.newContent) {
+            existing.content = truncateText(contextualUpdate.content || contextualUpdate.newContent, 1400);
         }
-        if (rawUpdate.summary) {
-            existing.summary = truncateText(rawUpdate.summary, 120);
+        if (contextualUpdate.summary) {
+            existing.summary = truncateText(contextualUpdate.summary, 120);
         }
-        if (rawUpdate.location) {
-            existing.location = truncateText(rawUpdate.location, 120);
+        if (contextualUpdate.location) {
+            existing.location = truncateText(contextualUpdate.location, 120);
         }
-        if (rawUpdate.timeSpan || rawUpdate.time_span) {
-            existing.timeSpan = truncateText(rawUpdate.timeSpan || rawUpdate.time_span, 120);
+        if (contextualUpdate.timeSpan || contextualUpdate.time_span) {
+            existing.timeSpan = truncateText(contextualUpdate.timeSpan || contextualUpdate.time_span, 120);
         }
-        if (rawUpdate.keys) {
-            existing.keys = uniqueStrings([...(existing.keys || []), ...(Array.isArray(rawUpdate.keys) ? rawUpdate.keys : String(rawUpdate.keys).split(/[,\n;]+/u))]);
+        if (contextualUpdate.keys) {
+            existing.keys = uniqueStrings([...(existing.keys || []), ...(Array.isArray(contextualUpdate.keys) ? contextualUpdate.keys : String(contextualUpdate.keys).split(/[,\n;]+/u))]);
         }
-        if (rawUpdate.importance !== undefined) {
-            existing.importance = clampNumber(rawUpdate.importance, existing.importance || 0.6, 0, 1);
+        if (contextualUpdate.importance !== undefined) {
+            existing.importance = clampNumber(contextualUpdate.importance, existing.importance || 0.6, 0, 1);
         }
-        if (rawUpdate.credibility !== undefined) {
-            existing.credibility = clampNumber(rawUpdate.credibility, existing.credibility || 0.8, 0, 1);
+        if (contextualUpdate.credibility !== undefined) {
+            existing.credibility = clampNumber(contextualUpdate.credibility, existing.credibility || 0.8, 0, 1);
         }
         existing.updatedAt = now;
         addedOrUpdatedNodeCount += 1;
@@ -4398,6 +4517,9 @@ function applyMemoryGraphUpdate(update, context = getContext()) {
     if (!addedOrUpdatedNodeCount) {
         const fallbackNode = createMemoryFallbackNodeFromSummary(update?.summary, byId.size);
         if (fallbackNode) {
+            const fallbackTemporal = getMemoryNodeTemporalContext(fallbackNode, graph, state);
+            fallbackNode.location = fallbackNode.location || fallbackTemporal.location;
+            fallbackNode.timeSpan = fallbackNode.timeSpan || fallbackTemporal.timeSpan;
             graph.nodes.push(fallbackNode);
             byId.set(fallbackNode.id, fallbackNode);
             addedOrUpdatedNodeCount += 1;
@@ -4436,6 +4558,9 @@ function applyMemoryGraphUpdate(update, context = getContext()) {
             graph.links.push(normalized);
             existingLinkKeys.add(key);
         }
+    }
+    for (const temporalLink of buildMemoryAutoTemporalLinks(graph.nodes, graph.links, 14)) {
+        graph.links.push(temporalLink);
     }
 
     graph.links = graph.links
@@ -7007,6 +7132,7 @@ function renderMemoryPreviewPanel(graph, displayModel = buildMemoryGraphDisplayM
         const selected = String(node.id) === String(memoryGraphSelectedNodeId);
         const score = Math.round(clampNumber(node.importance, 0.5, 0, 1) * 100);
         const tags = uniqueStrings([...(Array.isArray(node.keys) ? node.keys : []), ...(Array.isArray(node.tags) ? node.tags : [])]).slice(0, 3);
+        const temporalMeta = [node.location, node.timeSpan].filter(Boolean).join(' / ');
         return $('<button class="ai-wbr-memory-preview-card" type="button"></button>')
             .toggleClass('selected', selected)
             .attr('data-memory-node-id', node.id)
@@ -7015,6 +7141,9 @@ function renderMemoryPreviewPanel(graph, displayModel = buildMemoryGraphDisplayM
             .append($('<div class="ai-wbr-memory-preview-meta"></div>')
                 .append($('<span></span>').text(typeLabel))
                 .append($('<span></span>').text(`${score}% · ${degree.get(String(node.id)) || 0} 关系`)))
+            .append(temporalMeta
+                ? $('<div class="ai-wbr-memory-preview-tags"></div>').append($('<span></span>').text(truncateText(temporalMeta, 28)))
+                : '')
             .append(tags.length
                 ? $('<div class="ai-wbr-memory-preview-tags"></div>').append(tags.map(tag => $('<span></span>').text(tag)))
                 : '');
@@ -7506,7 +7635,8 @@ function renderMemoryGraphSvg(graph) {
         const rawType = String(node.type || 'event');
         const colorClass = `ai-wbr-memory-node-${escapeHtml(rawType.toLowerCase())}`;
         const typeLabel = getOptionLabel(MEMORY_NODE_TYPE_OPTIONS, rawType, rawType);
-        const subtitle = node.summary || node.content || '';
+        const temporalMeta = [node.location, node.timeSpan].filter(Boolean).join(' · ');
+        const subtitle = [node.summary || node.content || '', temporalMeta ? `[${temporalMeta}]` : ''].filter(Boolean).join(' ');
         const titleLines = splitMemoryGraphSvgText(node.title || node.id, 13, 1);
         const subtitleLines = splitMemoryGraphSvgText(subtitle || '\u6682\u65e0\u6458\u8981', 16, 2);
         const safeTypeLabel = truncateText(typeLabel, 8);
@@ -7525,7 +7655,7 @@ function renderMemoryGraphSvg(graph) {
                 <text x="${badgeWidth / 2}" y="12">${escapeHtml(safeTypeLabel)}</text>
             </g>
             <text class="ai-wbr-memory-node-score" x="154" y="68">${escapeHtml(importanceLabel)}</text>
-            <title>${escapeHtml(`${node.title}\n${node.content || ''}`)}</title>
+            <title>${escapeHtml(`${node.title}\n${temporalMeta ? `${temporalMeta}\n` : ''}${node.content || ''}`)}</title>
         </g>`;
     }).join('');
 
@@ -8110,11 +8240,29 @@ function normalizeMemoryGraphLayout(nodes, links = [], canvasWidth = MEMORY_GRAP
         return false;
     }
 
-    const ranked = nodes.map((node, index) => ({
-        node,
-        index,
-        score: (degree.get(node.id) || 0) + clampNumber(node.importance, 0.5, 0, 1) + ((nodes.length - index) / 1000),
-    })).sort((a, b) => b.score - a.score);
+    const temporalGroupOrder = new Map();
+    for (const node of nodes) {
+        const key = getMemoryTemporalLayoutKey(node);
+        if (key && !temporalGroupOrder.has(key)) {
+            temporalGroupOrder.set(key, temporalGroupOrder.size);
+        }
+    }
+    const ranked = nodes.map((node, index) => {
+        const temporalKey = getMemoryTemporalLayoutKey(node);
+        return {
+            node,
+            index,
+            temporalOrder: temporalKey ? temporalGroupOrder.get(temporalKey) : -1,
+            score: (degree.get(node.id) || 0) + clampNumber(node.importance, 0.5, 0, 1) + ((nodes.length - index) / 1000),
+        };
+    }).sort((a, b) => {
+        if (a.temporalOrder !== b.temporalOrder) {
+            if (a.temporalOrder < 0) return 1;
+            if (b.temporalOrder < 0) return -1;
+            return a.temporalOrder - b.temporalOrder;
+        }
+        return (b.score - a.score) || (a.index - b.index);
+    });
     const centerX = canvasWidth / 2;
     const centerY = canvasHeight / 2;
     const maxPerRing = 8;
