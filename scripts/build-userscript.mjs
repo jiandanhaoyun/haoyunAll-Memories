@@ -18,7 +18,7 @@ const helperPath = path.join(distDir, 'ai-worldbook-router.tavern-helper.json');
 
 await fs.mkdir(distDir, { recursive: true });
 
-const manifest = JSON.parse(await fs.readFile(path.join(rootDir, 'manifest.json'), 'utf8'));
+const manifest = JSON.parse((await fs.readFile(path.join(rootDir, 'manifest.json'), 'utf8')).replace(/^\uFEFF/, ''));
 const generatedAt = new Date().toISOString();
 
 const settingsHtml = await fs.readFile(path.join(rootDir, 'settings.html'), 'utf8');
