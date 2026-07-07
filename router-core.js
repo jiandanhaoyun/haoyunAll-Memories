@@ -4003,19 +4003,120 @@ function escapeRegex(value) {
 }
 
 function getDefaultMemoryRuleConfig() {
+    const commonBlocks = ['当前', '状态', '阶段', '摘要', '剧情', '本轮', '字段', '列表', '信息', '内容'];
     return {
         enabled: true,
         entityRules: [
-            { id: 'character_default', label: '角色卡片', targetType: 'character', enabled: true, keywords: ['角色', '人物', 'NPC', '主角', '配角', '同伴', '敌人', '朋友', '老师', '学生', '姓名', '身份'] },
-            { id: 'location_default', label: '地点卡片', targetType: 'location', enabled: true, keywords: ['地点', '位置', '场景', '房间', '城市', '据点', '学校', '公寓', '宿舍', '家中', '客厅', '卧室'] },
-            { id: 'item_default', label: '道具卡片', targetType: 'item', enabled: true, keywords: ['道具', '物品', '装备', '武器', '线索', '资料', '信件', '钥匙', '令牌', '戒指', '卡片', '药物', '地图', '笔记'] },
-            { id: 'faction_default', label: '势力卡片', targetType: 'faction', enabled: true, keywords: ['势力', '组织', '阵营', '队伍', '家族', '帮派', '集团', '公司', '社团', '教团', '王国', '帝国'] },
-            { id: 'concept_default', label: '设定卡片', targetType: 'concept', enabled: true, keywords: ['设定', '概念', '世界观', '能力', '机制', '系统', '习俗', '背景', '身份设定', '关系设定'] },
-            { id: 'rule_default', label: '规则卡片', targetType: 'rule', enabled: true, keywords: ['规则', '法则', '限制', '禁忌', '协议', '契约', '约定', '承诺', '条件'] },
-            { id: 'quest_default', label: '任务卡片', targetType: 'quest', enabled: true, keywords: ['任务', '目标', '目的', '待办', '悬念', '未解', '问题', '谜团', '调查', '寻找', '解决', '请求'] },
+            {
+                id: 'character_default',
+                label: '角色卡片',
+                targetType: 'character',
+                enabled: true,
+                keywords: ['角色', '人物', 'NPC', '主角', '配角', '同伴', '敌人', '朋友', '老师', '学生', '姓名', '身份'],
+                positiveKeywords: ['说', '问', '回答', '出现', '同意', '拒绝', '帮助', '攻击', '带领', '阻止', '告诉', '看向', '递给', '收留', '介绍', '名为', '叫做'],
+                negativeKeywords: ['角色设定', '人物关系', '当前状态', '主角目标', '身份设定', '任务目标', '地点状态', '角色栏', '人物栏'],
+                titleMinLength: 2,
+                titleMaxLength: 12,
+                minConfidence: 68,
+                lowConfidenceMode: 'skip',
+            },
+            {
+                id: 'location_default',
+                label: '地点卡片',
+                targetType: 'location',
+                enabled: true,
+                keywords: ['地点', '位置', '场景', '房间', '城市', '据点', '学校', '公寓', '宿舍', '家中', '客厅', '卧室', '门口', '入口', '街区', '森林', '村庄'],
+                positiveKeywords: ['进入', '前往', '来到', '离开', '抵达', '位于', '住在', '返回', '穿过', '靠近', '藏在'],
+                negativeKeywords: ['当前位置', '地点状态', '地图设定', '地点栏', '场景描述', '位置字段'],
+                titleMinLength: 2,
+                titleMaxLength: 18,
+                minConfidence: 64,
+                lowConfidenceMode: 'skip',
+            },
+            {
+                id: 'item_default',
+                label: '道具卡片',
+                targetType: 'item',
+                enabled: true,
+                keywords: ['道具', '物品', '装备', '武器', '线索', '资料', '信件', '钥匙', '令牌', '戒指', '卡片', '药物', '地图', '笔记', '包裹', '礼物'],
+                positiveKeywords: ['获得', '拿出', '使用', '交给', '递给', '捡起', '发现', '丢失', '打开', '收下', '藏起', '交换'],
+                negativeKeywords: ['道具栏', '任务道具', '道具设定', '物品列表', '装备栏', '线索栏'],
+                titleMinLength: 2,
+                titleMaxLength: 18,
+                minConfidence: 64,
+                lowConfidenceMode: 'skip',
+            },
+            {
+                id: 'faction_default',
+                label: '势力卡片',
+                targetType: 'faction',
+                enabled: true,
+                keywords: ['势力', '组织', '阵营', '队伍', '家族', '帮派', '集团', '公司', '社团', '教团', '王国', '帝国', '协会', '议会'],
+                positiveKeywords: ['加入', '隶属', '效忠', '敌对', '掌控', '派出', '追捕', '合作', '背叛', '来自', '代表'],
+                negativeKeywords: ['势力设定', '阵营关系', '势力分布', '组织结构', '势力栏', '阵营栏'],
+                titleMinLength: 2,
+                titleMaxLength: 20,
+                minConfidence: 66,
+                lowConfidenceMode: 'skip',
+            },
+            {
+                id: 'concept_default',
+                label: '设定卡片',
+                targetType: 'concept',
+                enabled: true,
+                keywords: ['设定', '概念', '世界观', '能力', '机制', '系统', '习俗', '背景', '身份设定', '关系设定', '货币', '历法', '等级'],
+                positiveKeywords: ['需要', '依赖', '不可', '可以', '必须', '受到', '源于', '遵循', '分为', '称为', '意味着'],
+                negativeKeywords: ['本轮事件', '剧情摘要', '普通动作', '临时状态', '任务目标'],
+                titleMinLength: 2,
+                titleMaxLength: 28,
+                minConfidence: 62,
+                lowConfidenceMode: 'skip',
+            },
+            {
+                id: 'rule_default',
+                label: '规则卡片',
+                targetType: 'rule',
+                enabled: true,
+                keywords: ['规则', '法则', '限制', '禁忌', '协议', '契约', '约定', '承诺', '条件'],
+                positiveKeywords: ['禁止', '必须', '不可', '需要', '一旦', '只有', '否则', '遵守', '违背', '触发', '生效'],
+                negativeKeywords: ['规则界面', '写入规则', '筛选规则', '插件规则', '规则卡片'],
+                titleMinLength: 2,
+                titleMaxLength: 30,
+                minConfidence: 64,
+                lowConfidenceMode: 'skip',
+            },
+            {
+                id: 'quest_default',
+                label: '任务卡片',
+                targetType: 'quest',
+                enabled: true,
+                keywords: ['任务', '目标', '目的', '待办', '悬念', '未解', '问题', '谜团', '调查', '寻找', '解决', '请求', '委托'],
+                positiveKeywords: ['需要', '必须', '准备', '打算', '决定', '承诺', '委托', '调查', '寻找', '解决', '送达', '保护', '确认'],
+                negativeKeywords: ['任务状态', '任务栏', '目标栏', '主线任务设定', '任务设定', '当前目标字段'],
+                titleMinLength: 2,
+                titleMaxLength: 32,
+                minConfidence: 66,
+                lowConfidenceMode: 'skip',
+            },
         ],
-        blockKeywords: ['当前', '目标', '地点', '时间', '状态', '阶段', '问题', '任务', '事件', '摘要', '剧情', '本轮'],
+        blockKeywords: uniqueStrings([...commonBlocks, '当前目标', '当前位置', '地点状态', '任务状态', '角色设定', '人物关系', '道具栏', '势力设定', '事件', '特产', '鞋子', '公寓', '大学', '玄关', '客厅']),
     };
+}
+
+function getMemoryRuleTypePriority(type) {
+    const priorities = { rule: 90, concept: 84, quest: 78, location: 72, item: 66, faction: 60, character: 54, event: 10 };
+    return priorities[type] || 0;
+}
+
+function normalizeMemoryRuleNumber(value, fallback, min, max) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return fallback;
+    return Math.max(min, Math.min(max, Math.round(number)));
+}
+
+function normalizeMemoryRuleLowConfidenceMode(value, fallback = 'skip') {
+    const mode = String(value || fallback).trim();
+    return ['skip', 'review', 'write'].includes(mode) ? mode : fallback;
 }
 
 function normalizeMemoryRuleConfig(config = null) {
@@ -4032,12 +4133,24 @@ function normalizeMemoryRuleConfig(config = null) {
             const safeType = allowedTypes.has(targetType) ? targetType : fallback.targetType;
             const id = String(rawRule.id || `${safeType}_${Date.now().toString(36)}_${index}`).replace(/[^\w-]+/g, '_');
             const keywordSource = Object.hasOwn(rawRule, 'keywords') ? rawRule.keywords : fallback.keywords;
+            const positiveSource = Object.hasOwn(rawRule, 'positiveKeywords') ? rawRule.positiveKeywords : fallback.positiveKeywords;
+            const negativeSource = Object.hasOwn(rawRule, 'negativeKeywords') ? rawRule.negativeKeywords : fallback.negativeKeywords;
+            const minLengthFallback = normalizeMemoryRuleNumber(fallback.titleMinLength, 2, 1, 20);
+            const maxLengthFallback = normalizeMemoryRuleNumber(fallback.titleMaxLength, 24, 2, 60);
+            const minLength = normalizeMemoryRuleNumber(rawRule.titleMinLength, minLengthFallback, 1, 20);
+            const maxLength = Math.max(minLength, normalizeMemoryRuleNumber(rawRule.titleMaxLength, maxLengthFallback, 2, 60));
             return {
                 id,
                 label: truncateText(String(rawRule.label || fallback.label || getOptionLabel(MEMORY_NODE_TYPE_OPTIONS, safeType, safeType)).trim(), 32),
                 targetType: safeType,
                 enabled: rawRule.enabled !== false,
                 keywords: splitMemoryRuleKeywords(keywordSource),
+                positiveKeywords: splitMemoryRuleKeywords(positiveSource),
+                negativeKeywords: splitMemoryRuleKeywords(negativeSource),
+                titleMinLength: minLength,
+                titleMaxLength: maxLength,
+                minConfidence: normalizeMemoryRuleNumber(rawRule.minConfidence, normalizeMemoryRuleNumber(fallback.minConfidence, 64, 1, 100), 1, 100),
+                lowConfidenceMode: normalizeMemoryRuleLowConfidenceMode(rawRule.lowConfidenceMode, fallback.lowConfidenceMode || 'skip'),
             };
         })
         .filter(rule => rule.targetType)
@@ -4046,7 +4159,7 @@ function normalizeMemoryRuleConfig(config = null) {
     return {
         enabled: raw.enabled !== false,
         entityRules: entityRules.length ? entityRules : defaults.entityRules,
-        blockKeywords: splitMemoryRuleKeywords(blockKeywordSource).slice(0, 40),
+        blockKeywords: splitMemoryRuleKeywords(blockKeywordSource).slice(0, 80),
     };
 }
 
@@ -4077,6 +4190,12 @@ function collectMemoryRuleConfigFromDrawer() {
             targetType,
             enabled: !!card.find('.ai-wbr-memory-rule-enabled').prop('checked'),
             keywords: splitMemoryRuleKeywords(card.find('.ai-wbr-memory-rule-keywords').val()),
+            positiveKeywords: splitMemoryRuleKeywords(card.find('.ai-wbr-memory-rule-positive').val()),
+            negativeKeywords: splitMemoryRuleKeywords(card.find('.ai-wbr-memory-rule-negative').val()),
+            titleMinLength: card.find('.ai-wbr-memory-rule-title-min').val(),
+            titleMaxLength: card.find('.ai-wbr-memory-rule-title-max').val(),
+            minConfidence: card.find('.ai-wbr-memory-rule-confidence').val(),
+            lowConfidenceMode: String(card.find('.ai-wbr-memory-rule-low-mode').val() || 'skip'),
         });
     });
     return normalizeMemoryRuleConfig({
@@ -4111,9 +4230,120 @@ function addMemoryRuleConfigRow() {
         targetType: type,
         enabled: true,
         keywords: ['自定义触发词'],
+        positiveKeywords: [],
+        negativeKeywords: [],
+        titleMinLength: 2,
+        titleMaxLength: 24,
+        minConfidence: 62,
+        lowConfidenceMode: 'skip',
     });
     saveMemoryRuleConfig(config);
     renderMemoryGraphSvg(getMemoryGraph());
+}
+
+function getMemoryRuleTextWindow(text, index, length = 34) {
+    const source = String(text || '');
+    const start = Math.max(0, Number(index || 0) - length);
+    const end = Math.min(source.length, Number(index || 0) + length);
+    return source.slice(start, end);
+}
+
+function getMemoryRuleMatchedWords(text, words = []) {
+    const normalizedText = normalizeText(text);
+    return splitMemoryRuleKeywords(words).filter(word => {
+        const normalized = normalizeText(word);
+        return normalized && normalizedText.includes(normalized);
+    });
+}
+
+function getMemoryRuleCandidateTitle(rawTitle, rule) {
+    const title = stripMemoryEntityTail(rawTitle);
+    if (!title) return '';
+    return truncateText(title, normalizeMemoryRuleNumber(rule?.titleMaxLength, 24, 2, 60));
+}
+
+function scoreMemoryRuleCandidate({ rule, title, contextText = '', explicit = false, keyword = '' }) {
+    const safeTitle = normalizeMemoryEntityTitle(title);
+    const minLength = normalizeMemoryRuleNumber(rule?.titleMinLength, 2, 1, 20);
+    const maxLength = normalizeMemoryRuleNumber(rule?.titleMaxLength, 24, 2, 60);
+    const positiveMatches = getMemoryRuleMatchedWords(contextText, rule?.positiveKeywords);
+    const negativeMatches = uniqueStrings([
+        ...getMemoryRuleMatchedWords(contextText, rule?.negativeKeywords),
+        ...getMemoryRuleMatchedWords(safeTitle, rule?.negativeKeywords),
+    ]);
+    const globalBlocks = getMemoryRuleMatchedWords(safeTitle, getMemoryRuleConfig()?.blockKeywords);
+    let score = explicit ? 78 : 42;
+    if (keyword) score += 10;
+    score += Math.min(22, positiveMatches.length * 9);
+    score += Math.min(8, getMemoryRuleTypePriority(rule?.targetType) / 18);
+    if (safeTitle.length >= minLength && safeTitle.length <= maxLength) score += 10;
+    if (safeTitle.length < minLength || safeTitle.length > maxLength) score -= 26;
+    if (negativeMatches.length) score -= 38;
+    if (globalBlocks.length) score -= 34;
+    if (isWeakMemoryTitle(safeTitle)) score -= 35;
+    if (rule?.targetType === 'character' && /^(角色|人物|主角|配角|同伴|敌人|朋友|老师|学生|身份|姓名|关系|状态|目标)$/u.test(safeTitle)) score -= 45;
+    if (rule?.targetType === 'location' && /^(地点|位置|场景|房间|城市|据点|当前位置)$/u.test(safeTitle)) score -= 42;
+    if (rule?.targetType === 'item' && /^(道具|物品|装备|武器|线索|资料|任务道具)$/u.test(safeTitle)) score -= 42;
+    if (rule?.targetType === 'faction' && /^(势力|组织|阵营|队伍|家族|帮派|势力设定)$/u.test(safeTitle)) score -= 42;
+    if (rule?.targetType === 'quest' && /^(任务|目标|目的|问题|悬念|当前目标)$/u.test(safeTitle)) score -= 42;
+    return {
+        confidence: Math.max(0, Math.min(100, Math.round(score))),
+        positiveMatches,
+        negativeMatches: uniqueStrings([...negativeMatches, ...globalBlocks]),
+        reason: positiveMatches.length
+            ? `上下文命中：${positiveMatches.join('、')}`
+            : (explicit ? '显式标签命中' : '触发词命中'),
+    };
+}
+
+function addScoredMemoryEntityHint(hints, seen, type, title, meta = {}) {
+    const before = hints.length;
+    addMemoryEntityHint(hints, seen, type, title);
+    if (hints.length > before) {
+        hints[hints.length - 1] = {
+            ...hints[hints.length - 1],
+            confidence: meta.confidence,
+            matchedKeywords: meta.matchedKeywords || [],
+            positiveMatches: meta.positiveMatches || [],
+            negativeMatches: meta.negativeMatches || [],
+            ruleLabel: meta.ruleLabel || '',
+            reason: meta.reason || '',
+        };
+    }
+}
+
+function collectMemoryRuleCandidates(text, config = getMemoryRuleConfig()) {
+    if (!config?.enabled || !text) {
+        return [];
+    }
+    const candidates = [];
+    const rules = (Array.isArray(config.entityRules) ? config.entityRules : [])
+        .filter(rule => rule?.enabled && rule.targetType)
+        .sort((a, b) => getMemoryRuleTypePriority(b.targetType) - getMemoryRuleTypePriority(a.targetType));
+    for (const rule of rules) {
+        const maxLength = normalizeMemoryRuleNumber(rule.titleMaxLength, 24, 2, 60);
+        for (const keyword of splitMemoryRuleKeywords(rule.keywords)) {
+            const escaped = escapeRegex(keyword);
+            if (!escaped) continue;
+            const explicitPattern = new RegExp(`(?:${escaped})\\s*[:：\\-为是叫名]\\s*([\\p{Script=Han}A-Za-z0-9_·《》“”「」『』]{2,${Math.max(2, maxLength + 4)}})`, 'giu');
+            for (const match of text.matchAll(explicitPattern)) {
+                const contextText = getMemoryRuleTextWindow(text, match.index, 38);
+                const title = getMemoryRuleCandidateTitle(match[1], rule);
+                const scored = scoreMemoryRuleCandidate({ rule, title, contextText, explicit: true, keyword });
+                candidates.push({ rule, type: rule.targetType, title, keyword, contextText, explicit: true, ...scored });
+            }
+            const contextPattern = new RegExp(`([\\p{Script=Han}A-Za-z0-9_·]{2,${Math.max(2, maxLength)}})[^。！？；;,.，]{0,16}(?:${escaped})`, 'giu');
+            for (const match of text.matchAll(contextPattern)) {
+                const contextText = getMemoryRuleTextWindow(text, match.index, 42);
+                const title = getMemoryRuleCandidateTitle(match[1], rule);
+                const scored = scoreMemoryRuleCandidate({ rule, title, contextText, explicit: false, keyword });
+                candidates.push({ rule, type: rule.targetType, title, keyword, contextText, explicit: false, ...scored });
+            }
+        }
+    }
+    return candidates
+        .filter(candidate => candidate.title)
+        .sort((a, b) => (b.confidence - a.confidence) || (getMemoryRuleTypePriority(b.type) - getMemoryRuleTypePriority(a.type)));
 }
 
 function runMemoryRulePreview() {
@@ -4125,19 +4355,33 @@ function runMemoryRulePreview() {
         resultBox.text('先输入一段剧情再试跑。');
         return;
     }
+    const sanitized = sanitizeMemoryMessageText(text);
+    const candidates = collectMemoryRuleCandidates(sanitized, config).slice(0, 24);
     const hints = [];
     const seen = new Set();
-    const sanitized = sanitizeMemoryMessageText(text);
     applyCustomMemoryEntityRules(sanitized, hints, seen, config);
     for (const hint of extractMemoryEntityHintsFromText({ title: '规则试跑', summary: text, content: text }, getMemoryGraph().state)) {
         addMemoryEntityHint(hints, seen, hint.type, hint.title);
     }
-    const items = hints.slice(0, 18);
-    if (!items.length) {
-        resultBox.html('<span>未拆出卡片。可以增加触发词，或把触发词写成“规则名：标题”的形式。</span>');
+    if (!candidates.length && !hints.length) {
+        resultBox.html('<span class="ai-wbr-memory-rule-preview-chip skipped">未拆出卡片。可以增加触发词、上下文词，或写成“类型：标题”。</span>');
         return;
     }
-    resultBox.html(items.map(item => `<span><b>${escapeHtml(getOptionLabel(MEMORY_NODE_TYPE_OPTIONS, item.type, item.type))}</b>${escapeHtml(item.title)}</span>`).join(''));
+    const acceptedKeys = new Set(hints.map(item => `${item.type}|${normalizeText(item.title)}`));
+    const rows = candidates.map(candidate => {
+        const threshold = normalizeMemoryRuleNumber(candidate.rule?.minConfidence, 64, 1, 100);
+        const accepted = acceptedKeys.has(`${candidate.type}|${normalizeText(candidate.title)}`) && candidate.confidence >= threshold;
+        const reason = candidate.negativeMatches.length
+            ? `拦截：${candidate.negativeMatches.join('、')}`
+            : `${candidate.reason}；阈值 ${threshold}`;
+        return `<span class="ai-wbr-memory-rule-preview-chip ${accepted ? 'accepted' : 'skipped'}"><b>${escapeHtml(getOptionLabel(MEMORY_NODE_TYPE_OPTIONS, candidate.type, candidate.type))}</b>${escapeHtml(candidate.title)}<em>${candidate.confidence}% · ${escapeHtml(reason)}</em></span>`;
+    });
+    for (const item of hints.slice(0, 18)) {
+        const key = `${item.type}|${normalizeText(item.title)}`;
+        if (candidates.some(candidate => `${candidate.type}|${normalizeText(candidate.title)}` === key)) continue;
+        rows.push(`<span class="ai-wbr-memory-rule-preview-chip accepted"><b>${escapeHtml(getOptionLabel(MEMORY_NODE_TYPE_OPTIONS, item.type, item.type))}</b>${escapeHtml(item.title)}<em>内置拆分补充</em></span>`);
+    }
+    resultBox.html(rows.join(''));
 }
 
 function buildMemoryRulePromptGuide(config = getMemoryRuleConfig()) {
@@ -4146,8 +4390,12 @@ function buildMemoryRulePromptGuide(config = getMemoryRuleConfig()) {
     }
     const lines = (Array.isArray(config.entityRules) ? config.entityRules : [])
         .filter(rule => rule?.enabled && rule.targetType && splitMemoryRuleKeywords(rule.keywords).length)
-        .map(rule => `- ${rule.label || getOptionLabel(MEMORY_NODE_TYPE_OPTIONS, rule.targetType, rule.targetType)} -> type=${rule.targetType}；触发词：${splitMemoryRuleKeywords(rule.keywords).join('、')}`);
-    return lines.length ? lines.join('\n') : '没有启用的自定义规则。';
+        .map(rule => {
+            const positives = splitMemoryRuleKeywords(rule.positiveKeywords).join('、') || '无';
+            const negatives = splitMemoryRuleKeywords(rule.negativeKeywords).join('、') || '无';
+            return `- ${rule.label || getOptionLabel(MEMORY_NODE_TYPE_OPTIONS, rule.targetType, rule.targetType)} -> type=${rule.targetType}；触发词：${splitMemoryRuleKeywords(rule.keywords).join('、')}；正向上下文：${positives}；排除词：${negatives}；最低置信度：${rule.minConfidence || 64}%。低于阈值不要写入。`;
+        });
+    return `${lines.length ? lines.join('\n') : '没有启用的自定义规则。'}\n分类优先级：rule > concept > quest > location > item > faction > character > event。若同一内容可归入更具体类型，不要降级写入 event；若角色/地点/道具/势力/设定/任务证据不足，跳过该类型而不是强行造卡。`;
 }
 
 function splitMemoryEntityTokens(value) {
@@ -4256,26 +4504,23 @@ function isBlockedMemoryEntityTitle(title, config = getMemoryRuleConfig()) {
 }
 
 function applyCustomMemoryEntityRules(text, hints, seen, config = getMemoryRuleConfig()) {
-    if (!config?.enabled || !text) {
-        return;
-    }
-    const rules = Array.isArray(config.entityRules) ? config.entityRules : [];
-    for (const rule of rules) {
-        if (!rule?.enabled || !rule.targetType) {
-            continue;
-        }
-        for (const keyword of splitMemoryRuleKeywords(rule.keywords)) {
-            const escaped = escapeRegex(keyword);
-            if (!escaped) continue;
-            const pattern = new RegExp(`(?:${escaped})[：:为是叫名在到至]?\\s*([\\p{Script=Han}A-Za-z0-9_·]{2,34})?`, 'giu');
-            for (const match of text.matchAll(pattern)) {
-                const rawTitle = match[1] || (String(match[0] || '').trim().length > String(keyword).trim().length ? match[0] : '');
-                const title = stripMemoryEntityTail(rawTitle);
-                if (!isBlockedMemoryEntityTitle(title, config)) {
-                    addMemoryEntityHint(hints, seen, rule.targetType, title);
-                }
-            }
-        }
+    const candidates = collectMemoryRuleCandidates(text, config);
+    const acceptedByTitle = new Set();
+    for (const candidate of candidates) {
+        const minConfidence = normalizeMemoryRuleNumber(candidate.rule?.minConfidence, 64, 1, 100);
+        const mode = normalizeMemoryRuleLowConfidenceMode(candidate.rule?.lowConfidenceMode, 'skip');
+        const key = normalizeText(candidate.title);
+        if (!key || acceptedByTitle.has(key)) continue;
+        if (candidate.confidence < minConfidence && mode !== 'write') continue;
+        acceptedByTitle.add(key);
+        addScoredMemoryEntityHint(hints, seen, candidate.type, candidate.title, {
+            confidence: candidate.confidence,
+            matchedKeywords: [candidate.keyword].filter(Boolean),
+            positiveMatches: candidate.positiveMatches,
+            negativeMatches: candidate.negativeMatches,
+            ruleLabel: candidate.rule?.label,
+            reason: candidate.reason,
+        });
     }
 }
 
@@ -8014,8 +8259,26 @@ function renderMemoryRuleDrawerHtml() {
                 </select>
                 <label>触发词</label>
                 <textarea class="text_pole ai-wbr-memory-rule-keywords" rows="3" placeholder="每行或逗号分隔">${escapeHtml(rule.keywords.join('\n'))}</textarea>
+                <label>正向上下文</label>
+                <textarea class="text_pole ai-wbr-memory-rule-positive" rows="2" placeholder="例如：说、进入、获得、加入">${escapeHtml((rule.positiveKeywords || []).join('\n'))}</textarea>
+                <label>排除词</label>
+                <textarea class="text_pole ai-wbr-memory-rule-negative" rows="2" placeholder="例如：角色设定、任务状态">${escapeHtml((rule.negativeKeywords || []).join('\n'))}</textarea>
+                <label>标题长度</label>
+                <div class="ai-wbr-memory-rule-inline">
+                    <input class="text_pole ai-wbr-memory-rule-title-min" type="number" min="1" max="20" value="${escapeHtml(rule.titleMinLength)}" />
+                    <span>到</span>
+                    <input class="text_pole ai-wbr-memory-rule-title-max" type="number" min="2" max="60" value="${escapeHtml(rule.titleMaxLength)}" />
+                </div>
+                <label>最低置信度</label>
+                <input class="text_pole ai-wbr-memory-rule-confidence" type="number" min="1" max="100" value="${escapeHtml(rule.minConfidence)}" />
+                <label>低置信处理</label>
+                <select class="text_pole ai-wbr-memory-rule-low-mode">
+                    <option value="skip" ${rule.lowConfidenceMode === 'skip' ? 'selected' : ''}>跳过</option>
+                    <option value="review" ${rule.lowConfidenceMode === 'review' ? 'selected' : ''}>待确认</option>
+                    <option value="write" ${rule.lowConfidenceMode === 'write' ? 'selected' : ''}>仍写入</option>
+                </select>
             </div>
-            <small>命中这些词时，会把内容拆成 ${escapeHtml(getOptionLabel(MEMORY_NODE_TYPE_OPTIONS, rule.targetType, rule.targetType))} 记忆卡片。</small>
+            <small>命中触发词后，会结合上下文、排除词和置信度决定是否写成 ${escapeHtml(getOptionLabel(MEMORY_NODE_TYPE_OPTIONS, rule.targetType, rule.targetType))} 记忆卡片。</small>
         </div>
     `).join('');
 
@@ -9735,6 +9998,13 @@ function bindMemoryGraphSvgInteractions() {
         runMemoryRulePreview();
     });
 
+    container.on('click.memoryGraphSvg pointerup.memoryGraphSvg touchend.memoryGraphSvg', '.ai-wbr-memory-rule-close', function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        memoryRuleDrawerOpen = false;
+        renderMemoryGraphSvg(getMemoryGraph());
+    });
+
     container.on('pointerdown.memoryGraphSvg wheel.memoryGraphSvg click.memoryGraphSvg', '#ai_wbr_memory_rule_drawer', function (event) {
         event.stopPropagation();
     });
@@ -9989,6 +10259,7 @@ function bindMemoryGraphSvgInteractions() {
         })
         .on('click.memoryGraphShellToggles', '.ai-wbr-memory-rule-close', function (event) {
             event.preventDefault();
+            event.stopPropagation();
             memoryRuleDrawerOpen = false;
             renderMemoryGraphSvg(getMemoryGraph());
         });
