@@ -292,6 +292,7 @@ function updateRuntimeActivityFab() {
     const activity = getRuntimeActivity();
     const status = activity.status || 'idle';
     const stageLabel = activity.stage === 'idle' ? '' : getRuntimeActivityStageLabel(activity.stage);
+    ensureFloatingFabMounted();
     $('#ai_wbr_fab')
         .removeClass('ai-wbr-fab-runtime idle running success failed')
         .addClass(`ai-wbr-fab-runtime ${status}`)
@@ -13916,12 +13917,12 @@ function updateFloatingButtonVisibility() {
         fab.each((_, node) => {
             node.hidden = false;
             node.removeAttribute('aria-hidden');
-            node.style.removeProperty('display');
-            node.style.removeProperty('visibility');
-            node.style.removeProperty('opacity');
-            node.style.removeProperty('pointer-events');
+            node.style.setProperty('display', 'flex', 'important');
+            node.style.setProperty('visibility', 'visible', 'important');
+            node.style.setProperty('opacity', '1', 'important');
+            node.style.setProperty('pointer-events', 'auto', 'important');
+            node.style.setProperty('z-index', '2147483647', 'important');
         });
-        fab.css('display', '');
         clampFloatingFabToViewport();
     }
 }
@@ -13940,14 +13941,13 @@ function ensureFloatingFabMounted() {
     }
 
     $('#ai_wbr_emergency_fab').remove();
-    fab.show();
     const node = fab[0];
     node.hidden = false;
     node.removeAttribute('aria-hidden');
-    node.style.removeProperty('display');
-    node.style.removeProperty('visibility');
-    node.style.removeProperty('opacity');
-    node.style.removeProperty('pointer-events');
+    node.style.setProperty('display', 'flex', 'important');
+    node.style.setProperty('visibility', 'visible', 'important');
+    node.style.setProperty('opacity', '1', 'important');
+    node.style.setProperty('pointer-events', 'auto', 'important');
     node.style.setProperty('z-index', '2147483647', 'important');
     clampFloatingFabToViewport();
     return true;

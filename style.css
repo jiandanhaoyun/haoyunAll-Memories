@@ -66,6 +66,8 @@
 
 .ai-wbr-fab.ai-wbr-fab-runtime {
     overflow: visible;
+    opacity: 1;
+    transform: none;
 }
 
 .ai-wbr-fab.ai-wbr-fab-runtime.running {
