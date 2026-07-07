@@ -802,6 +802,7 @@ function scheduleChatScopedUiRefresh() {
     for (const delay of delays) {
         const timer = setTimeout(() => {
             safeRenderChatScopedPanels();
+            scheduleFloatingFabRecovery();
         }, delay);
         chatUiRefreshTimers.push(timer);
     }
@@ -825,6 +826,7 @@ function startChatScopedUiPolling() {
             lastObservedChatScopedUiSignature = nextSignature;
             safeRenderChatScopedPanels();
         }
+        ensureFloatingFabMounted();
     }, 500);
 }
 
@@ -13908,10 +13910,56 @@ function createFloatingMemoryWindow() {
 function updateFloatingButtonVisibility() {
     const visible = settings.floatingButtonEnabled !== false;
     $('#ai_wbr_emergency_fab').remove();
-    $('#ai_wbr_fab').toggle(visible);
+    const fab = $('#ai_wbr_fab');
+    fab.toggle(visible);
     if (visible) {
+        fab.each((_, node) => {
+            node.hidden = false;
+            node.removeAttribute('aria-hidden');
+            node.style.removeProperty('display');
+            node.style.removeProperty('visibility');
+            node.style.removeProperty('opacity');
+            node.style.removeProperty('pointer-events');
+        });
+        fab.css('display', '');
         clampFloatingFabToViewport();
     }
+}
+
+function ensureFloatingFabMounted() {
+    if (settings.floatingButtonEnabled === false) {
+        $('#ai_wbr_fab').hide();
+        return false;
+    }
+
+    const fab = $('#ai_wbr_fab');
+    const win = $('#ai_wbr_floating_window');
+    if (!fab.length || !win.length || !document.body.contains(fab[0]) || !document.body.contains(win[0])) {
+        createFloatingMemoryWindow();
+        return true;
+    }
+
+    $('#ai_wbr_emergency_fab').remove();
+    fab.show();
+    const node = fab[0];
+    node.hidden = false;
+    node.removeAttribute('aria-hidden');
+    node.style.removeProperty('display');
+    node.style.removeProperty('visibility');
+    node.style.removeProperty('opacity');
+    node.style.removeProperty('pointer-events');
+    node.style.setProperty('z-index', '2147483647', 'important');
+    clampFloatingFabToViewport();
+    return true;
+}
+
+function scheduleFloatingFabRecovery() {
+    if (settings.floatingButtonEnabled === false) {
+        return;
+    }
+    [0, 80, 260, 700, 1400].forEach(delay => {
+        setTimeout(ensureFloatingFabMounted, delay);
+    });
 }
 
 function clampFloatingFabToViewport() {
@@ -14057,16 +14105,19 @@ async function bootAiWorldbookRouter() {
 
         eventSource.on(event_types.GENERATION_STARTED, () => {
             isGenerationActive = true;
+            scheduleFloatingFabRecovery();
         });
         eventSource.on(event_types.GENERATION_ENDED, () => {
             isGenerationActive = false;
             scheduleCompatFlush();
             scheduleMemoryGraphUpdate();
+            scheduleFloatingFabRecovery();
         });
         eventSource.on(event_types.GENERATION_STOPPED, () => {
             isGenerationActive = false;
             scheduleCompatFlush();
             scheduleMemoryGraphUpdate({ reason: 'generation_stopped' });
+            scheduleFloatingFabRecovery();
         });
 
         eventSource.on(event_types.CHAT_CHANGED, (...args) => {
@@ -14092,6 +14143,7 @@ async function bootAiWorldbookRouter() {
             };
             setExtensionPrompt(PROMPT_KEY, '', settings.position, settings.depth, false, settings.role);
             renderActiveWorldbookSelector();
+            scheduleFloatingFabRecovery();
         });
 
         debugLog('Loaded');

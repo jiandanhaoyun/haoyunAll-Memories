@@ -14,7 +14,7 @@
     "js":  "index.js",
     "css":  "style.css",
     "author":  "zmer",
-    "version":  "0.8.8",
+    "version":  "1.0.0",
     "homepage":  "https://github.com/jiandanhaoyun/haoyunAll-Memories",
     "auto_update":  true
 }
