@@ -209,6 +209,167 @@ const defaultSettings = {
 };
 
 const settings = structuredClone(defaultSettings);
+function createEmptyApiStats() {
+    return {
+        startedAt: 0,
+        updatedAt: 0,
+        label: '尚无本轮 API 调用',
+        totals: {
+            all: 0,
+            router: 0,
+            memory: 0,
+            preRefresh: 0,
+            embedding: 0,
+            retry: 0,
+            failed: 0,
+            durationMs: 0,
+        },
+        items: [],
+    };
+}
+
+function getApiStats() {
+    if (!lastRun.apiStats || typeof lastRun.apiStats !== 'object') {
+        lastRun.apiStats = createEmptyApiStats();
+    }
+    return lastRun.apiStats;
+}
+
+function beginApiStatsRound(label = '本轮 API 调用') {
+    lastRun.apiStats = createEmptyApiStats();
+    lastRun.apiStats.startedAt = Date.now();
+    lastRun.apiStats.updatedAt = lastRun.apiStats.startedAt;
+    lastRun.apiStats.label = label;
+    renderApiStatsPanel();
+    return lastRun.apiStats;
+}
+
+function resetApiStatsRound(label = '尚无本轮 API 调用') {
+    lastRun.apiStats = createEmptyApiStats();
+    lastRun.apiStats.label = label;
+    renderApiStatsPanel();
+}
+
+function recordApiCallStart(type, label, meta = {}) {
+    const stats = getApiStats();
+    const now = Date.now();
+    if (!stats.startedAt) {
+        stats.startedAt = now;
+        stats.label = meta.roundLabel || label || '本轮 API 调用';
+    }
+    const item = {
+        id: `api_${now}_${Math.random().toString(36).slice(2, 8)}`,
+        type: String(type || 'other'),
+        label: String(label || type || 'API 调用'),
+        startedAt: now,
+        durationMs: 0,
+        status: 'running',
+        retry: !!meta.retry,
+        source: String(meta.source || ''),
+    };
+    stats.items.push(item);
+    stats.updatedAt = now;
+    stats.totals.all += 1;
+    if (Object.hasOwn(stats.totals, item.type)) {
+        stats.totals[item.type] += 1;
+    }
+    if (item.retry) {
+        stats.totals.retry += 1;
+    }
+    renderApiStatsPanel();
+    return item;
+}
+
+function recordApiCallEnd(item, error = null) {
+    if (!item) return;
+    const stats = getApiStats();
+    item.durationMs = Math.max(0, Date.now() - Number(item.startedAt || Date.now()));
+    item.status = error ? 'failed' : 'success';
+    if (error) {
+        item.error = truncateText(error?.message || String(error), 120);
+        stats.totals.failed += 1;
+    }
+    stats.totals.durationMs = stats.items.reduce((sum, entry) => sum + Number(entry.durationMs || 0), 0);
+    stats.updatedAt = Date.now();
+    renderApiStatsPanel();
+}
+
+function recordApiRetry(type, label, source = '') {
+    const item = recordApiCallStart(type, label, { retry: true, source });
+    recordApiCallEnd(item);
+}
+
+function formatApiStatsDuration(ms) {
+    const value = Math.max(0, Number(ms || 0));
+    if (value >= 1000) {
+        return `${(value / 1000).toFixed(1)}s`;
+    }
+    return `${Math.round(value)}ms`;
+}
+
+function getApiStatsTypeLabel(type) {
+    return ({
+        router: '路由',
+        memory: '记忆',
+        preRefresh: '预刷新',
+        embedding: '向量',
+    })[type] || '其他';
+}
+
+function renderApiStatsPanel(target = null) {
+    const panel = target ? $(target) : $('#ai_wbr_api_stats_panel');
+    if (!panel.length) return;
+
+    const stats = getApiStats();
+    const totals = stats.totals || createEmptyApiStats().totals;
+    const updatedLabel = stats.updatedAt
+        ? new Date(stats.updatedAt).toLocaleTimeString()
+        : '尚无记录';
+    const items = Array.isArray(stats.items) ? stats.items : [];
+
+    panel.empty();
+    panel.append(
+        $('<div class="ai-wbr-api-stats-head"></div>')
+            .append($('<div></div>')
+                .append($('<b></b>').text(stats.label || '本轮 API 调用'))
+                .append($('<small></small>').text(`最近更新：${updatedLabel}`)))
+            .append($('<button class="menu_button" type="button">清空统计</button>').on('click', () => {
+                resetApiStatsRound();
+                renderStandaloneConsole('settings');
+            })),
+    );
+    panel.append(
+        $('<div class="ai-wbr-console-stats ai-wbr-api-stats-grid"></div>')
+            .append(createStandaloneStat('总调用', totals.all || 0))
+            .append(createStandaloneStat('路由', totals.router || 0))
+            .append(createStandaloneStat('记忆', totals.memory || 0))
+            .append(createStandaloneStat('预刷新', totals.preRefresh || 0))
+            .append(createStandaloneStat('向量', totals.embedding || 0))
+            .append(createStandaloneStat('重试', totals.retry || 0))
+            .append(createStandaloneStat('失败', totals.failed || 0))
+            .append(createStandaloneStat('耗时', formatApiStatsDuration(totals.durationMs || 0))),
+    );
+
+    const list = $('<div class="ai-wbr-api-stats-list"></div>');
+    if (!items.length) {
+        list.append($('<div class="ai-wbr-console-empty"></div>').text('尚无 API 调用记录。下一轮生成、记忆更新或向量召回后会自动显示。'));
+    } else {
+        for (const item of items.slice(-12).reverse()) {
+            const statusText = item.status === 'failed' ? '失败' : item.status === 'running' ? '进行中' : '成功';
+            list.append(
+                $('<div class="ai-wbr-api-stats-item"></div>')
+                    .addClass(item.status || 'success')
+                    .append($('<div></div>')
+                        .append($('<b></b>').text(item.label || getApiStatsTypeLabel(item.type)))
+                        .append($('<small></small>').text(`${getApiStatsTypeLabel(item.type)}${item.retry ? ' · 重试' : ''}${item.source ? ` · ${item.source}` : ''}`)))
+                    .append($('<span></span>').text(`${statusText} · ${formatApiStatsDuration(item.durationMs || 0)}`))
+                    .append(item.error ? $('<small class="ai-wbr-api-stats-error"></small>').text(item.error) : ''),
+            );
+        }
+    }
+    panel.append(list);
+}
+
 let lastRun = {
     candidates: [],
     selected: [],
@@ -223,6 +384,7 @@ let lastRun = {
     routerPrompt: '',
     routerRaw: '',
     pipeline: null,
+    apiStats: createEmptyApiStats(),
 };
 let burstCleanupTimer = null;
 let routerBusyPromise = null;
@@ -918,20 +1080,35 @@ function flashWorldInfoError() {
     }, 980);
 }
 
-async function requestMemoryExtraction(context, prompt, systemPrompt) {
+async function requestMemoryExtraction(context, prompt, systemPrompt, apiMeta = {}) {
+    const meta = {
+        type: 'memory',
+        label: '记忆整理',
+        roundLabel: '记忆 API 调用',
+        ...apiMeta,
+    };
     if (settings.routerUseSeparateModel && settings.routerApiUrl && settings.routerApiKey && settings.routerModel) {
         return sendSeparateMemoryRequest(context, prompt, {
             systemPrompt,
             maxTokens: getMemoryRequestMaxTokens(),
+            apiMeta: meta,
         });
     }
 
-    return context.generateRaw({
-        prompt,
-        systemPrompt,
-        responseLength: getMemoryRequestMaxTokens(),
-        trimNames: false,
-    });
+    const apiItem = recordApiCallStart(meta.type, meta.label, meta);
+    try {
+        const raw = await context.generateRaw({
+            prompt,
+            systemPrompt,
+            responseLength: getMemoryRequestMaxTokens(),
+            trimNames: false,
+        });
+        recordApiCallEnd(apiItem);
+        return raw;
+    } catch (error) {
+        recordApiCallEnd(apiItem, error);
+        throw error;
+    }
 }
 
 function playStatusBurst(symbol, variant = 'retry') {
@@ -2389,16 +2566,24 @@ async function embedBookshelfTextByApi(text) {
     if (apiKey) {
         headers.Authorization = `Bearer ${apiKey}`;
     }
-    const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ model, input: String(text || '') }),
-    });
-    if (!response.ok) {
-        const body = await response.text().catch(() => '');
-        throw new Error('Please enter the bookshelf API URL first.');
+    const apiItem = recordApiCallStart('embedding', '书架 / 记忆向量', { roundLabel: '向量 API 调用' });
+    try {
+        const response = await fetch(apiUrl, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ model, input: String(text || '') }),
+        });
+        if (!response.ok) {
+            const body = await response.text().catch(() => '');
+            throw new Error(body || 'Please enter the bookshelf API URL first.');
+        }
+        const parsed = parseBookshelfEmbeddingResponse(await response.json());
+        recordApiCallEnd(apiItem);
+        return parsed;
+    } catch (error) {
+        recordApiCallEnd(apiItem, error);
+        throw error;
     }
-    return parseBookshelfEmbeddingResponse(await response.json());
 }
 
 async function getBookshelfLocalEmbeddingPipeline() {
@@ -6279,7 +6464,13 @@ async function runHistoryMemoryImport() {
 
             try {
                 isRouterSelectionRequest = true;
-                raw = await requestMemoryExtraction(context, activePrompt, activeSystemPrompt);
+                raw = await requestMemoryExtraction(context, activePrompt, activeSystemPrompt, {
+                    type: 'memory',
+                    label: useRetryPrompt ? '历史补录记忆重试' : '历史补录记忆',
+                    roundLabel: '记忆 API 调用',
+                    retry: useRetryPrompt,
+                    source: mode,
+                });
             } catch (error) {
                 lastError = error;
                 if (isGatewayLikeError(error) || attempt >= maxAttempts) {
@@ -6385,6 +6576,9 @@ async function runMemoryGraphUpdate(reason = 'realtime', options = {}) {
         setMemoryStatus('实时整理未运行：记忆功能未启用。');
         return false;
     }
+    if (reason === 'manual' || reason === 'manual_summary') {
+        beginApiStatsRound(reason === 'manual_summary' ? '手动归纳 API 调用' : '手动记忆 API 调用');
+    }
     if (isMemoryWorkerRunning) {
         const busyMs = Date.now() - Number(memoryWorkerStartedAt || 0);
         if (!options.force || busyMs < 120000) {
@@ -6454,7 +6648,15 @@ async function runMemoryGraphUpdate(reason = 'realtime', options = {}) {
 
             try {
                 isRouterSelectionRequest = true;
-                raw = await requestMemoryExtraction(context, activePrompt, activeSystemPrompt);
+                raw = await requestMemoryExtraction(context, activePrompt, activeSystemPrompt, {
+                    type: reason === 'pre_route' ? 'preRefresh' : 'memory',
+                    label: reason === 'pre_route'
+                        ? (useRetryPrompt ? '路由前记忆预刷新重试' : '路由前记忆预刷新')
+                        : (useRetryPrompt ? '实时记忆整理重试' : '实时记忆整理'),
+                    roundLabel: reason === 'pre_route' ? '预刷新 API 调用' : '记忆 API 调用',
+                    retry: useRetryPrompt,
+                    source: mode,
+                });
             } catch (error) {
                 lastError = error;
                 if (isGatewayLikeError(error) || attempt >= maxAttempts) {
@@ -7349,36 +7551,49 @@ function buildPlainSeparateChatPayload(prompt, {
     };
 }
 
-async function sendPlainSeparateChatRequest(context, payload) {
-    const response = await fetch('/api/backends/chat-completions/generate', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            ...(typeof context.getRequestHeaders === 'function' ? context.getRequestHeaders() : {}),
-        },
-        cache: 'no-cache',
-        body: JSON.stringify(payload),
-    });
-
-    const text = await response.text();
-    if (!response.ok) {
-        let errorMessage = text;
-        try {
-            const parsed = JSON.parse(text);
-            errorMessage = parsed?.error?.message || parsed?.message || text;
-        } catch {
-            errorMessage = text.slice(0, 180);
-        }
-        const error = new Error(`Endpoint failed (${response.status}): ${errorMessage}`);
-        error.status = response.status;
-        error.isGatewayError = [502, 503, 504].includes(response.status);
-        throw error;
-    }
-
+async function sendPlainSeparateChatRequest(context, payload, apiMeta = {}) {
+    const meta = {
+        type: 'router',
+        label: '独立模型路由',
+        roundLabel: '路由 API 调用',
+        ...apiMeta,
+    };
+    const apiItem = recordApiCallStart(meta.type, meta.label, meta);
     try {
-        return JSON.parse(text);
-    } catch {
-        return text;
+        const response = await fetch('/api/backends/chat-completions/generate', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                ...(typeof context.getRequestHeaders === 'function' ? context.getRequestHeaders() : {}),
+            },
+            cache: 'no-cache',
+            body: JSON.stringify(payload),
+        });
+
+        const text = await response.text();
+        if (!response.ok) {
+            let errorMessage = text;
+            try {
+                const parsed = JSON.parse(text);
+                errorMessage = parsed?.error?.message || parsed?.message || text;
+            } catch {
+                errorMessage = text.slice(0, 180);
+            }
+            const error = new Error(`Endpoint failed (${response.status}): ${errorMessage}`);
+            error.status = response.status;
+            error.isGatewayError = [502, 503, 504].includes(response.status);
+            throw error;
+        }
+
+        recordApiCallEnd(apiItem);
+        try {
+            return JSON.parse(text);
+        } catch {
+            return text;
+        }
+    } catch (error) {
+        recordApiCallEnd(apiItem, error);
+        throw error;
     }
 }
 
@@ -7394,7 +7609,11 @@ async function sendSeparateRouterRequest(context, prompt, {
         systemPrompt,
         maxTokens,
     });
-    let raw = await sendPlainSeparateChatRequest(context, firstRequest);
+    let raw = await sendPlainSeparateChatRequest(context, firstRequest, {
+        type: 'router',
+        label: '前置路由选择',
+        roundLabel: '路由 API 调用',
+    });
     if (!isEffectivelyEmptyStructuredResponse(raw) && !hasEmptyVisibleContentDueToLength(raw)) {
         return { raw, usedRetry: false, usedCompactPrompt: false };
     }
@@ -7409,19 +7628,25 @@ async function sendSeparateRouterRequest(context, prompt, {
         systemPrompt: 'Return strict JSON only: {"selected":[]}. Do not explain or include reasoning.',
         maxTokens: getRouterRequestMaxTokens(),
     });
-    raw = await sendPlainSeparateChatRequest(context, retryRequest);
+    raw = await sendPlainSeparateChatRequest(context, retryRequest, {
+        type: 'router',
+        label: '前置路由压缩重试',
+        roundLabel: '路由 API 调用',
+        retry: true,
+    });
     return { raw, usedRetry: true, usedCompactPrompt: true, retryPrompt: compactPrompt };
 }
 
 async function sendSeparateMemoryRequest(context, prompt, {
     systemPrompt,
     maxTokens = getMemoryRequestMaxTokens(),
+    apiMeta = {},
 } = {}) {
     const requestData = buildPlainSeparateChatPayload(prompt, {
         systemPrompt,
         maxTokens,
     });
-    return await sendPlainSeparateChatRequest(context, requestData);
+    return await sendPlainSeparateChatRequest(context, requestData, apiMeta);
 }
 
 function getRouterRequestData(context, prompt) {
@@ -7461,13 +7686,21 @@ async function runSingleAiSelectionAttempt(context, recentMessages, mvuSummary, 
         rawPreview = result.rawPreview;
     } else {
         prompt = buildAiPrompt(recentMessages, mvuSummary, candidates, maxSelectCount);
-        const raw = await context.generateRaw({
-            prompt,
-            systemPrompt: settings.systemPrompt,
-            responseLength: getRouterRequestMaxTokens(),
-            trimNames: false,
-            jsonSchema: getSelectionSchema(),
-        });
+        const apiItem = recordApiCallStart('router', '前置路由选择', { roundLabel: '路由 API 调用' });
+        let raw;
+        try {
+            raw = await context.generateRaw({
+                prompt,
+                systemPrompt: settings.systemPrompt,
+                responseLength: getRouterRequestMaxTokens(),
+                trimNames: false,
+                jsonSchema: getSelectionSchema(),
+            });
+            recordApiCallEnd(apiItem);
+        } catch (error) {
+            recordApiCallEnd(apiItem, error);
+            throw error;
+        }
         parsed = parseSelectionJson(raw, candidates, prompt);
         rawPreview = summarizeRouterResponse(raw);
     }
@@ -8419,30 +8652,15 @@ function renderStandaloneSettings(container) {
         $('<div class="ai-wbr-console-actions ai-wbr-console-settings-nav"></div>')
             .append(createStandaloneSettingsNav('记忆设置', 'memory', '整理、历史补录、JSON 和调试。'))
             .append(createStandaloneSettingsNav('图谱视图', 'graph', '全屏图谱、布局和详情面板。'))
-            .append(createStandaloneSettingsNav('书架设置', 'bookshelf', '记忆书、向量模型和召回测试。'))
-            .append(createStandaloneSettingsNav('调试信息', 'debug', '查看前置 Prompt、返回和错误。')),
+            .append(createStandaloneSettingsNav('书架设置', 'bookshelf', '记忆书、向量模型和召回测试。')),
     );
 
-    renderStandaloneModel(container);
-}
+    container.append($('<div class="ai-wbr-console-section-title"></div>').text('API 调用统计'));
+    const apiStatsPanel = $('<div id="ai_wbr_api_stats_panel" class="ai-wbr-api-stats-panel"></div>');
+    container.append(apiStatsPanel);
+    renderApiStatsPanel(apiStatsPanel);
 
-function renderStandaloneDebug(container) {
-    const addBlock = (title, value, isErr) => {
-        container.append($('<div class="ai-wbr-console-section-title"></div>').text(title));
-        container.append($('<pre class="ai-wbr-console-pre"></pre>').addClass(isErr ? 'error' : '').text(value || `尚无${title}`));
-    };
-    addBlock('前置 AI Prompt', lastRun.routerPrompt);
-    addBlock('前置 AI 原始返回', lastRun.routerRaw);
-    if (lastRun.error) {
-        addBlock('错误', lastRun.error, true);
-    }
-    const ctx = getContext();
-    addBlock('后置记忆 Prompt', getCurrentMemoryLastPrompt(ctx) || '');
-    addBlock('后置记忆 返回', getCurrentMemoryLastRaw(ctx) || '');
-    const memErr = getCurrentMemoryLastError(ctx);
-    if (memErr) {
-        addBlock('后置记忆 解析错误', memErr, true);
-    }
+    renderStandaloneModel(container);
 }
 
 function renderStandaloneConsole(tabId = getStandaloneTabId()) {
@@ -8487,10 +8705,11 @@ function renderStandaloneConsole(tabId = getStandaloneTabId()) {
         body.append(ensureBookshelfStandaloneSection());
         syncBookshelfProviderVisibility();
         renderBookshelfPanel();
-    } else if (tabId === 'debug') {
-        renderStandaloneDebug(body);
     } else if (tabId === 'settings') {
         renderStandaloneSettings(body);
+    } else if (tabId === 'debug') {
+        renderStandaloneConsole('memory');
+        return;
     }
 
     const status = getStandaloneStatusMeta();
@@ -12399,6 +12618,7 @@ function debugLog(...args) {
 }
 
 function debugRun(candidates, selected, injection, source, routerPrompt = '', routerRaw = '', memoryCandidates = [], selectedMemories = [], bookshelfCandidates = [], selectedBookshelf = [], pipeline = null) {
+    const apiStats = getApiStats();
     lastRun = {
         candidates,
         selected,
@@ -12413,6 +12633,7 @@ function debugRun(candidates, selected, injection, source, routerPrompt = '', ro
         routerPrompt,
         routerRaw,
         pipeline,
+        apiStats,
     };
 
     if (settings.debug) {
@@ -12465,6 +12686,7 @@ function debugRun(candidates, selected, injection, source, routerPrompt = '', ro
 }
 
 function debugError(error) {
+    const apiStats = getApiStats();
     lastRun = {
         candidates: [],
         selected: [],
@@ -12479,6 +12701,7 @@ function debugError(error) {
         routerPrompt: '',
         routerRaw: '',
         pipeline: null,
+        apiStats,
     };
     renderDebugPanel();
 }
@@ -12486,6 +12709,7 @@ function debugError(error) {
 async function routeWorldbookForMessages(context, recentMessages, routeSource = 'generate_interceptor', logMeta = {}) {
     const lastUserMessage = getLastUserMessage(recentMessages);
     debugLog('Generation intercepted', { ...logMeta, routeSource, lastUserMessage });
+    beginApiStatsRound(`本轮生成 API 调用 · ${routeSource}`);
 
     const preRefresh = await preRefreshMemoryForRoute(context);
     const recallBundle = await buildUnifiedRecallBundle(context, recentMessages, { preRefresh });
@@ -12976,7 +13200,6 @@ function createFloatingMemoryWindow() {
             '<button class="ai-wbr-console-tab" type="button" data-tab="memory">记忆</button>' +
             '<button class="ai-wbr-console-tab" type="button" data-tab="graph">图谱</button>' +
             '<button class="ai-wbr-console-tab" type="button" data-tab="bookshelf">书架</button>' +
-            '<button class="ai-wbr-console-tab" type="button" data-tab="debug">调试</button>' +
             '<button class="ai-wbr-console-tab" type="button" data-tab="settings">设置</button>' +
         '</div>' +
         '<div class="ai-wbr-floating-content ai-wbr-console-body" id="ai_wbr_console_body"></div>' +
@@ -13609,6 +13832,8 @@ async function bootAiWorldbookRouter() {
                 error: '',
                 routerPrompt: '',
                 routerRaw: '',
+                pipeline: null,
+                apiStats: createEmptyApiStats(),
             };
             setExtensionPrompt(PROMPT_KEY, '', settings.position, settings.depth, false, settings.role);
             renderActiveWorldbookSelector();
