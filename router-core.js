@@ -3458,9 +3458,24 @@ function getMemoryGraph(context = getContext()) {
     graph.state.open_questions = uniqueStrings(Array.isArray(graph.state.open_questions) ? graph.state.open_questions : []);
     graph.stateDefinitions = getCustomMemoryStateDefinitions(graph);
     graph.nodes = Array.isArray(graph.nodes) ? graph.nodes : [];
+    let nodeTypeMigrated = false;
+    graph.nodes.forEach((node) => {
+        if (!node || typeof node !== 'object') {
+            return;
+        }
+        const type = String(node.type || '').trim().toLowerCase();
+        const inferredType = normalizeMemoryNodeType({ ...node, type: type === 'event' || !type ? '' : type });
+        if ((!type || type === 'event') && inferredType && inferredType !== type) {
+            node.type = inferredType;
+            nodeTypeMigrated = true;
+        } else if (!type) {
+            node.type = 'event';
+            nodeTypeMigrated = true;
+        }
+    });
     graph.links = Array.isArray(graph.links) ? graph.links : [];
     graph.lastSummary = String(graph.lastSummary || '');
-    graph.updatedAt = String(graph.updatedAt || '');
+    graph.updatedAt = nodeTypeMigrated ? new Date().toISOString() : String(graph.updatedAt || '');
     return graph;
 }
 
@@ -3667,9 +3682,6 @@ function normalizeMemoryNodeType(rawNode = {}) {
         rawNode?.summary,
         rawNode?.content,
         rawNode?.description,
-        rawNode?.location,
-        rawNode?.scene,
-        rawNode?.place,
         ...(Array.isArray(rawNode?.keys) ? rawNode.keys : []),
         ...(Array.isArray(rawNode?.tags) ? rawNode.tags : []),
     ].filter(Boolean).join(' '));
