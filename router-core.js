@@ -3500,7 +3500,35 @@ function getMemoryGraph(context = getContext()) {
     return graph;
 }
 
-function saveMemoryGraph(graph = getMemoryGraph(), context = getContext(), skipRender = false) {
+function resetMemoryGraphRenderState(options = {}) {
+    memoryGraphPreviewRenderKey = '';
+    if (options.fit === true) {
+        memoryGraphView = { x: 0, y: 0, width: 0, height: 0 };
+    }
+}
+
+function refreshMemoryAndGraphPanels(context = getContext(), options = {}) {
+    const shouldFitGraph = options.fit === true;
+    resetMemoryGraphRenderState({ fit: shouldFitGraph });
+    renderMemoryPanel('all');
+
+    requestAnimationFrame(() => {
+        const activeTab = getStandaloneTabId();
+        if (activeTab !== 'memory' && activeTab !== 'graph') {
+            return;
+        }
+
+        renderMemoryPanel('all');
+        if (activeTab === 'graph' && $('#ai_wbr_memory_graph').is(':visible')) {
+            if (shouldFitGraph) {
+                fitMemoryGraphToContainer(getMemoryGraph(context));
+            }
+            renderMemoryPanel('graph');
+        }
+    });
+}
+
+function saveMemoryGraph(graph = getMemoryGraph(), context = getContext(), skipRender = false, renderOptions = {}) {
     const container = getChatMemoryContainer(context);
     container.graph = graph;
     persistChatMemoryContainer(container, context);
@@ -3509,7 +3537,7 @@ function saveMemoryGraph(graph = getMemoryGraph(), context = getContext(), skipR
     saveSettingsDebounced();
     scheduleBookshelfMemoryBookSync(context, { silent: true, delayMs: 1200 });
     if (!skipRender) {
-        renderMemoryPanel();
+        refreshMemoryAndGraphPanels(context, renderOptions);
     }
 }
 
@@ -4746,7 +4774,7 @@ function applyMemoryGraphUpdate(update, context = getContext()) {
         graph.lastSummary = truncateText(update.summary, 900);
     }
     graph.updatedAt = now;
-    saveMemoryGraph(graph, context);
+    saveMemoryGraph(graph, context, false, { fit: true });
     return {
         graph,
         touchedEntries: uniqueStrings(touchedEntries.map(entry => entry?.id))
@@ -9384,7 +9412,7 @@ function bindMemoryGraphSvgInteractions() {
         if (existingIndex >= 0) {
             graph.links.splice(existingIndex, 1);
             graph.updatedAt = new Date().toISOString();
-            saveMemoryGraph(graph);
+            saveMemoryGraph(graph, getContext(), false, { fit: true });
             memoryGraphLinkSourceId = '';
             $('#ai_wbr_memory_node_popover').hide();
             return;
@@ -9399,7 +9427,7 @@ function bindMemoryGraphSvgInteractions() {
         if (link && !graph.links.some(item => item.source === link.source && item.target === link.target && item.type === link.type)) {
             graph.links.push(link);
             graph.updatedAt = new Date().toISOString();
-            saveMemoryGraph(graph);
+            saveMemoryGraph(graph, getContext(), false, { fit: true });
         }
         memoryGraphLinkSourceId = '';
         $('#ai_wbr_memory_node_popover').hide();
@@ -9410,7 +9438,7 @@ function bindMemoryGraphSvgInteractions() {
         const nodeId = String($('#ai_wbr_memory_node_popover').data('memoryNodeId'));
         graph.nodes = graph.nodes.filter(node => node.id !== nodeId);
         graph.links = graph.links.filter(link => link.source !== nodeId && link.target !== nodeId);
-        saveMemoryGraph(graph);
+        saveMemoryGraph(graph, getContext(), false, { fit: true });
         $('#ai_wbr_memory_node_popover').hide();
     });
 
@@ -9847,7 +9875,7 @@ function bindMemoryPanelActions() {
                 ...getDefaultMemoryGraph(),
                 ...parsed,
             };
-            saveMemoryGraph(nextGraph);
+            saveMemoryGraph(nextGraph, getContext(), false, { fit: true });
             toastr.success('记忆 JSON 已保存', '世界书读取');
         } catch (error) {
             toastr.error(`JSON 解析失败：${error.message || error}`, '世界书读取');
@@ -9859,7 +9887,7 @@ function bindMemoryPanelActions() {
         if (!confirm('确定清空当前轻量记忆图谱？')) {
             return;
         }
-        saveMemoryGraph(getDefaultMemoryGraph());
+        saveMemoryGraph(getDefaultMemoryGraph(), getContext(), false, { fit: true });
         setCurrentMemoryLastTurnSignature('');
         setCurrentMemoryLastPrompt('');
         setCurrentMemoryLastRaw('');
@@ -10228,8 +10256,7 @@ function bindMemoryPanelActions() {
             }
             memoryGraphLinkSourceId = '';
             graph.updatedAt = new Date().toISOString();
-            saveMemoryGraph(graph);
-            renderMemoryPanel('graph');
+            saveMemoryGraph(graph, getContext(), false, { fit: true });
         })
         .on('click.aiWbrGraphWorkspace', '.ai-wbr-memory-detail-delete-node', function (event) {
             event.preventDefault();
@@ -10240,8 +10267,7 @@ function bindMemoryPanelActions() {
             memoryGraphSelectedNodeId = '';
             memoryGraphDetailMode = '';
             graph.updatedAt = new Date().toISOString();
-            saveMemoryGraph(graph);
-            renderMemoryPanel('graph');
+            saveMemoryGraph(graph, getContext(), false, { fit: true });
         })
         .on('click.aiWbrGraphWorkspace', '.ai-wbr-memory-detail-delete-link', function (event) {
             event.preventDefault();
@@ -10251,8 +10277,7 @@ function bindMemoryPanelActions() {
             memoryGraphSelectedLinkId = '';
             memoryGraphDetailMode = '';
             graph.updatedAt = new Date().toISOString();
-            saveMemoryGraph(graph);
-            renderMemoryPanel('graph');
+            saveMemoryGraph(graph, getContext(), false, { fit: true });
         });
 
     $('#ai_worldbook_router_settings')
@@ -10290,8 +10315,6 @@ function bindMemoryPanelActions() {
             }
             graph.updatedAt = new Date().toISOString();
             saveMemoryGraph(graph);
-            $('#ai_wbr_memory_json').val(JSON.stringify(graph, null, 2));
-            renderMemoryGraphSvg(graph);
         })
         .on('click', '#ai_wbr_memory_add_state_definition', function () {
             const graph = getMemoryGraph();
@@ -10348,8 +10371,6 @@ function bindMemoryPanelActions() {
             node.updatedAt = new Date().toISOString();
             graph.updatedAt = node.updatedAt;
             saveMemoryGraph(graph);
-            $('#ai_wbr_memory_json').val(JSON.stringify(graph, null, 2));
-            renderMemoryGraphSvg(graph);
         })
         .on('input change', '[data-memory-link-field]', function () {
             const graph = getMemoryGraph();
@@ -10367,8 +10388,6 @@ function bindMemoryPanelActions() {
             link.updatedAt = new Date().toISOString();
             graph.updatedAt = link.updatedAt;
             saveMemoryGraph(graph);
-            $('#ai_wbr_memory_json').val(JSON.stringify(graph, null, 2));
-            renderMemoryGraphSvg(graph);
         })
         .on('click', '.ai-wbr-memory-link-card', function (event) {
             if ($(event.target).closest('input, textarea, button, select').length) {
@@ -10459,7 +10478,7 @@ function bindMemoryPanelActions() {
             if (existingIndex >= 0) {
                 graph.links.splice(existingIndex, 1);
                 graph.updatedAt = new Date().toISOString();
-                saveMemoryGraph(graph);
+                saveMemoryGraph(graph, getContext(), false, { fit: true });
                 memoryGraphLinkSourceId = '';
                 renderMemoryPanel();
                 return;
@@ -10474,7 +10493,7 @@ function bindMemoryPanelActions() {
             if (link && !graph.links.some(item => item.source === link.source && item.target === link.target && item.type === link.type)) {
                 graph.links.push(link);
                 graph.updatedAt = new Date().toISOString();
-                saveMemoryGraph(graph);
+                saveMemoryGraph(graph, getContext(), false, { fit: true });
             }
             memoryGraphLinkSourceId = '';
             renderMemoryPanel();
@@ -10491,7 +10510,7 @@ function bindMemoryPanelActions() {
                 memoryGraphLinkSourceId = '';
             }
             memoryGraphSelectedNodeId = '';
-            saveMemoryGraph(graph);
+            saveMemoryGraph(graph, getContext(), false, { fit: true });
         })
         .on('click', '.ai-wbr-memory-delete-node', function () {
             const graph = getMemoryGraph();
@@ -10504,7 +10523,7 @@ function bindMemoryPanelActions() {
             if (memoryGraphLinkSourceId === id) {
                 memoryGraphLinkSourceId = '';
             }
-            saveMemoryGraph(graph);
+            saveMemoryGraph(graph, getContext(), false, { fit: true });
         })
         .on('click', '.ai-wbr-memory-delete-link', function () {
             const graph = getMemoryGraph();
@@ -10513,7 +10532,7 @@ function bindMemoryPanelActions() {
             if (memoryGraphSelectedLinkId === id) {
                 memoryGraphSelectedLinkId = '';
             }
-            saveMemoryGraph(graph);
+            saveMemoryGraph(graph, getContext(), false, { fit: true });
         });
 }
 
