@@ -1704,6 +1704,10 @@
 }
 
 .ai-wbr-memory-node-subtitle {
+    display: none;
+}
+
+.ai-wbr-memory-node-subtitle-lines {
     fill: color-mix(in srgb, var(--SmartThemeBodyColor, #f4f6ff) 74%, rgba(206, 220, 255, 0.9) 26%);
     font-size: 0.74rem;
     opacity: 0.92;
