@@ -209,6 +209,194 @@ const defaultSettings = {
 };
 
 const settings = structuredClone(defaultSettings);
+const RUNTIME_ACTIVITY_STAGES = [
+    { key: 'recall', label: '召回' },
+    { key: 'preRefresh', label: '预刷新' },
+    { key: 'select', label: 'AI筛选' },
+    { key: 'inject', label: '注入' },
+    { key: 'graph', label: '图谱' },
+    { key: 'embedding', label: '向量' },
+];
+
+function createEmptyRuntimeActivity() {
+    return {
+        active: false,
+        stage: 'idle',
+        label: '等待中',
+        detail: '插件待命，下一轮生成后会显示运行流程。',
+        status: 'idle',
+        startedAt: 0,
+        updatedAt: 0,
+        finishedAt: 0,
+        stages: {},
+    };
+}
+
+function getRuntimeActivity() {
+    if (!lastRun.activity || typeof lastRun.activity !== 'object') {
+        lastRun.activity = createEmptyRuntimeActivity();
+    }
+    return lastRun.activity;
+}
+
+function getRuntimeActivityStageLabel(stage) {
+    return RUNTIME_ACTIVITY_STAGES.find(item => item.key === stage)?.label || '运行';
+}
+
+function getRuntimeActivityStatusLabel(status) {
+    return ({
+        running: '进行中',
+        success: '完成',
+        failed: '失败',
+        idle: '等待',
+    })[status] || '等待';
+}
+
+function renderRuntimeActivityPanel(target = null) {
+    const panel = target ? $(target) : $('#ai_wbr_runtime_activity_panel');
+    if (!panel.length) return;
+
+    const activity = getRuntimeActivity();
+    const elapsed = activity.startedAt
+        ? formatApiStatsDuration((activity.finishedAt || Date.now()) - activity.startedAt)
+        : '0ms';
+    panel.empty();
+    panel
+        .removeClass('idle running success failed')
+        .addClass(activity.status || 'idle');
+
+    panel.append(
+        $('<div class="ai-wbr-runtime-activity-head"></div>')
+            .append($('<div></div>')
+                .append($('<b></b>').text(activity.label || '等待中'))
+                .append($('<small></small>').text(activity.detail || '插件待命。')))
+            .append($('<span></span>').text(`${getRuntimeActivityStatusLabel(activity.status)} · ${elapsed}`)),
+    );
+
+    const steps = $('<div class="ai-wbr-runtime-activity-steps"></div>');
+    for (const stage of RUNTIME_ACTIVITY_STAGES) {
+        const state = activity.stages?.[stage.key] || {};
+        const status = state.status || (activity.stage === stage.key ? activity.status : 'idle');
+        steps.append(
+            $('<div class="ai-wbr-runtime-step"></div>')
+                .addClass(status)
+                .toggleClass('current', activity.stage === stage.key)
+                .append($('<span></span>').text(stage.label))
+                .append($('<small></small>').text(state.detail || getRuntimeActivityStatusLabel(status))),
+        );
+    }
+    panel.append(steps);
+}
+
+function updateRuntimeActivityFab() {
+    const activity = getRuntimeActivity();
+    const status = activity.status || 'idle';
+    const stageLabel = activity.stage === 'idle' ? '' : getRuntimeActivityStageLabel(activity.stage);
+    $('#ai_wbr_fab')
+        .removeClass('ai-wbr-fab-runtime idle running success failed')
+        .addClass(`ai-wbr-fab-runtime ${status}`)
+        .attr('data-runtime-label', stageLabel)
+        .attr('title', activity.detail ? `世界书读取：${activity.label} · ${activity.detail}` : `世界书读取：${activity.label}`);
+    $('#ai_wbr_console_status')
+        .removeClass('idle ready active ok warn error running success failed')
+        .addClass(status)
+        .text(activity.label || '等待生成');
+    renderRuntimeActivityPanel();
+}
+
+function startRuntimeActivity(stage, label, detail = '') {
+    const now = Date.now();
+    const activity = getRuntimeActivity();
+    activity.active = true;
+    activity.stage = stage;
+    activity.label = label || `${getRuntimeActivityStageLabel(stage)}中`;
+    activity.detail = detail || activity.detail || '';
+    activity.status = 'running';
+    activity.startedAt = activity.startedAt || now;
+    activity.updatedAt = now;
+    activity.finishedAt = 0;
+    activity.stages[stage] = {
+        ...(activity.stages[stage] || {}),
+        status: 'running',
+        detail: detail || '进行中',
+        startedAt: activity.stages[stage]?.startedAt || now,
+        updatedAt: now,
+    };
+    updateRuntimeActivityFab();
+    return activity;
+}
+
+function updateRuntimeActivity(stage, detail = '', extra = {}) {
+    const activity = getRuntimeActivity();
+    const now = Date.now();
+    activity.stage = stage || activity.stage;
+    activity.detail = detail || activity.detail;
+    activity.updatedAt = now;
+    activity.stages[activity.stage] = {
+        ...(activity.stages[activity.stage] || {}),
+        status: activity.stages[activity.stage]?.status || 'running',
+        detail: detail || activity.stages[activity.stage]?.detail || '',
+        updatedAt: now,
+        ...extra,
+    };
+    updateRuntimeActivityFab();
+}
+
+function finishRuntimeActivityStage(stage, detail = '') {
+    const activity = getRuntimeActivity();
+    const now = Date.now();
+    activity.stages[stage] = {
+        ...(activity.stages[stage] || {}),
+        status: 'success',
+        detail: detail || '完成',
+        updatedAt: now,
+        finishedAt: now,
+    };
+    activity.updatedAt = now;
+    updateRuntimeActivityFab();
+}
+
+function failRuntimeActivity(stage, error) {
+    const activity = getRuntimeActivity();
+    const now = Date.now();
+    const detail = truncateText(error?.message || String(error || '未知错误'), 120);
+    activity.active = false;
+    activity.stage = stage || activity.stage || 'idle';
+    activity.label = `${getRuntimeActivityStageLabel(activity.stage)}失败`;
+    activity.detail = detail;
+    activity.status = 'failed';
+    activity.updatedAt = now;
+    activity.finishedAt = now;
+    activity.stages[activity.stage] = {
+        ...(activity.stages[activity.stage] || {}),
+        status: 'failed',
+        detail,
+        updatedAt: now,
+        finishedAt: now,
+    };
+    updateRuntimeActivityFab();
+}
+
+function completeRuntimeActivity(label = '本轮流程完成', detail = '') {
+    const activity = getRuntimeActivity();
+    const now = Date.now();
+    activity.active = false;
+    activity.label = label;
+    activity.detail = detail || activity.detail || '已完成。';
+    activity.status = 'success';
+    activity.updatedAt = now;
+    activity.finishedAt = now;
+    updateRuntimeActivityFab();
+}
+
+function resetRuntimeActivity(label = '等待中') {
+    lastRun.activity = createEmptyRuntimeActivity();
+    lastRun.activity.label = label;
+    if ($('#ai_wbr_fab').length || $('#ai_wbr_console_status').length || $('#ai_wbr_runtime_activity_panel').length) {
+        updateRuntimeActivityFab();
+    }
+}
+
 function createEmptyApiStats() {
     return {
         startedAt: 0,
@@ -240,7 +428,9 @@ function beginApiStatsRound(label = '本轮 API 调用') {
     lastRun.apiStats.startedAt = Date.now();
     lastRun.apiStats.updatedAt = lastRun.apiStats.startedAt;
     lastRun.apiStats.label = label;
+    lastRun.activity = createEmptyRuntimeActivity();
     renderApiStatsPanel();
+    renderRuntimeActivityPanel();
     return lastRun.apiStats;
 }
 
@@ -248,6 +438,7 @@ function resetApiStatsRound(label = '尚无本轮 API 调用') {
     lastRun.apiStats = createEmptyApiStats();
     lastRun.apiStats.label = label;
     renderApiStatsPanel();
+    resetRuntimeActivity();
 }
 
 function recordApiCallStart(type, label, meta = {}) {
@@ -385,6 +576,7 @@ let lastRun = {
     routerRaw: '',
     pipeline: null,
     apiStats: createEmptyApiStats(),
+    activity: createEmptyRuntimeActivity(),
 };
 let burstCleanupTimer = null;
 let routerBusyPromise = null;
@@ -2567,6 +2759,7 @@ async function embedBookshelfTextByApi(text) {
         headers.Authorization = `Bearer ${apiKey}`;
     }
     const apiItem = recordApiCallStart('embedding', '书架 / 记忆向量', { roundLabel: '向量 API 调用' });
+    startRuntimeActivity('embedding', '向量化中', '正在调用向量模型生成可召回索引。');
     try {
         const response = await fetch(apiUrl, {
             method: 'POST',
@@ -2579,9 +2772,11 @@ async function embedBookshelfTextByApi(text) {
         }
         const parsed = parseBookshelfEmbeddingResponse(await response.json());
         recordApiCallEnd(apiItem);
+        finishRuntimeActivityStage('embedding', `向量完成 · ${parsed.length || 0} 维`);
         return parsed;
     } catch (error) {
         recordApiCallEnd(apiItem, error);
+        failRuntimeActivity('embedding', error);
         throw error;
     }
 }
@@ -2842,75 +3037,83 @@ async function syncMemoryGraphVectors(graph = getMemoryGraph(), context = getCon
     if (!settings.bookshelfMemoryVectorRecall && !options.force) {
         return { total: 0, ready: 0, pending: 0, failed: 0, skipped: true };
     }
-    const provider = getBookshelfEmbeddingProviderMeta();
-    if (!provider.model) {
-        throw new Error('Please enter the bookshelf API URL first.');
-    }
-    const chatKey = getCurrentChatMemoryKey(context);
-    const nodes = (Array.isArray(graph?.nodes) ? graph.nodes : [])
-        .filter(node => node?.id && buildMemoryVectorText(node, graph));
-    const existing = await bookshelfGetAll('memoryVectors').catch(() => []);
-    const existingById = new Map((existing || [])
-        .filter(item => item.chatKey === chatKey)
-        .map(item => [item.id, item]));
-    const liveIds = new Set(nodes.map(node => `memory:${chatKey}:${node.id}`));
-    const staleIds = (existing || [])
-        .filter(item => item.chatKey === chatKey && !liveIds.has(item.id))
-        .map(item => item.id);
+    startRuntimeActivity('embedding', '同步图谱向量中', '正在检查记忆节点向量状态。');
+    try {
+        const provider = getBookshelfEmbeddingProviderMeta();
+        if (!provider.model) {
+            throw new Error('Please enter the bookshelf API URL first.');
+        }
+        const chatKey = getCurrentChatMemoryKey(context);
+        const nodes = (Array.isArray(graph?.nodes) ? graph.nodes : [])
+            .filter(node => node?.id && buildMemoryVectorText(node, graph));
+        updateRuntimeActivity('embedding', `待同步记忆节点 ${nodes.length} 个`);
+        const existing = await bookshelfGetAll('memoryVectors').catch(() => []);
+        const existingById = new Map((existing || [])
+            .filter(item => item.chatKey === chatKey)
+            .map(item => [item.id, item]));
+        const liveIds = new Set(nodes.map(node => `memory:${chatKey}:${node.id}`));
+        const staleIds = (existing || [])
+            .filter(item => item.chatKey === chatKey && !liveIds.has(item.id))
+            .map(item => item.id);
 
-    for (const id of staleIds) {
-        await bookshelfDelete('memoryVectors', id);
-    }
+        for (const id of staleIds) {
+            await bookshelfDelete('memoryVectors', id);
+        }
 
-    let ready = 0;
-    let pending = 0;
-    let failed = 0;
-    const records = [];
-    for (const node of nodes) {
-        const base = buildMemoryVectorRecord(node, graph, context, provider);
-        const previous = existingById.get(base.id);
-        if (
-            previous
-            && previous.textHash === base.textHash
-            && previous.embeddingMode === provider.mode
-            && previous.embeddingModel === provider.model
-            && previous.vectorStatus === 'ready'
-            && Array.isArray(previous.vector)
-            && previous.vector.length
-            && !options.force
-        ) {
-            ready += 1;
-            continue;
+        let ready = 0;
+        let pending = 0;
+        let failed = 0;
+        const records = [];
+        for (const node of nodes) {
+            const base = buildMemoryVectorRecord(node, graph, context, provider);
+            const previous = existingById.get(base.id);
+            if (
+                previous
+                && previous.textHash === base.textHash
+                && previous.embeddingMode === provider.mode
+                && previous.embeddingModel === provider.model
+                && previous.vectorStatus === 'ready'
+                && Array.isArray(previous.vector)
+                && previous.vector.length
+                && !options.force
+            ) {
+                ready += 1;
+                continue;
+            }
+            try {
+                const vector = await embedBookshelfText(base.text);
+                records.push({
+                    ...base,
+                    vector,
+                    vectorStatus: 'ready',
+                    embeddingDim: vector.length,
+                    error: '',
+                });
+                ready += 1;
+            } catch (error) {
+                records.push({
+                    ...base,
+                    vector: [],
+                    vectorStatus: 'failed',
+                    error: error?.message || String(error),
+                });
+                failed += 1;
+            }
+            pending += 1;
+            if (records.length >= 6) {
+                await bookshelfPutMany('memoryVectors', records.splice(0, records.length));
+                await new Promise(resolve => setTimeout(resolve, 0));
+            }
         }
-        try {
-            const vector = await embedBookshelfText(base.text);
-            records.push({
-                ...base,
-                vector,
-                vectorStatus: 'ready',
-                embeddingDim: vector.length,
-                error: '',
-            });
-            ready += 1;
-        } catch (error) {
-            records.push({
-                ...base,
-                vector: [],
-                vectorStatus: 'failed',
-                error: error?.message || String(error),
-            });
-            failed += 1;
+        if (records.length) {
+            await bookshelfPutMany('memoryVectors', records);
         }
-        pending += 1;
-        if (records.length >= 6) {
-            await bookshelfPutMany('memoryVectors', records.splice(0, records.length));
-            await new Promise(resolve => setTimeout(resolve, 0));
-        }
+        finishRuntimeActivityStage('embedding', `向量 ready ${ready} · failed ${failed}`);
+        return { total: nodes.length, ready, pending, failed, skipped: false };
+    } catch (error) {
+        failRuntimeActivity('embedding', error);
+        throw error;
     }
-    if (records.length) {
-        await bookshelfPutMany('memoryVectors', records);
-    }
-    return { total: nodes.length, ready, pending, failed, skipped: false };
 }
 
 async function recallMemoryVectorChunks(query, memoryGraph = getMemoryGraph(), context = getContext(), options = {}) {
@@ -3005,6 +3208,7 @@ async function recallVectorMemoryAndBookshelf(query, memoryGraph = getMemoryGrap
 }
 
 async function buildUnifiedRecallBundle(context, recentMessages, options = {}) {
+    startRuntimeActivity('recall', '召回中', '正在召回世界书、记忆和书架候选。');
     const mvuSummary = options.mvuSummary ?? getCombinedStateSummary(context);
     const memoryGraph = options.memoryGraph || getMemoryGraph(context);
     const entries = await getWorldbookEntries(context);
@@ -3025,6 +3229,7 @@ async function buildUnifiedRecallBundle(context, recentMessages, options = {}) {
     let vectorSync = null;
 
     try {
+        updateRuntimeActivity('recall', '正在执行向量召回。');
         const query = buildBookshelfRecallQuery(recentMessages, mvuSummary);
         const vectorResult = await recallVectorMemoryAndBookshelf(query, memoryGraph, context, options);
         const vectorMemoryCandidates = tagRecallCandidates(vectorResult.memoryCandidates || [], 'memory-vector');
@@ -3039,6 +3244,7 @@ async function buildUnifiedRecallBundle(context, recentMessages, options = {}) {
         console.warn(`${LOG_PREFIX} Vector recall skipped.`, error);
         setBookshelfStatus(`向量召回跳过：${error?.message || error}`);
     }
+    finishRuntimeActivityStage('recall', `世界书 ${wbCandidates.length} · 记忆 ${memoryCandidates.length} · 书架 ${bookshelfCandidates.length}`);
 
     return {
         mvuSummary,
@@ -6625,6 +6831,11 @@ async function runMemoryGraphUpdate(reason = 'realtime', options = {}) {
     memoryWorkerStartedAt = Date.now();
     startMemoryAnimation();
     setMemoryStatus(mode === 'summary' ? '间隔归纳整理中...' : '实时记忆整理中...');
+    startRuntimeActivity(
+        'graph',
+        reason === 'pre_route' ? '路由前更新图谱中' : '更新图谱中',
+        mode === 'summary' ? '正在归纳阶段记忆。' : '正在整理最新聊天记忆。',
+    );
 
     try {
         const graph = getMemoryGraph();
@@ -6730,6 +6941,7 @@ async function runMemoryGraphUpdate(reason = 'realtime', options = {}) {
                     playStatusBurst('ok', 'memory');
                     toastr?.info?.('Done.', 'AI Worldbook Router');
                     stopMemoryAnimation(true);
+                    finishRuntimeActivityStage('graph', `待确认 ${getMemoryReviewQueue(context).length} 条`);
                     return true;
                 }
 
@@ -6746,6 +6958,7 @@ async function runMemoryGraphUpdate(reason = 'realtime', options = {}) {
                 persistChatMemoryContainer(updatedContainer, context);
                 const nodeCount = memoryResult.graph.nodes.length;
                 const linkCount = memoryResult.graph.links.length;
+                finishRuntimeActivityStage('graph', `节点 ${nodeCount} · 关系 ${linkCount}`);
                 setMemoryStatus(`记忆图谱已更新：${nodeCount} 个节点，${linkCount} 条关系。`, context);
                 if (memoryResult.touchedEntries.length) {
                     playEntryBurst(memoryResult.touchedEntries, {
@@ -6770,6 +6983,7 @@ async function runMemoryGraphUpdate(reason = 'realtime', options = {}) {
         throw lastError || new Error('Memory extraction failed.');
     } catch (error) {
         console.warn(`${LOG_PREFIX} Memory graph update failed`, error);
+        failRuntimeActivity('graph', error);
         setCurrentMemoryLastError(error?.message || String(error), context);
         if (error?.routerRaw && !getCurrentMemoryLastRaw(context)) {
             setCurrentMemoryLastRaw(error.routerRaw, context);
@@ -7718,6 +7932,7 @@ async function selectWithAi(context, recentMessages, mvuSummary, candidates, max
     }
 
     const maxAttempts = Math.max(1, Number(settings.routerRetries || 0) + 1);
+    startRuntimeActivity('select', 'AI筛选中', `候选 ${candidates.length} 条，最多命中 ${maxSelectCount} 条。`);
     let parsed;
     let prompt = '';
     let rawPreview = '';
@@ -7738,17 +7953,21 @@ async function selectWithAi(context, recentMessages, mvuSummary, candidates, max
 
             if (!isGatewayLikeError(error) && attempt < maxAttempts) {
                 playStatusBurst('retry', 'retry');
+                updateRuntimeActivity('select', `AI筛选重试 ${attempt}/${maxAttempts}`);
                 continue;
             }
 
             playStatusBurst('fail', 'fail');
             flashWorldInfoError();
+            failRuntimeActivity('select', error);
             throw error;
         }
     }
 
     if (!parsed) {
-        throw lastError || new Error('Router selection failed without parsed result.');
+        const error = lastError || new Error('Router selection failed without parsed result.');
+        failRuntimeActivity('select', error);
+        throw error;
     }
 
     const byId = new Map();
@@ -7783,6 +8002,7 @@ async function selectWithAi(context, recentMessages, mvuSummary, candidates, max
         }
     }
 
+    finishRuntimeActivityStage('select', `命中 ${selected.length} 条`);
     return {
         selected,
         prompt,
@@ -8497,6 +8717,10 @@ function renderStandaloneOverview(container) {
             .append($(`<i class="fa-solid ${status.icon}"></i>`))
             .append($('<span></span>').text(status.label))));
 
+    const runtimePanel = $('<div id="ai_wbr_runtime_activity_panel" class="ai-wbr-runtime-activity-panel"></div>');
+    container.append(runtimePanel);
+    renderRuntimeActivityPanel(runtimePanel);
+
     container.append($('<div class="ai-wbr-console-stats"></div>')
         .append(createStandaloneStat('世界书候选', candidates.length))
         .append(createStandaloneStat('世界书命中', selected.length))
@@ -8655,6 +8879,11 @@ function renderStandaloneSettings(container) {
             .append(createStandaloneSettingsNav('书架设置', 'bookshelf', '记忆书、向量模型和召回测试。')),
     );
 
+    container.append($('<div class="ai-wbr-console-section-title"></div>').text('运行流程'));
+    const runtimePanel = $('<div id="ai_wbr_runtime_activity_panel" class="ai-wbr-runtime-activity-panel"></div>');
+    container.append(runtimePanel);
+    renderRuntimeActivityPanel(runtimePanel);
+
     container.append($('<div class="ai-wbr-console-section-title"></div>').text('API 调用统计'));
     const apiStatsPanel = $('<div id="ai_wbr_api_stats_panel" class="ai-wbr-api-stats-panel"></div>');
     container.append(apiStatsPanel);
@@ -8712,9 +8941,21 @@ function renderStandaloneConsole(tabId = getStandaloneTabId()) {
         return;
     }
 
-    const status = getStandaloneStatusMeta();
-    $('#ai_wbr_fab').removeClass('idle ready active ok warn error').addClass(status.className).attr('title', `世界书读取：${status.label}`);
-    $('#ai_wbr_console_status').removeClass('idle ready active ok warn error').addClass(status.className).text(status.label);
+    const activity = getRuntimeActivity();
+    if (activity.status && activity.status !== 'idle') {
+        updateRuntimeActivityFab();
+    } else {
+        const status = getStandaloneStatusMeta();
+        $('#ai_wbr_fab')
+            .removeClass('ai-wbr-fab-runtime idle ready active ok warn error running success failed')
+            .removeAttr('data-runtime-label')
+            .addClass(status.className)
+            .attr('title', `世界书读取：${status.label}`);
+        $('#ai_wbr_console_status')
+            .removeClass('idle ready active ok warn error running success failed')
+            .addClass(status.className)
+            .text(status.label);
+    }
 }
 
 function escapeHtml(value) {
@@ -12619,6 +12860,7 @@ function debugLog(...args) {
 
 function debugRun(candidates, selected, injection, source, routerPrompt = '', routerRaw = '', memoryCandidates = [], selectedMemories = [], bookshelfCandidates = [], selectedBookshelf = [], pipeline = null) {
     const apiStats = getApiStats();
+    const activity = getRuntimeActivity();
     lastRun = {
         candidates,
         selected,
@@ -12634,6 +12876,7 @@ function debugRun(candidates, selected, injection, source, routerPrompt = '', ro
         routerRaw,
         pipeline,
         apiStats,
+        activity,
     };
 
     if (settings.debug) {
@@ -12687,6 +12930,7 @@ function debugRun(candidates, selected, injection, source, routerPrompt = '', ro
 
 function debugError(error) {
     const apiStats = getApiStats();
+    const activity = getRuntimeActivity();
     lastRun = {
         candidates: [],
         selected: [],
@@ -12702,7 +12946,9 @@ function debugError(error) {
         routerRaw: '',
         pipeline: null,
         apiStats,
+        activity,
     };
+    failRuntimeActivity(activity.stage || 'select', error);
     renderDebugPanel();
 }
 
@@ -12710,8 +12956,12 @@ async function routeWorldbookForMessages(context, recentMessages, routeSource = 
     const lastUserMessage = getLastUserMessage(recentMessages);
     debugLog('Generation intercepted', { ...logMeta, routeSource, lastUserMessage });
     beginApiStatsRound(`本轮生成 API 调用 · ${routeSource}`);
+    startRuntimeActivity('recall', '开始本轮流程', '准备召回世界书、记忆和书架资料。');
 
     const preRefresh = await preRefreshMemoryForRoute(context);
+    if (preRefresh?.attempted) {
+        finishRuntimeActivityStage('preRefresh', preRefresh.updated ? '已预刷新记忆' : '预刷新无变化');
+    }
     const recallBundle = await buildUnifiedRecallBundle(context, recentMessages, { preRefresh });
     const {
         mvuSummary,
@@ -12727,6 +12977,7 @@ async function routeWorldbookForMessages(context, recentMessages, routeSource = 
 
     if (combinedCandidates.length === 0 && !hasMemoryState(memoryGraph) && !vectorSelectedBookshelf.length) {
         debugRun([], [], '', `none-${routeSource}`, '', '', [], [], bookshelfCandidates, [], recallBundle.pipeline);
+        completeRuntimeActivity('本轮流程完成', '没有需要注入的候选内容。');
         lastRouteCompletedAt = Date.now();
         return {
             candidates: wbCandidates,
@@ -12795,7 +13046,9 @@ async function routeWorldbookForMessages(context, recentMessages, routeSource = 
     }
 
     const injection = buildInjection(selectedWb, memoryGraph, selectedMem, selectedBookshelf);
+    startRuntimeActivity('inject', '注入中', `正在写入本轮上下文 · ${injection.length} 字`);
     setExtensionPrompt(PROMPT_KEY, injection, settings.position, settings.depth, false, settings.role);
+    finishRuntimeActivityStage('inject', `已注入 ${injection.length} 字`);
     const pipeline = {
         ...recallBundle.pipeline,
         selected: {
@@ -12811,6 +13064,7 @@ async function routeWorldbookForMessages(context, recentMessages, routeSource = 
         },
     };
     debugRun(wbCandidates, selectedWb, injection, source, routerPrompt, routerRaw, memoryCandidates, selectedMem, bookshelfCandidates, selectedBookshelf, pipeline);
+    completeRuntimeActivity('本轮路由完成', `命中世界书 ${selectedWb.length} · 记忆 ${selectedMem.length} · 书架 ${selectedBookshelf.length}`);
     lastRouteCompletedAt = Date.now();
 
     return {
@@ -13834,6 +14088,7 @@ async function bootAiWorldbookRouter() {
                 routerRaw: '',
                 pipeline: null,
                 apiStats: createEmptyApiStats(),
+                activity: createEmptyRuntimeActivity(),
             };
             setExtensionPrompt(PROMPT_KEY, '', settings.position, settings.depth, false, settings.role);
             renderActiveWorldbookSelector();
