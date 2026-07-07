@@ -4038,6 +4038,87 @@ function extractTypedMemoryEntityHints(rawNode = {}) {
     return hints;
 }
 
+function addMemoryEntityHint(hints, seen, type, title) {
+    const safeType = MEMORY_NODE_TYPE_OPTIONS.some(option => option.value === type) ? type : '';
+    const safeTitle = normalizeMemoryEntityTitle(title);
+    if (!safeType || isWeakMemoryTitle(safeTitle)) {
+        return;
+    }
+    const key = `${safeType}|${normalizeText(safeTitle)}`;
+    if (seen.has(key)) {
+        return;
+    }
+    seen.add(key);
+    hints.push({ type: safeType, title: safeTitle });
+}
+
+function stripMemoryEntityTail(value) {
+    return normalizeMemoryEntityTitle(String(value || '')
+        .replace(/[，。！？；;,.!?].*$/u, '')
+        .replace(/^(和|与|及|以及|还有|并|向|给|对|在|到|从|把|将|因|因而|因为|确认|说明|请求|赠送|进入|前往|来到|拿到|获得|发现|遇见|见到|加入|属于|来自|关于|调查|寻找|解决|处理|更换|换上|借住|收留|反应)\s*/u, '')
+        .replace(/\s*(等|之一|这件事|此事|相关).*$/u, ''));
+}
+
+function extractMemoryEntityHintsFromText(rawNode = {}, state = {}) {
+    const hints = [];
+    const seen = new Set();
+    const text = sanitizeMemoryMessageText([
+        rawNode?.title,
+        rawNode?.summary,
+        rawNode?.content,
+        rawNode?.description,
+        Array.isArray(rawNode?.keys) ? rawNode.keys.join('，') : rawNode?.keys,
+        Array.isArray(rawNode?.tags) ? rawNode.tags.join('，') : rawNode?.tags,
+        state?.current_location,
+        state?.current_objective,
+        Array.isArray(state?.active_topics) ? state.active_topics.join('，') : '',
+        Array.isArray(state?.open_questions) ? state.open_questions.join('，') : '',
+    ].filter(Boolean).join('。'));
+
+    const typedPatterns = [
+        ['character', /(?:角色|人物|npc|主角|配角|同伴|敌人|朋友|老师|学生|房东|亲戚|家人|少女|少年|男子|女子|男人|女人|姓名|身份)[：:为是叫名]?\s*([\p{Script=Han}A-Za-z0-9_·]{2,18})/giu],
+        ['location', /(?:地点|位置|场景|房间|屋内|门口|入口|学校|大学|公寓|宿舍|家中|豪华公寓|玄关|客厅|卧室|城市|据点|秘境|森林|村庄)[：:为是在到至]?\s*([\p{Script=Han}A-Za-z0-9_·]{2,24})?/giu],
+        ['item', /(?:道具|物品|装备|武器|线索|资料|信件|钥匙|令牌|戒指|卡片|药物|鞋|鞋子|特产|土特产|包裹|礼物|手机|地图|笔记)[：:为是叫]?\s*([\p{Script=Han}A-Za-z0-9_·]{2,24})?/giu],
+        ['faction', /(?:势力|组织|阵营|队伍|家族|帮派|集团|公司|学校|大学|社团|教团|王国|帝国)[：:为是叫]?\s*([\p{Script=Han}A-Za-z0-9_·]{2,24})?/giu],
+        ['concept', /(?:设定|世界观|能力|机制|系统|规则|习俗|背景|身份设定|亲戚身份|借住关系)[：:为是叫]?\s*([\p{Script=Han}A-Za-z0-9_·]{2,30})?/giu],
+        ['rule', /(?:规则|法则|限制|禁忌|协议|契约|约定|承诺|条件)[：:为是叫]?\s*([\p{Script=Han}A-Za-z0-9_·]{2,30})?/giu],
+        ['quest', /(?:任务|目标|目的|待办|悬念|未解|问题|谜团|调查|寻找|解决|处理|请求|收留)[：:为是叫]?\s*([\p{Script=Han}A-Za-z0-9_·]{2,34})?/giu],
+    ];
+
+    for (const [type, pattern] of typedPatterns) {
+        for (const match of text.matchAll(pattern)) {
+            const title = stripMemoryEntityTail(match[1] || match[0]);
+            addMemoryEntityHint(hints, seen, type, title);
+        }
+    }
+
+    const namePatterns = [
+        /(?:向|对|给|问|告诉|请求|见到|遇见|认识|确认|说明|跟|和|与)([\p{Script=Han}A-Za-z0-9_·]{2,12})(?:说|问|确认|说明|请求|交谈|解释|赠送|借住|收留|反应)/giu,
+        /([\p{Script=Han}A-Za-z0-9_·]{2,12})(?:同意|拒绝|反应|出现|离开|进入|询问|回答|赠送|收留)/giu,
+    ];
+    for (const pattern of namePatterns) {
+        for (const match of text.matchAll(pattern)) {
+            const title = stripMemoryEntityTail(match[1]);
+            if (!/(当前|目标|地点|时间|状态|阶段|问题|任务|特产|鞋子|公寓|大学|玄关|客厅)/u.test(title)) {
+                addMemoryEntityHint(hints, seen, 'character', title);
+            }
+        }
+    }
+
+    const quotedItems = text.match(/[《“「『](.{2,24}?)[》”」』]/gu) || [];
+    for (const quoted of quotedItems) {
+        const title = stripMemoryEntityTail(quoted.replace(/[《》“”「」『』]/gu, ''));
+        const type = /(规则|约定|设定|身份|关系|能力|机制)/u.test(title)
+            ? 'concept'
+            : /(任务|目标|调查|寻找|解决)/u.test(title)
+                ? 'quest'
+                : 'item';
+        addMemoryEntityHint(hints, seen, type, title);
+    }
+
+    return hints.slice(0, 10);
+}
+
 function expandMemoryUpdateEntityNodes(update, graph = getMemoryGraph()) {
     const state = update?.state && typeof update.state === 'object' ? update.state : {};
     const incomingNodes = Array.isArray(update?.nodes) ? [...update.nodes] : [];
@@ -4081,6 +4162,9 @@ function expandMemoryUpdateEntityNodes(update, graph = getMemoryGraph()) {
             for (const hint of extractTypedMemoryEntityHints(rawNode)) {
                 addEntity(hint.type, hint.title, rawNode, hint.type === 'location' ? 'HAPPENS_AT' : 'INVOLVES');
             }
+            for (const hint of extractMemoryEntityHintsFromText(rawNode, state)) {
+                addEntity(hint.type, hint.title, rawNode, hint.type === 'location' ? 'HAPPENS_AT' : 'INVOLVES');
+            }
         }
     }
 
@@ -4092,6 +4176,9 @@ function expandMemoryUpdateEntityNodes(update, graph = getMemoryGraph()) {
     }
     for (const question of Array.isArray(state.open_questions) ? state.open_questions : []) {
         addEntity('quest', question, null, 'RELATED');
+    }
+    for (const hint of extractMemoryEntityHintsFromText({}, state)) {
+        addEntity(hint.type, hint.title, null, 'RELATED');
     }
 
     return {
@@ -11103,6 +11190,7 @@ async function runTavernHelperRoute(args) {
         stopWorldInfoAnimation();
         endRouterBusy();
         isCompatRouterRunning = false;
+        setTimeout(() => scheduleMemoryGraphUpdate({ reason: 'tavernhelper_post_generate' }), 3500);
     }
 }
 
