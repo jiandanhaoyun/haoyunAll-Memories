@@ -161,7 +161,7 @@
                 </div>
                 <details class="ai-wbr-memory-fold ai-wbr-memory-settings-fold">
                     <summary>
-                        <span>核心开关</span>
+                        <span><i class="fa-solid fa-toggle-on"></i> 核心开关</span>
                         <small>启用记忆、实时整理、归纳和路由参与。</small>
                     </summary>
                     <div class="ai-wbr-memory-fold-body">
@@ -195,7 +195,7 @@
 
                 <details class="ai-wbr-memory-fold">
                     <summary>
-                        <span>整理参数</span>
+                        <span><i class="fa-solid fa-sliders"></i> 整理参数</span>
                         <small>控制实时、间隔归纳和图谱容量。</small>
                     </summary>
                     <div class="ai-wbr-memory-fold-body ai-wbr-grid">
@@ -222,9 +222,9 @@
                     </div>
                 </details>
 
-                <details class="ai-wbr-memory-fold ai-wbr-bookshelf-fold" open>
+                <details class="ai-wbr-memory-fold ai-wbr-bookshelf-fold">
                     <summary>
-                        <span>书架向量库</span>
+                        <span><i class="fa-solid fa-book-bookmark"></i> 书架向量库</span>
                         <small>导入 TXT 后需手动调用 API 或浏览器本地模型向量化。</small>
                     </summary>
                     <div id="ai_wbr_bookshelf_panel" class="ai-wbr-memory-fold-body ai-wbr-bookshelf-panel">
@@ -333,9 +333,9 @@
                     </div>
                 </details>
 
-                <details class="ai-wbr-memory-fold" open>
+                <details class="ai-wbr-memory-fold">
                     <summary>
-                        <span>历史聊天补录</span>
+                        <span><i class="fa-solid fa-clock-rotate-left"></i> 历史聊天补录</span>
                         <small>把已经存在的旧楼层按范围整理进当前记忆。</small>
                     </summary>
                     <div class="ai-wbr-memory-fold-body ai-wbr-memory-history-import">
@@ -368,7 +368,7 @@
 
                 <details class="ai-wbr-memory-fold">
                     <summary>
-                        <span>状态字段</span>
+                        <span><i class="fa-solid fa-table-list"></i> 状态字段</span>
                         <small>编辑当前位置、目标、阶段和自定义状态。</small>
                     </summary>
                     <div id="ai_wbr_memory_state_editor" class="ai-wbr-memory-state-editor ai-wbr-memory-fold-body"></div>
@@ -376,7 +376,7 @@
 
                 <details class="ai-wbr-memory-fold">
                     <summary>
-                        <span>高级 JSON</span>
+                        <span><i class="fa-solid fa-code"></i> 高级 JSON</span>
                         <small>直接查看或手动保存记忆图谱 JSON。</small>
                     </summary>
                     <div class="ai-wbr-router-raw-block ai-wbr-memory-fold-body">
@@ -387,8 +387,8 @@
 
                 <details class="ai-wbr-memory-fold ai-wbr-memory-debug-fold">
                     <summary>
-                        <span>调试信息</span>
-                        <small>查看后置记忆 Prompt、原始返回和解析错误。</small>
+                        <span><i class="fa-solid fa-bug"></i> 调试信息</span>
+                        <small>后置记忆 + 前置 AI 的 Prompt、返回与解析错误。</small>
                     </summary>
                     <div id="ai_wbr_memory_debug_panel" class="ai-wbr-memory-debug-panel ai-wbr-memory-fold-body">
                         <label class="checkbox_label" for="ai_wbr_memory_debug">
@@ -401,17 +401,35 @@
                             <span class="fa-solid fa-circle-info ai-wbr-help" title="在浏览器控制台输出切卡/切聊天、读取记忆、保存记忆和面板重绘的详细日志。"></span>
                             <span>记忆作用域控制台调试</span>
                         </label>
-                    <div class="ai-wbr-router-raw-block">
+                    <div class="ai-wbr-router-raw-block ai-wbr-memory-raw-block">
                         <div><b>后置记忆 Prompt</b></div>
                         <pre id="ai_wbr_memory_prompt" class="ai-wbr-router-raw">尚无后置记忆 Prompt</pre>
                     </div>
-                    <div class="ai-wbr-router-raw-block">
+                    <div class="ai-wbr-router-raw-block ai-wbr-memory-raw-block">
                         <div><b>后置记忆 AI 原始返回</b></div>
                         <pre id="ai_wbr_memory_raw" class="ai-wbr-router-raw">尚无后置记忆返回</pre>
                     </div>
-                    <div class="ai-wbr-router-raw-block">
+                    <div class="ai-wbr-router-raw-block ai-wbr-memory-raw-block">
                         <div><b>后置记忆解析错误</b></div>
                         <pre id="ai_wbr_memory_error" class="ai-wbr-router-raw">尚无错误</pre>
+                    </div>
+
+                    <div class="ai-wbr-memory-debug-divider"></div>
+                    <div class="ai-wbr-memory-debug-group">前置 AI 与注入</div>
+                    <div><b>最近一次选择</b></div>
+                    <div id="ai_wbr_last_summary" class="menu_button disabled">尚无路由记录</div>
+                    <div id="ai_wbr_last_items" class="ai-wbr-last-items"></div>
+                    <div class="ai-wbr-router-raw-block">
+                        <div><b>本轮最终注入文本</b></div>
+                        <pre id="ai_wbr_injection_text" class="ai-wbr-router-raw">尚无本轮注入记录</pre>
+                    </div>
+                    <div class="ai-wbr-router-raw-block">
+                        <div><b>发给前置 AI 的 Prompt</b></div>
+                        <pre id="ai_wbr_router_prompt" class="ai-wbr-router-raw">尚无前置 AI Prompt 记录</pre>
+                    </div>
+                    <div class="ai-wbr-router-raw-block">
+                        <div><b>前置 AI 返回</b></div>
+                        <pre id="ai_wbr_router_raw" class="ai-wbr-router-raw">尚无前置 AI 返回记录</pre>
                     </div>
                     </div>
                 </details>
@@ -432,23 +450,6 @@
                 <div id="ai_wbr_memory_links" class="ai-wbr-memory-list ai-wbr-graph-list-collapsed"></div>
             </div>
 
-            <div class="ai-wbr-debug">
-                <div><b>最近一次选择</b></div>
-                <div id="ai_wbr_last_summary" class="menu_button disabled">尚无路由记录</div>
-                <div id="ai_wbr_last_items" class="ai-wbr-last-items"></div>
-                <div class="ai-wbr-router-raw-block">
-                    <div><b>本轮最终注入文本</b></div>
-                    <pre id="ai_wbr_injection_text" class="ai-wbr-router-raw">尚无本轮注入记录</pre>
-                </div>
-                <div class="ai-wbr-router-raw-block">
-                    <div><b>发给前置 AI 的 Prompt</b></div>
-                    <pre id="ai_wbr_router_prompt" class="ai-wbr-router-raw">尚无前置 AI Prompt 记录</pre>
-                </div>
-                <div class="ai-wbr-router-raw-block">
-                    <div><b>前置 AI 返回</b></div>
-                    <pre id="ai_wbr_router_raw" class="ai-wbr-router-raw">尚无前置 AI 返回记录</pre>
-                </div>
-            </div>
         </div>
     </div>
 </div>

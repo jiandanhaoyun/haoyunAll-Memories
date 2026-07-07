@@ -6767,36 +6767,25 @@ function restoreStandalonePanelsToSettings() {
     if (!settingsContent.length) return;
     ensureBookshelfSettingsSection();
 
-    const memorySection = $('#ai_wbr_memory_section');
-    const graphSection = $('#ai_wbr_memory_graph_section');
-    const bookshelfSection = $('#ai_wbr_bookshelf_section');
-    const debugSection = settingsContent.find('.ai-wbr-debug').first();
-
-    if (memorySection.length && !settingsContent.find('#ai_wbr_memory_section').length) {
-        const routerSection = settingsContent.find('.ai-wbr-section')
-            .not('#ai_wbr_memory_section, #ai_wbr_memory_graph_section, #ai_wbr_bookshelf_section')
-            .first();
-        if (routerSection.length) {
-            routerSection.after(memorySection.detach());
-        } else {
-            settingsContent.append(memorySection.detach());
+    // Restore each parked section to its original anchor position (kept in a
+    // placeholder while parked) instead of appending to the end, which was
+    // scrambling the section order in the settings page after console visits.
+    const sections = [
+        { sel: '#ai_wbr_memory_section', anchor: 'ai_wbr_memory_section' },
+        { sel: '#ai_wbr_memory_graph_section', anchor: 'ai_wbr_memory_graph_section' },
+        { sel: '#ai_wbr_bookshelf_section', anchor: 'ai_wbr_bookshelf_section' },
+    ];
+    for (const { sel, anchor } of sections) {
+        const section = $(sel);
+        if (!section.length || settingsContent.find(sel).length) {
+            continue;
         }
-    }
-    if (graphSection.length && !settingsContent.find('#ai_wbr_memory_graph_section').length) {
-        if (debugSection.length) {
-            debugSection.before(graphSection.detach());
+        const placeholder = settingsContent.find(`i.ai-wbr-park-anchor[data-anchor="${anchor}"]`).first();
+        if (placeholder.length) {
+            placeholder.before(section.detach());
+            placeholder.remove();
         } else {
-            settingsContent.append(graphSection.detach());
-        }
-    }
-    if (bookshelfSection.length && !settingsContent.find('#ai_wbr_bookshelf_section').length) {
-        const targetGraphSection = settingsContent.find('#ai_wbr_memory_graph_section');
-        if (targetGraphSection.length) {
-            targetGraphSection.before(bookshelfSection.detach());
-        } else if (memorySection.length) {
-            memorySection.after(bookshelfSection.detach());
-        } else {
-            settingsContent.append(bookshelfSection.detach());
+            settingsContent.append(section.detach());
         }
     }
 }
@@ -6809,7 +6798,19 @@ function parkStandalonePanels(...selectors) {
     }
     ensureBookshelfStandaloneSection();
     const targetSelectors = selectors.length ? selectors : ['#ai_wbr_memory_section', '#ai_wbr_memory_graph_section', '#ai_wbr_bookshelf_section'];
-    $(targetSelectors.join(', ')).detach().appendTo(parking);
+    for (const sel of targetSelectors) {
+        const section = $(sel);
+        if (!section.length) {
+            continue;
+        }
+        // Drop a placeholder at the section's original spot so restore can put
+        // it back exactly where it was, instead of at the end of the list.
+        if (!section.prev('.ai-wbr-park-anchor').length) {
+            const anchor = $(`<i class="ai-wbr-park-anchor" data-anchor="${section.attr('id') || ''}"></i>`);
+            section.before(anchor);
+        }
+        section.detach().appendTo(parking);
+    }
 }
 
 function renderStandaloneOverview(container) {
@@ -6990,13 +6991,21 @@ function renderStandaloneSettings(container) {
 }
 
 function renderStandaloneDebug(container) {
-    container.append($('<div class="ai-wbr-console-section-title"></div>').text('前置 AI Prompt'));
-    container.append($('<pre class="ai-wbr-console-pre"></pre>').text(lastRun.routerPrompt || '尚无前置 AI Prompt 记录'));
-    container.append($('<div class="ai-wbr-console-section-title"></div>').text('前置 AI 原始返回'));
-    container.append($('<pre class="ai-wbr-console-pre"></pre>').text(lastRun.routerRaw || '尚无前置 AI 返回记录'));
+    const addBlock = (title, value, isErr) => {
+        container.append($('<div class="ai-wbr-console-section-title"></div>').text(title));
+        container.append($('<pre class="ai-wbr-console-pre"></pre>').addClass(isErr ? 'error' : '').text(value || `尚无${title}`));
+    };
+    addBlock('前置 AI Prompt', lastRun.routerPrompt);
+    addBlock('前置 AI 原始返回', lastRun.routerRaw);
     if (lastRun.error) {
-        container.append($('<div class="ai-wbr-console-section-title"></div>').text('错误'));
-        container.append($('<pre class="ai-wbr-console-pre error"></pre>').text(lastRun.error));
+        addBlock('错误', lastRun.error, true);
+    }
+    const ctx = getContext();
+    addBlock('后置记忆 Prompt', getCurrentMemoryLastPrompt(ctx) || '');
+    addBlock('后置记忆 返回', getCurrentMemoryLastRaw(ctx) || '');
+    const memErr = getCurrentMemoryLastError(ctx);
+    if (memErr) {
+        addBlock('后置记忆 解析错误', memErr, true);
     }
 }
 
@@ -9619,7 +9628,7 @@ function renderMemoryPanel(scope = 'all') {
         $('#ai_wbr_memory_json').val(JSON.stringify(graph, null, 2));
         const showMemoryDebugDetails = !!settings.memoryDebug || !!getCurrentMemoryLastError(context);
         $('.ai-wbr-memory-debug-fold').prop('open', showMemoryDebugDetails);
-        $('#ai_wbr_memory_debug_panel .ai-wbr-router-raw-block').toggle(showMemoryDebugDetails);
+        $('#ai_wbr_memory_debug_panel .ai-wbr-memory-raw-block').toggle(showMemoryDebugDetails);
         $('#ai_wbr_memory_prompt').text(getCurrentMemoryLastPrompt(context) || '尚无后置记忆 Prompt');
         $('#ai_wbr_memory_raw').text(getCurrentMemoryLastRaw(context) || '尚无后置记忆返回');
         $('#ai_wbr_memory_error').text(getCurrentMemoryLastError(context) || '尚无错误');
