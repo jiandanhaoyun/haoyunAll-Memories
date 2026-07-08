@@ -3887,6 +3887,12 @@
     text-orientation: mixed;
 }
 
+.ai-wbr-bookshelf-model-hint {
+    color: color-mix(in srgb, var(--SmartThemeBodyColor, #fff) 72%, transparent 28%);
+    font-size: 0.82rem;
+    line-height: 1.35;
+}
+
 .ai-wbr-bookshelf-import-options {
     display: grid;
     grid-template-columns: minmax(7.5rem, 0.7fr) minmax(12rem, 1.3fr);
