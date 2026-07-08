@@ -2275,35 +2275,6 @@ function syncBookshelfProviderVisibility() {
         : (settings.bookshelfApiModel ? `API model: ${settings.bookshelfApiModel}` : 'API model not configured'));
 }
 
-function getBookshelfModelsApiUrl() {
-    const base = normalizeUrl(settings.bookshelfApiUrl || '');
-    if (!base) {
-        throw new Error('Please enter the bookshelf API URL first.');
-    }
-    if (/\/models$/i.test(base)) return base;
-    if (/\/embeddings$/i.test(base)) return base.replace(/\/embeddings$/i, '/models');
-    if (/\/v1$/i.test(base)) return `${base}/models`;
-    return `${base.replace(/\/$/, '')}/v1/models`;
-}
-
-function getBookshelfModelApiUrlCandidates() {
-    const base = normalizeUrl(settings.bookshelfApiUrl || '');
-    if (!base) {
-        throw new Error('Please enter the bookshelf API URL first.');
-    }
-
-    const withoutTrailing = base.replace(/\/$/, '');
-    const candidates = [
-        getBookshelfModelsApiUrl(),
-        /\/v1\/embeddings$/i.test(withoutTrailing) ? withoutTrailing.replace(/\/embeddings$/i, '/models') : '',
-        /\/embeddings$/i.test(withoutTrailing) ? withoutTrailing.replace(/\/embeddings$/i, '/models') : '',
-        /\/v1$/i.test(withoutTrailing) ? `${withoutTrailing}/models` : '',
-        `${withoutTrailing}/models`,
-        `${withoutTrailing}/v1/models`,
-    ];
-    return uniqueStrings(candidates.map(item => String(item || '').trim()).filter(Boolean));
-}
-
 function extractBookshelfModelIds(payload) {
     const values = [];
     const pushModel = (item) => {
@@ -2339,83 +2310,43 @@ function extractBookshelfModelIds(payload) {
     return uniqueStrings(values.map(model => String(model || '').trim()).filter(Boolean));
 }
 
-async function fetchBookshelfModelsDirect(apiUrl, headers) {
-    const response = await fetch(apiUrl, {
-        method: 'GET',
-        headers,
-        cache: 'no-cache',
-    });
-    const text = await response.text().catch(() => '');
-    let data = {};
-    try {
-        data = text ? JSON.parse(text) : {};
-    } catch {
-        data = { message: text };
-    }
-    const models = extractBookshelfModelIds(data);
-    if (!response.ok || !models.length) {
-        throw new Error(data?.error?.message || data?.message || `No embedding models returned (HTTP ${response.status}).`);
-    }
-    return models;
-}
-
 async function fetchBookshelfModelsViaTavernBackend() {
     const context = getContext();
     const apiUrl = normalizeUrl(settings.bookshelfApiUrl || '');
     const apiKey = String(settings.bookshelfApiKey || '').trim();
     if (!apiUrl) {
-        throw new Error('Please enter the bookshelf API URL first.');
+        throw new Error('请先填写书架向量模型的 API 地址。');
+    }
+    if (!apiKey) {
+        throw new Error('请先填写书架向量模型的 API Key。');
     }
 
     const response = await fetch('/api/backends/chat-completions/status', {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            ...(typeof context.getRequestHeaders === 'function' ? context.getRequestHeaders() : {}),
-        },
+        headers: typeof context.getRequestHeaders === 'function'
+            ? context.getRequestHeaders()
+            : { 'Content-Type': 'application/json' },
         cache: 'no-cache',
         body: JSON.stringify({
             chat_completion_source: 'openai',
-            reverse_proxy: apiUrl.replace(/\/embeddings$/i, '').replace(/\/v1$/i, '/v1'),
+            reverse_proxy: apiUrl,
             proxy_password: apiKey,
         }),
     });
     const data = await response.json().catch(() => ({}));
     const models = extractBookshelfModelIds(data);
     if (!response.ok || !models.length) {
-        throw new Error(data?.error?.message || data?.message || `No models returned by Tavern backend (HTTP ${response.status}).`);
+        throw new Error(data?.error?.message || data?.message || '没有拿到可用模型');
     }
     return models;
 }
 
 async function fetchBookshelfApiModels() {
-    const apiKey = String(settings.bookshelfApiKey || '').trim();
-    const headers = { 'Content-Type': 'application/json' };
-    if (apiKey) {
-        headers.Authorization = `Bearer ${apiKey}`;
-    }
-
     setBookshelfModelStatus('正在获取模型...');
-    setBookshelfStatus('正在获取书架向量模型列表...');
-    const errors = [];
-    let models = [];
-    for (const apiUrl of getBookshelfModelApiUrlCandidates()) {
-        try {
-            models = await fetchBookshelfModelsDirect(apiUrl, headers);
-            break;
-        } catch (error) {
-            errors.push(`${apiUrl}: ${error?.message || error}`);
-        }
-    }
+    setBookshelfStatus('正在通过酒馆后端获取书架向量模型列表...');
+    const models = await fetchBookshelfModelsViaTavernBackend();
     if (!models.length) {
-        try {
-            models = await fetchBookshelfModelsViaTavernBackend();
-        } catch (error) {
-            errors.push(`Tavern backend: ${error?.message || error}`);
-        }
-    }
-    if (!models.length) {
-        throw new Error(`没有拿到可用向量模型。已尝试：${errors.slice(-3).join('；')}`);
+        throw new Error('没有拿到可用模型');
     }
 
     settings.bookshelfApiModels = uniqueStrings(models);
@@ -10700,7 +10631,7 @@ async function renderBookshelfPanel() {
         $('<div class="ai-wbr-bookshelf-scope-card"></div>').append($('<b></b>').text('记忆书'), $('<span></span>').text(settings.bookshelfAutoMemoryBook ? '自动维护当前聊天' : '手动刷新')),
         $('<div class="ai-wbr-bookshelf-scope-card"></div>').append($('<b></b>').text('记忆书向量'), $('<span></span>').text(settings.bookshelfAutoMemoryBookVectorize ? '生成后自动向量化' : '手动向量化')),
         $('<div class="ai-wbr-bookshelf-scope-card"></div>').append($('<b></b>').text('图谱向量'), $('<span></span>').text(settings.bookshelfMemoryVectorRecall ? `开启 · 最多 ${settings.bookshelfMemoryVectorMaxItems || defaultSettings.bookshelfMemoryVectorMaxItems} 条` : '关闭')),
-        $('<div class="ai-wbr-bookshelf-scope-card"></div>').append($('<b></b>').text('向量模型'), $('<span></span>').text(getBookshelfEmbeddingProviderMeta().label)),
+        $('<div class="ai-wbr-bookshelf-scope-card"></div>').append($('<b></b>').text('向量模型'), $('<span></span>').text(`${getBookshelfEmbeddingProviderMeta().label}${settings.bookshelfApiModel ? ` · ${settings.bookshelfApiModel}` : ''}`)),
     );
 
     const booksBox = panel.find('#ai_wbr_bookshelf_books').empty().append('<div class="ai-wbr-token-empty">正在读取书架...</div>');

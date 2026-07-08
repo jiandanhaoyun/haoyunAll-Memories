@@ -6,7 +6,7 @@
     'use strict';
 
     const NAMESPACE = 'AIWorldbookRouter';
-    const VERSION = '1.0.4';
+    const VERSION = '1.0.5';
     const LOG_PREFIX = '[AI Worldbook Router Bootstrap]';
     const ENTRY_ID = 'ai_wbr_extension_entry';
     const ROW_ID = 'ai_wbr_extension_row';
