@@ -2280,8 +2280,109 @@ function getBookshelfModelsApiUrl() {
     return `${base.replace(/\/$/, '')}/v1/models`;
 }
 
+function getBookshelfModelApiUrlCandidates() {
+    const base = normalizeUrl(settings.bookshelfApiUrl || '');
+    if (!base) {
+        throw new Error('Please enter the bookshelf API URL first.');
+    }
+
+    const withoutTrailing = base.replace(/\/$/, '');
+    const candidates = [
+        getBookshelfModelsApiUrl(),
+        /\/v1\/embeddings$/i.test(withoutTrailing) ? withoutTrailing.replace(/\/embeddings$/i, '/models') : '',
+        /\/embeddings$/i.test(withoutTrailing) ? withoutTrailing.replace(/\/embeddings$/i, '/models') : '',
+        /\/v1$/i.test(withoutTrailing) ? `${withoutTrailing}/models` : '',
+        `${withoutTrailing}/models`,
+        `${withoutTrailing}/v1/models`,
+    ];
+    return uniqueStrings(candidates.map(item => String(item || '').trim()).filter(Boolean));
+}
+
+function extractBookshelfModelIds(payload) {
+    const values = [];
+    const pushModel = (item) => {
+        if (typeof item === 'string') {
+            values.push(item);
+            return;
+        }
+        if (!item || typeof item !== 'object') {
+            return;
+        }
+        values.push(item.id, item.name, item.model, item.model_name, item.modelName);
+    };
+
+    if (Array.isArray(payload)) {
+        payload.forEach(pushModel);
+    }
+    if (Array.isArray(payload?.data)) {
+        payload.data.forEach(pushModel);
+    }
+    if (Array.isArray(payload?.models)) {
+        payload.models.forEach(pushModel);
+    }
+    if (Array.isArray(payload?.model_list)) {
+        payload.model_list.forEach(pushModel);
+    }
+    if (Array.isArray(payload?.available_models)) {
+        payload.available_models.forEach(pushModel);
+    }
+    if (payload?.models && typeof payload.models === 'object' && !Array.isArray(payload.models)) {
+        Object.keys(payload.models).forEach(model => values.push(model));
+    }
+
+    return uniqueStrings(values.map(model => String(model || '').trim()).filter(Boolean));
+}
+
+async function fetchBookshelfModelsDirect(apiUrl, headers) {
+    const response = await fetch(apiUrl, {
+        method: 'GET',
+        headers,
+        cache: 'no-cache',
+    });
+    const text = await response.text().catch(() => '');
+    let data = {};
+    try {
+        data = text ? JSON.parse(text) : {};
+    } catch {
+        data = { message: text };
+    }
+    const models = extractBookshelfModelIds(data);
+    if (!response.ok || !models.length) {
+        throw new Error(data?.error?.message || data?.message || `No embedding models returned (HTTP ${response.status}).`);
+    }
+    return models;
+}
+
+async function fetchBookshelfModelsViaTavernBackend() {
+    const context = getContext();
+    const apiUrl = normalizeUrl(settings.bookshelfApiUrl || '');
+    const apiKey = String(settings.bookshelfApiKey || '').trim();
+    if (!apiUrl) {
+        throw new Error('Please enter the bookshelf API URL first.');
+    }
+
+    const response = await fetch('/api/backends/chat-completions/status', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            ...(typeof context.getRequestHeaders === 'function' ? context.getRequestHeaders() : {}),
+        },
+        cache: 'no-cache',
+        body: JSON.stringify({
+            chat_completion_source: 'openai',
+            reverse_proxy: apiUrl.replace(/\/embeddings$/i, '').replace(/\/v1$/i, '/v1'),
+            proxy_password: apiKey,
+        }),
+    });
+    const data = await response.json().catch(() => ({}));
+    const models = extractBookshelfModelIds(data);
+    if (!response.ok || !models.length) {
+        throw new Error(data?.error?.message || data?.message || `No models returned by Tavern backend (HTTP ${response.status}).`);
+    }
+    return models;
+}
+
 async function fetchBookshelfApiModels() {
-    const apiUrl = getBookshelfModelsApiUrl();
     const apiKey = String(settings.bookshelfApiKey || '').trim();
     const headers = { 'Content-Type': 'application/json' };
     if (apiKey) {
@@ -2289,18 +2390,25 @@ async function fetchBookshelfApiModels() {
     }
 
     setBookshelfModelStatus('Fetching models...');
-    const response = await fetch(apiUrl, {
-        method: 'GET',
-        headers,
-        cache: 'no-cache',
-    });
-    const data = await response.json().catch(() => ({}));
-    const models = Array.isArray(data?.data)
-        ? data.data.map(model => String(model?.id || model?.name || '')).filter(Boolean)
-        : [];
-
-    if (!response.ok || !models.length) {
-        throw new Error(data?.error?.message || data?.message || `No embedding models returned (HTTP ${response.status}).`);
+    const errors = [];
+    let models = [];
+    for (const apiUrl of getBookshelfModelApiUrlCandidates()) {
+        try {
+            models = await fetchBookshelfModelsDirect(apiUrl, headers);
+            break;
+        } catch (error) {
+            errors.push(`${apiUrl}: ${error?.message || error}`);
+        }
+    }
+    if (!models.length) {
+        try {
+            models = await fetchBookshelfModelsViaTavernBackend();
+        } catch (error) {
+            errors.push(`Tavern backend: ${error?.message || error}`);
+        }
+    }
+    if (!models.length) {
+        throw new Error(`没有拿到可用向量模型。已尝试：${errors.slice(-3).join('；')}`);
     }
 
     settings.bookshelfApiModels = uniqueStrings(models);
