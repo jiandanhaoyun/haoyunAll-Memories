@@ -2220,6 +2220,17 @@ function setBookshelfModelStatus(text) {
     $('[id="ai_wbr_bookshelf_model_status"]').text(text || 'Model not loaded');
 }
 
+function clearBookshelfApiModels(reason = 'API 配置已变更，请重新获取模型。') {
+    settings.bookshelfApiModels = [];
+    settings.bookshelfApiModel = '';
+    Object.assign(extension_settings[MODULE_NAME], settings);
+    saveSettingsDebounced();
+    renderBookshelfApiModelOptions();
+    $('[id="ai_wbr_bookshelf_api_model"]').val('');
+    setBookshelfModelStatus(reason);
+    setBookshelfStatus(reason);
+}
+
 function renderBookshelfApiModelOptions() {
     const models = Array.isArray(settings.bookshelfApiModels)
         ? settings.bookshelfApiModels.map(model => String(model || '').trim()).filter(Boolean)
@@ -2230,7 +2241,7 @@ function renderBookshelfApiModelOptions() {
         if (!select.is('select')) return;
         select.empty().append($('<option></option>', {
             value: '',
-            text: models.length ? 'Select embedding model' : 'Fetch models first',
+            text: models.length ? '请选择向量模型' : '先点击“获取模型”',
         }));
         for (const model of models) {
             select.append($('<option></option>', {
@@ -2389,7 +2400,8 @@ async function fetchBookshelfApiModels() {
         headers.Authorization = `Bearer ${apiKey}`;
     }
 
-    setBookshelfModelStatus('Fetching models...');
+    setBookshelfModelStatus('正在获取模型...');
+    setBookshelfStatus('正在获取书架向量模型列表...');
     const errors = [];
     let models = [];
     for (const apiUrl of getBookshelfModelApiUrlCandidates()) {
@@ -2419,8 +2431,9 @@ async function fetchBookshelfApiModels() {
     saveSettingsDebounced();
     renderBookshelfApiModelOptions();
     $('#ai_wbr_bookshelf_api_model').val(settings.bookshelfApiModel || '');
-    setBookshelfModelStatus(`Fetched ${settings.bookshelfApiModels.length} models`);
-    toastr?.success?.('Done.', 'AI Worldbook Router');
+    setBookshelfModelStatus(`已获取 ${settings.bookshelfApiModels.length} 个模型：${settings.bookshelfApiModel || '未选择'}`);
+    setBookshelfStatus(`已获取 ${settings.bookshelfApiModels.length} 个向量模型，请确认 API 模型下拉选择。`);
+    toastr?.success?.(`已获取 ${settings.bookshelfApiModels.length} 个模型`, 'AI Worldbook Router');
 }
 
 function readBookshelfTextFile(file) {
@@ -8606,7 +8619,7 @@ function createBookshelfStandaloneFold() {
                                 <option value="">先点击“获取模型”</option>
                             </select>
                             <label></label>
-                            <button id="ai_wbr_bookshelf_fetch_models" class="menu_button" type="button">获取模型</button>
+                            <button id="ai_wbr_bookshelf_fetch_models" class="menu_button ai-wbr-bookshelf-fetch-models" type="button">获取模型</button>
                             <label for="ai_wbr_bookshelf_local_model">本地模型 ID</label>
                             <input id="ai_wbr_bookshelf_local_model" class="text_pole" type="text" placeholder="Xenova/paraphrase-multilingual-MiniLM-L12-v2" />
                             <label for="ai_wbr_bookshelf_memory_vector_max">图谱召回数量</label>
@@ -8709,7 +8722,9 @@ function ensureBookshelfStandaloneControls(section) {
     }
     if (!panel.find('#ai_wbr_bookshelf_fetch_models').length) {
         const modelField = panel.find('#ai_wbr_bookshelf_api_model');
-        modelField.after('<button id="ai_wbr_bookshelf_fetch_models" class="menu_button" type="button">获取模型</button>');
+        modelField.after('<button id="ai_wbr_bookshelf_fetch_models" class="menu_button ai-wbr-bookshelf-fetch-models" type="button">获取模型</button>');
+    } else {
+        panel.find('#ai_wbr_bookshelf_fetch_models').addClass('ai-wbr-bookshelf-fetch-models');
     }
 }
 
@@ -12103,8 +12118,8 @@ function bindMemoryPanelActions() {
     bindNumber('#ai_wbr_bookshelf_max_chars', 'bookshelfMaxChunkChars', 120, 2000);
     bindNumber('#ai_wbr_bookshelf_min_score', 'bookshelfMinScore', 0, 1);
 
-    bindText('#ai_wbr_bookshelf_api_url', 'bookshelfApiUrl', normalizeUrl);
-    bindText('#ai_wbr_bookshelf_api_key', 'bookshelfApiKey', (value) => String(value).trim());
+    $('#ai_wbr_bookshelf_api_url').val(settings.bookshelfApiUrl || '');
+    $('#ai_wbr_bookshelf_api_key').val(settings.bookshelfApiKey || '');
     $('#ai_wbr_bookshelf_api_model').on('change', function () {
         saveSetting('bookshelfApiModel', String($(this).val() || '').trim());
         syncBookshelfProviderVisibility();
@@ -12332,14 +12347,22 @@ function bindMemoryPanelActions() {
 
     $(document).off('click.aiWbrBookshelfFetchModels', '#ai_wbr_bookshelf_fetch_models').on('click.aiWbrBookshelfFetchModels', '#ai_wbr_bookshelf_fetch_models', async (event) => {
         event.preventDefault();
+        const button = $(event.currentTarget);
+        const originalText = button.text();
         try {
+            button.prop('disabled', true).text('获取中...');
+            setBookshelfModelStatus('正在获取模型...');
+            setBookshelfStatus('正在获取书架向量模型列表...');
             saveSetting('bookshelfEmbeddingMode', 'api');
             $('#ai_wbr_bookshelf_embedding_mode').val('api');
             await fetchBookshelfApiModels();
             syncBookshelfProviderVisibility();
         } catch (error) {
             setBookshelfModelStatus(`获取失败：${error?.message || error}`);
-            toastr?.error?.('Operation failed.', 'AI Worldbook Router');
+            setBookshelfStatus(`向量模型获取失败：${error?.message || error}`);
+            toastr?.error?.(`获取失败：${error?.message || error}`, 'AI Worldbook Router');
+        } finally {
+            button.prop('disabled', false).text(originalText || '获取模型');
         }
     });
 
@@ -13396,6 +13419,7 @@ function bindBookshelfDynamicSettingsActions() {
         .off('input.aiWbrBookshelfSettings change.aiWbrBookshelfSettings', selector)
         .on('input.aiWbrBookshelfSettings change.aiWbrBookshelfSettings', selector, function (event) {
             const id = String(this.id || '');
+            let statusAfterSync = '';
             if (id === 'ai_wbr_bookshelf_enabled') saveSetting('bookshelfEnabled', !!this.checked);
             else if (id === 'ai_wbr_bookshelf_auto_inject') saveSetting('bookshelfAutoInject', !!this.checked);
             else if (id === 'ai_wbr_bookshelf_auto_memory_book') {
@@ -13410,8 +13434,22 @@ function bindBookshelfDynamicSettingsActions() {
             else if (id === 'ai_wbr_bookshelf_max_chunks') saveSetting('bookshelfMaxChunks', clampNumber($(this).val(), defaultSettings.bookshelfMaxChunks, 1, 12));
             else if (id === 'ai_wbr_bookshelf_max_chars') saveSetting('bookshelfMaxChunkChars', clampNumber($(this).val(), defaultSettings.bookshelfMaxChunkChars, 120, 2000));
             else if (id === 'ai_wbr_bookshelf_min_score') saveSetting('bookshelfMinScore', clampNumber($(this).val(), defaultSettings.bookshelfMinScore, 0, 1));
-            else if (id === 'ai_wbr_bookshelf_api_url') saveSetting('bookshelfApiUrl', normalizeUrl($(this).val()));
-            else if (id === 'ai_wbr_bookshelf_api_key') saveSetting('bookshelfApiKey', String($(this).val() || '').trim());
+            else if (id === 'ai_wbr_bookshelf_api_url') {
+                const nextValue = normalizeUrl($(this).val());
+                if (nextValue !== settings.bookshelfApiUrl) {
+                    saveSetting('bookshelfApiUrl', nextValue);
+                    statusAfterSync = 'API 地址已变更，请重新获取模型。';
+                    clearBookshelfApiModels(statusAfterSync);
+                }
+            }
+            else if (id === 'ai_wbr_bookshelf_api_key') {
+                const nextValue = String($(this).val() || '').trim();
+                if (nextValue !== settings.bookshelfApiKey) {
+                    saveSetting('bookshelfApiKey', nextValue);
+                    statusAfterSync = 'API Key 已变更，请重新获取模型。';
+                    clearBookshelfApiModels(statusAfterSync);
+                }
+            }
             else if (id === 'ai_wbr_bookshelf_api_model') saveSetting('bookshelfApiModel', String($(this).val() || '').trim());
             else if (id === 'ai_wbr_bookshelf_local_model') saveSetting('bookshelfLocalModelId', String($(this).val() || '').trim());
             else if (id === 'ai_wbr_bookshelf_embedding_mode' && event.type === 'change') {
@@ -13419,6 +13457,10 @@ function bindBookshelfDynamicSettingsActions() {
             }
             syncBookshelfProviderVisibility();
             renderBookshelfPanel();
+            if (statusAfterSync) {
+                setBookshelfModelStatus(statusAfterSync);
+                setBookshelfStatus(statusAfterSync);
+            }
         });
 }
 

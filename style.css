@@ -3874,6 +3874,19 @@
     grid-template-columns: minmax(7.5rem, 0.7fr) minmax(12rem, 1.3fr);
 }
 
+.ai-wbr-bookshelf-config .ai-wbr-bookshelf-fetch-models {
+    justify-self: start;
+    width: 100%;
+    max-width: 12rem;
+    min-width: 7.5rem;
+    min-height: 2.35rem;
+    padding: 0.45rem 0.8rem;
+    line-height: 1.25;
+    white-space: nowrap;
+    writing-mode: horizontal-tb;
+    text-orientation: mixed;
+}
+
 .ai-wbr-bookshelf-import-options {
     display: grid;
     grid-template-columns: minmax(7.5rem, 0.7fr) minmax(12rem, 1.3fr);
